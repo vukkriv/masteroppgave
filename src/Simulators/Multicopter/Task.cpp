@@ -245,15 +245,7 @@ namespace Simulators
         Memory::clear(m_model);
       }
 
-      Matrix
-      matrixRnb(float roll, float pitch, float yaw)
-      {
-        double j2_elements[9] = { 1, std::sin(roll) * std::tan(pitch), std::cos(roll) * std::tan(pitch),
-                                          0, std::cos(roll), -std::sin(roll),
-                                          0, std::sin(roll) / std::cos(pitch), std::cos(roll) / std::cos(pitch) };
 
-        return Matrix(j2_elements, 3, 3);
-      }
 
       Matrix
       matrixJ(float roll, float pitch, float yaw)
@@ -495,7 +487,7 @@ namespace Simulators
         // Fill acceleration
         // Remember, accel is body derived acceleration.
         // Needs to be converted to inertia differentiated acceleration, represented in body
-        Matrix Rnb = matrixRnb(m_sstate.phi, m_sstate.theta, m_sstate.psi);
+        // Matrix Rnb = matrixRnb(m_sstate.phi, m_sstate.theta, m_sstate.psi);
 
         Matrix ddp_b = (skew(m_velocity.get(3,5,0,0)) * m_velocity.get(0,2,0,0) + accel.get(0,2,0,0));
         m_acc.x = ddp_b(0);
