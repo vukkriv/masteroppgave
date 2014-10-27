@@ -135,6 +135,11 @@ namespace Sensors
         .defaultValue("192.168.1.41")
         .description("Address for connection to remote base-station Piksi");
 
+        param("Communication Timeout", m_args.comm_timeout)
+        .defaultValue("5")
+        .units(Units::Second)
+        .description("Timeout for base and local communication.");
+
         // Init piksi interface
         sbp_state_init(&m_sbp_state);
 
@@ -147,6 +152,9 @@ namespace Sensors
         m_nodemap[SBP_BASELINE_NED] = tmp;
         m_nodemap[SBP_VEL_NED]   = tmp;
         m_nodemap[SBP_DOPS]     = tmp;
+
+        // Register task as context
+        sbp_state_set_io_context(&m_sbp_state, (void*) this);
 
         // Register callbacks
         sbp_register_callback(&m_sbp_state, SBP_BASELINE_NED, sbp_baseline_ned_callback, (void*)this, &m_nodemap[SBP_BASELINE_NED]);
@@ -207,7 +215,7 @@ namespace Sensors
         catch (...)
         {
           Memory::clear(m_local_TCP_sock);
-          war(DTR("Connection failed, retrying..."));
+          war(DTR("Local Connection failed, retrying..."));
           setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_COM_ERROR);
         }
       }
@@ -289,7 +297,7 @@ namespace Sensors
           catch (std::runtime_error& e)
           {
             task->err("%s", e.what());
-            task->war(DTR("Connection lost, retrying..."));
+            task->war(DTR("Connection lost locally, retrying..."));
             Memory::clear(task->m_local_TCP_sock);
 
             task->m_local_TCP_sock = new Network::TCPSocket;
@@ -352,10 +360,12 @@ namespace Sensors
             }
           }
 
-          if (!m_error_local_missing_data)
+          if (!m_error_local_missing_data && !m_error_base_missing_data)
           {
             setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
           }
+
+
 
           // Handle IMC messages from bus
           consumeMessages();
@@ -385,7 +395,7 @@ namespace Sensors
             case SBP_OK_CALLBACK_EXECUTED:
               break;
             case SBP_OK_CALLBACK_UNDEFINED:
-              debug("Unknown message.");
+              debug("Unknown message. (NB: may be heartbeat).");
               break;
             case SBP_CRC_ERROR:
               debug("Received message CRC error.");
@@ -395,13 +405,14 @@ namespace Sensors
           }
 
 
-          }
+        }
 
         if (now - m_local_last_pkt_time >= m_args.comm_timeout)
         {
           if (!m_error_local_missing_data)
           {
-            setEntityState(IMC::EntityState::ESTA_ERROR, Status::CODE_NOT_SYNCHED);
+            setEntityState(IMC::EntityState::ESTA_ERROR, Status::CODE_MISSING_DATA);
+            war("Local Piksi Timeout.");
             m_error_local_missing_data = true;
           }
         }
@@ -435,9 +446,9 @@ namespace Sensors
               debug("Receive error");
               break;
             }
-
             // Forward to local Piksi
-            sendData(m_buf, n, (void*) this);
+            int n2 = sendData(m_buf, n, (void*) this);
+            trace("Sent %d bytes to local piksi from base. ", n2);
             now = Clock::get();
 
 
@@ -464,6 +475,7 @@ namespace Sensors
       handleBaselineNed(sbp_baseline_ned_t& msg)
       {
         (void) msg;
+        inf("Got baseline ned");
       }
 
       void
@@ -477,17 +489,20 @@ namespace Sensors
       handleVelNed(sbp_vel_ned_t& msg)
       {
         (void) msg;
+        inf("Got vel ned");
       }
 
       void
       handleDops(sbp_dops_t& msg)
       {
         (void) msg;
+        inf("got dops");
       }
       void
       handleGpsTime(sbp_gps_time_t& msg)
       {
         (void) msg;
+        inf("got gps time");
       }
 
 
