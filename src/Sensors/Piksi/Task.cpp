@@ -75,15 +75,15 @@ namespace Sensors
     {
       //! Task arguments.
       Arguments m_args;
-      //! Processing state of incomming sbp messages
+      //! Processing state of incoming sbp messages
       sbp_state_t m_sbp_state;
       uint8_t m_buf[512];
       //! Map of callback-nodes for swiftnav API
       typedef std::map<int, sbp_msg_callbacks_node_t> CallbackNodeMap;
       CallbackNodeMap m_nodemap;
-      //! Timestamp on prevoius local packet
+      //! Timestamp on previous local packet
       double m_local_last_pkt_time;
-      //! Timestamp on prevoius local packet
+      //! Timestamp on previous base packet
       double m_base_last_pkt_time;
       //! TCP socket - Sensor
       TCPSocket* m_local_TCP_sock;
@@ -121,7 +121,7 @@ namespace Sensors
 
         param("Local TCP - Port", m_args.local_TCP_port)
         .defaultValue("9999")
-        .description("Port for connection to Piksi");
+        .description("Port for connection to local Piksi");
 
         param("Local TCP - Address", m_args.local_TCP_addr)
         .defaultValue("127.0.0.1")
@@ -145,7 +145,7 @@ namespace Sensors
 
 
         // Populate callback nodes.
-        // value are copied to the map.
+        // values are copied to the map.
         sbp_msg_callbacks_node_t tmp;
         m_nodemap[SBP_GPS_TIME] = tmp;
         m_nodemap[SBP_POS_LLH]  = tmp;
@@ -219,6 +219,7 @@ namespace Sensors
           setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_COM_ERROR);
         }
       }
+
       void
       openBaseConnection()
       {
@@ -376,7 +377,7 @@ namespace Sensors
       handleLocalPiksiData(void)
       {
 
-        // Reads incomming data and processes it with Piksi API.
+        // Reads incoming data and processes it with Piksi API.
         // This uses the call-back functions.
         double now = Clock::get();
         int counter = 0;
@@ -423,7 +424,7 @@ namespace Sensors
       void
       handleBasePiksiData(void)
       {
-        // Reads incomming data from base.
+        // Reads incoming data from base.
         // If any, just write to base TCP port.
 
 
@@ -448,7 +449,7 @@ namespace Sensors
             }
             // Forward to local Piksi
             int n2 = sendData(m_buf, n, (void*) this);
-            trace("Sent %d bytes to local piksi from base. ", n2);
+            trace("Sent %d bytes to local Piksi from base. ", n2);
             now = Clock::get();
 
 
@@ -506,7 +507,7 @@ namespace Sensors
       }
 
 
-      /* Callback-methods for piksi interface */
+      /* Callback-methods for Piksi interface */
       static void
       sbp_baseline_ned_callback(u16 sender_id, u8 len, u8 msg[], void *context)
       {
