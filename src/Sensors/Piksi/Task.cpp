@@ -120,7 +120,7 @@ namespace Sensors
         .description("Sensor Type - Rover or Base");
 
         param("Local TCP - Port", m_args.local_TCP_port)
-        .defaultValue("9999")
+        .defaultValue("8880")
         .description("Port for connection to local Piksi");
 
         param("Local TCP - Address", m_args.local_TCP_addr)
@@ -128,11 +128,11 @@ namespace Sensors
         .description("Address for connection to local Piksi");
 
         param("Rover -- Base TCP - Port", m_args.base_TCP_port)
-        .defaultValue("9999")
+        .defaultValue("8880")
         .description("Port for connection to remote base-station Piksi");
 
         param("Rover -- Base TCP - Address", m_args.base_TCP_addr)
-        .defaultValue("192.168.1.41")
+        .defaultValue("192.168.1.46")
         .description("Address for connection to remote base-station Piksi");
 
         param("Communication Timeout", m_args.comm_timeout)
