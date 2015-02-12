@@ -95,6 +95,9 @@ namespace Sensors
       uint16_t m_base_TCP_port;
       bool m_error_local_missing_data;
       bool m_error_base_missing_data;
+      //! Navdata from Piksi - Rover
+      IMC::RtkFix m_rtk_fix;
+
 
       //! Sensor Type
       SENSOR_TYPE m_type;
@@ -475,8 +478,21 @@ namespace Sensors
       void
       handleBaselineNed(sbp_baseline_ned_t& msg)
       {
-        (void) msg;
+        //(void) msg;
         inf("Got baseline ned");
+
+        m_rtk_fix.tow = (uint32_t)msg.tow;
+        m_rtk_fix.n = (fp32_t)msg.n;
+        m_rtk_fix.e = (fp32_t)msg.e;
+        m_rtk_fix.d = (fp32_t)msg.d;
+        m_rtk_fix.pos_hacc = (fp32_t)msg.h_accuracy;
+        m_rtk_fix.vel_hacc = (fp32_t)msg.v_accuracy;
+        m_rtk_fix.satellites = (uint8_t)msg.n_sats;
+        m_rtk_fix.type = (uint8_t)msg.flags;
+
+        dispatch(m_rtk_fix);
+        inf("Sent RTK Fix");
+
       }
 
       void
@@ -489,8 +505,17 @@ namespace Sensors
       void
       handleVelNed(sbp_vel_ned_t& msg)
       {
-        (void) msg;
+        //(void) msg;
         inf("Got vel ned");
+
+        m_rtk_fix.tow = (uint32_t)msg.tow;
+        m_rtk_fix.v_n = (fp32_t)msg.n;
+        m_rtk_fix.v_e = (fp32_t)msg.e;
+        m_rtk_fix.v_d = (fp32_t)msg.d;
+        m_rtk_fix.pos_hacc = (fp32_t)msg.h_accuracy;
+        m_rtk_fix.vel_hacc = (fp32_t)msg.v_accuracy;
+        m_rtk_fix.satellites = (uint8_t)msg.n_sats;
+        m_rtk_fix.type = (uint8_t)msg.flags;
       }
 
       void
