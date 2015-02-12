@@ -51,6 +51,9 @@ namespace Sensors
       BASE
     };
 
+    const int PIKSI_MSG_INIT_BASELINE = 0x23;
+    const int PIKSI_MSG_RESET_FILTERS = 0x22;
+
     //! %Task arguments.
     struct Arguments
     {
@@ -142,6 +145,9 @@ namespace Sensors
         .defaultValue("5")
         .units(Units::Second)
         .description("Timeout for base and local communication.");
+
+        // Bind to incomming IMC messages
+        bind<IMC::RemoteActions>(this);
 
         // Init piksi interface
         sbp_state_init(&m_sbp_state);
@@ -258,6 +264,44 @@ namespace Sensors
         Memory::clear(m_base_TCP_sock);
       }
 
+      void
+      consume(const IMC::RemoteActions* action)
+      {
+        inf("Got an action: %s", action->actions.c_str());
+
+        TupleList list = TupleList(action->actions);
+        if(list.get("piksiInitZeroBaseline") == "1")
+        {
+          // Send message to init baseline
+          inf("Resetting piksi baseline.");
+          u16 sender_id = 99;
+          sbp_send_message(&m_sbp_state, PIKSI_MSG_INIT_BASELINE, sender_id, 0, NULL, &sendLocalData);
+        }
+        if(list.get("piksiResetFilters") == "1")
+        {
+          // Send message to reset Filters¨
+          inf("Resetting Piksi Filters");
+
+          u8 value = 0x00;
+          u16 sender_id = 99;
+          sbp_send_message(&m_sbp_state, PIKSI_MSG_RESET_FILTERS, sender_id, 1, &value, &sendLocalData);
+
+        }
+
+        if(list.get("piksiResetIARs") == "1")
+        {
+          // Send message to reset IAR
+          inf("Resetting Piksi IARs");
+
+
+          u8 value = 0x01;
+          u16 sender_id = 99;
+          sbp_send_message(&m_sbp_state, PIKSI_MSG_RESET_FILTERS, sender_id, 1, &value, &sendLocalData);
+        }
+
+
+      }
+
       bool
       local_poll(double timeout)
       {
@@ -278,6 +322,18 @@ namespace Sensors
 
       static int
       sendData(uint8_t* bfr, int size, void* context)
+      {
+        Task* task = (Task*)(context);
+        if (task->m_local_TCP_sock)
+        {
+          task->trace("Sending something");
+          return task->m_local_TCP_sock->write((char*)bfr, size);
+        }
+        return 0;
+      }
+
+      static u32
+      sendLocalData(u8* bfr, u32 size, void* context)
       {
         Task* task = (Task*)(context);
         if (task->m_local_TCP_sock)
