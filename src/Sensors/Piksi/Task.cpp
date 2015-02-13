@@ -100,11 +100,17 @@ namespace Sensors
       bool m_error_base_missing_data;
       //! Navdata from Piksi - Rover
       IMC::RtkFix m_rtk_fix;
+      IMC::GpsFix m_gps_fix;
       uint16_t m_gps_week;
-
+      //! Piksi data scaling
+      const double m_pos_scale;
+      const double m_vel_scale;
+      const double m_dop_scale;
 
       //! Sensor Type
       SENSOR_TYPE m_type;
+
+
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
@@ -119,7 +125,10 @@ namespace Sensors
         m_error_local_missing_data(false),
         m_error_base_missing_data(false),
         m_type(ROVER),
-        m_gps_week(0)
+        m_gps_week(0),
+        m_pos_scale(1E-3), // Piksi sends positions in mm, scale to m
+        m_vel_scale(1E-3), // Piksi sends velocities in mm/s, scale to m/s
+        m_dop_scale(1E-2) // Piksi sends dop in 0.01, scale to 1
       {
 
         param("Type", m_args.type)
@@ -540,25 +549,84 @@ namespace Sensors
         inf("Got baseline ned");
 
         m_rtk_fix.tow = (uint32_t)msg.tow;
-        // Piksi outputs in mm, convert to m
-        m_rtk_fix.n = (fp32_t)msg.n/1000.0;
-        m_rtk_fix.e = (fp32_t)msg.e/1000.0;
-        m_rtk_fix.d = (fp32_t)msg.d/1000.0;
-        m_rtk_fix.pos_hacc = (fp32_t)msg.h_accuracy/1000.0;
-        m_rtk_fix.vel_hacc = (fp32_t)msg.v_accuracy/1000.0;
+        m_rtk_fix.n = m_pos_scale*(fp32_t)msg.n;
+        m_rtk_fix.e = m_pos_scale*(fp32_t)msg.e;
+        m_rtk_fix.d = m_pos_scale*(fp32_t)msg.d;
+        m_rtk_fix.pos_hacc = m_pos_scale*(fp32_t)msg.h_accuracy;
+        m_rtk_fix.vel_hacc = m_pos_scale*(fp32_t)msg.v_accuracy;
         m_rtk_fix.satellites = (uint8_t)msg.n_sats;
         m_rtk_fix.type = (uint8_t)msg.flags;
 
         dispatch(m_rtk_fix);
         inf("Sent RTK Fix");
-
       }
 
       void
       handlePosllh(sbp_pos_llh_t& msg)
       {
-        (void) msg;
+        //(void) msg;
         inf("Got Pos LLH");
+
+        // Check that GPS week has been set by a dops message
+        if (m_gps_week > 0)
+        {
+          // Convert from GPS week and TOW to UTC
+          gps_to_ymdt(m_gps_week, msg.tow, &m_gps_fix.utc_year, &m_gps_fix.utc_month, &m_gps_fix.utc_day, &m_gps_fix.utc_time);
+          m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_DATE;
+          m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_TIME;
+
+          m_gps_fix.lat = Angles::radians(msg.lat);
+          m_gps_fix.lon = Angles::radians(msg.lon);
+          m_gps_fix.height = m_pos_scale*(fp32_t)msg.height;
+          m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_POS;
+
+          m_gps_fix.hacc = m_pos_scale*(fp32_t)msg.h_accuracy;
+          m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_HACC;
+
+          m_gps_fix.vacc = m_pos_scale*(fp32_t)msg.v_accuracy;
+          m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_VACC;
+
+          m_gps_fix.satellites = (uint8_t)msg.n_sats;
+          m_gps_fix.type = IMC::GpsFix::GFT_STANDALONE;
+
+          dispatch(m_gps_fix);
+          inf("Sent GPS Fix");
+        }
+      }
+
+      void
+      gps_to_ymdhms(uint32_t gps_week, uint32_t ITOW, uint16_t *year, uint8_t *month,
+          uint8_t* day, uint8_t *hours, uint8_t *minutes, float *seconds)
+      {
+        *seconds = (float) (ITOW % 1000) / 1000;
+
+        long gps_sec_since_1970 = 315964800 + 7 * 24 * 60 * 60 * gps_week + ITOW / 1000;
+
+        time_t t = gps_sec_since_1970;
+
+        struct tm* utc;
+
+        utc = gmtime(&t);
+
+        *year = utc->tm_year + 1900;
+        *month = utc->tm_mon +1;
+        *day = utc->tm_mday;
+        *hours = utc->tm_hour;
+        *minutes = utc->tm_min;
+        *seconds += utc->tm_sec;
+      }
+
+      void
+      gps_to_ymdt(uint32_t gps_week, uint32_t ITOW, uint16_t *year, uint8_t *month,
+          uint8_t* day, float *time)
+      {
+        uint8_t hours;
+        uint8_t minutes;
+        float seconds;
+
+        gps_to_ymdhms(gps_week, ITOW, year, month, day, &hours, &minutes, &seconds);
+
+        *time = 3600 * hours + 60 * minutes + seconds;
       }
 
       void
@@ -568,22 +636,32 @@ namespace Sensors
         inf("Got vel ned");
 
         m_rtk_fix.tow = (uint32_t)msg.tow;
-        // Piksi outputs in mm/s, convert to m/s
-        m_rtk_fix.v_n = (fp32_t)msg.n/1000.0;
-        m_rtk_fix.v_e = (fp32_t)msg.e/1000.0;
-        m_rtk_fix.v_d = (fp32_t)msg.d/1000.0;
-        m_rtk_fix.pos_hacc = (fp32_t)msg.h_accuracy/1000.0;
-        m_rtk_fix.vel_hacc = (fp32_t)msg.v_accuracy/1000.0;
+        m_rtk_fix.v_n = m_vel_scale*(fp32_t)msg.n;
+        m_rtk_fix.v_e = m_vel_scale*(fp32_t)msg.e;
+        m_rtk_fix.v_d = m_vel_scale*(fp32_t)msg.d;
+        m_rtk_fix.vel_hacc = m_vel_scale*(fp32_t)msg.h_accuracy;
+        m_rtk_fix.vel_vacc = m_vel_scale*(fp32_t)msg.v_accuracy;
         m_rtk_fix.satellites = (uint8_t)msg.n_sats;
         m_rtk_fix.type = (uint8_t)msg.flags;
+
+        // rtk_fix is only dispatched by handleBaselineNed
       }
 
       void
       handleDops(sbp_dops_t& msg)
       {
-        (void) msg;
+        //(void) msg;
         inf("GOT dops");
+
+        m_gps_fix.hdop = m_dop_scale*(fp32_t)msg.hdop;
+        m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_HDOP;
+
+        m_gps_fix.vdop = m_dop_scale*(fp32_t)msg.vdop;
+        m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_VDOP;
+
+        // gps_fix is only dispatched by handlePosllh
       }
+
       void
       handleGpsTime(sbp_gps_time_t& msg)
       {
