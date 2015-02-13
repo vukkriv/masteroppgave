@@ -120,15 +120,15 @@ namespace Sensors
         m_base_last_pkt_time(0),
         m_local_TCP_sock(NULL),
         m_local_TCP_port(0),
+        m_error_local_missing_data(false),
         m_base_TCP_sock(NULL),
         m_base_TCP_port(0),
-        m_error_local_missing_data(false),
         m_error_base_missing_data(false),
-        m_type(ROVER),
         m_gps_week(0),
         m_pos_scale(1E-3), // Piksi sends positions in mm, scale to m
         m_vel_scale(1E-3), // Piksi sends velocities in mm/s, scale to m/s
-        m_dop_scale(1E-2) // Piksi sends dop in 0.01, scale to 1
+        m_dop_scale(1E-2), // Piksi sends dop in 0.01, scale to 1
+        m_type(ROVER)
       {
 
         param("Type", m_args.type)
@@ -545,8 +545,7 @@ namespace Sensors
       void
       handleBaselineNed(sbp_baseline_ned_t& msg)
       {
-        //(void) msg;
-        inf("Got baseline ned");
+        trace("Got baseline ned");
 
         m_rtk_fix.tow = (uint32_t)msg.tow;
         m_rtk_fix.n = m_pos_scale*(fp32_t)msg.n;
@@ -558,14 +557,14 @@ namespace Sensors
         m_rtk_fix.type = (uint8_t)msg.flags;
 
         dispatch(m_rtk_fix);
-        inf("Sent RTK Fix");
+        trace("Sent RTK Fix");
+        //m_rtk_fix.toText(std::cerr);
       }
 
       void
       handlePosllh(sbp_pos_llh_t& msg)
       {
-        //(void) msg;
-        inf("Got Pos LLH");
+        trace("Got Pos LLH");
 
         // Check that GPS week has been set by a dops message
         if (m_gps_week > 0)
@@ -577,7 +576,7 @@ namespace Sensors
 
           m_gps_fix.lat = Angles::radians(msg.lat);
           m_gps_fix.lon = Angles::radians(msg.lon);
-          m_gps_fix.height = m_pos_scale*(fp32_t)msg.height;
+          m_gps_fix.height = (fp32_t)msg.height;
           m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_POS;
 
           m_gps_fix.hacc = m_pos_scale*(fp32_t)msg.h_accuracy;
@@ -590,7 +589,8 @@ namespace Sensors
           m_gps_fix.type = IMC::GpsFix::GFT_STANDALONE;
 
           dispatch(m_gps_fix);
-          inf("Sent GPS Fix");
+          trace("Sent GPS Fix");
+          //m_gps_fix.toText(std::cerr);
         }
       }
 
@@ -632,8 +632,7 @@ namespace Sensors
       void
       handleVelNed(sbp_vel_ned_t& msg)
       {
-        //(void) msg;
-        inf("Got vel ned");
+        trace("Got vel ned");
 
         m_rtk_fix.tow = (uint32_t)msg.tow;
         m_rtk_fix.v_n = m_vel_scale*(fp32_t)msg.n;
@@ -650,8 +649,7 @@ namespace Sensors
       void
       handleDops(sbp_dops_t& msg)
       {
-        //(void) msg;
-        inf("GOT dops");
+        trace("GOT dops");
 
         m_gps_fix.hdop = m_dop_scale*(fp32_t)msg.hdop;
         m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_HDOP;
@@ -665,8 +663,7 @@ namespace Sensors
       void
       handleGpsTime(sbp_gps_time_t& msg)
       {
-        //(void) msg;
-        inf("Got GPS time");
+        trace("Got GPS time");
 
         uint16_t gps_week = (uint16_t)msg.wn;
 
