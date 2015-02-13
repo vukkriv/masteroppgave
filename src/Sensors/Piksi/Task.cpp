@@ -538,11 +538,12 @@ namespace Sensors
         inf("Got baseline ned");
 
         m_rtk_fix.tow = (uint32_t)msg.tow;
-        m_rtk_fix.n = (fp32_t)msg.n;
-        m_rtk_fix.e = (fp32_t)msg.e;
-        m_rtk_fix.d = (fp32_t)msg.d;
-        m_rtk_fix.pos_hacc = (fp32_t)msg.h_accuracy;
-        m_rtk_fix.vel_hacc = (fp32_t)msg.v_accuracy;
+        // Piksi outputs in mm, convert to m
+        m_rtk_fix.n = (fp32_t)msg.n/1000.0;
+        m_rtk_fix.e = (fp32_t)msg.e/1000.0;
+        m_rtk_fix.d = (fp32_t)msg.d/1000.0;
+        m_rtk_fix.pos_hacc = (fp32_t)msg.h_accuracy/1000.0;
+        m_rtk_fix.vel_hacc = (fp32_t)msg.v_accuracy/1000.0;
         m_rtk_fix.satellites = (uint8_t)msg.n_sats;
         m_rtk_fix.type = (uint8_t)msg.flags;
 
@@ -565,11 +566,12 @@ namespace Sensors
         inf("Got vel ned");
 
         m_rtk_fix.tow = (uint32_t)msg.tow;
-        m_rtk_fix.v_n = (fp32_t)msg.n;
-        m_rtk_fix.v_e = (fp32_t)msg.e;
-        m_rtk_fix.v_d = (fp32_t)msg.d;
-        m_rtk_fix.pos_hacc = (fp32_t)msg.h_accuracy;
-        m_rtk_fix.vel_hacc = (fp32_t)msg.v_accuracy;
+        // Piksi outputs in mm/s, convert to m/s
+        m_rtk_fix.v_n = (fp32_t)msg.n/1000.0;
+        m_rtk_fix.v_e = (fp32_t)msg.e/1000.0;
+        m_rtk_fix.v_d = (fp32_t)msg.d/1000.0;
+        m_rtk_fix.pos_hacc = (fp32_t)msg.h_accuracy/1000.0;
+        m_rtk_fix.vel_hacc = (fp32_t)msg.v_accuracy/1000.0;
         m_rtk_fix.satellites = (uint8_t)msg.n_sats;
         m_rtk_fix.type = (uint8_t)msg.flags;
       }
