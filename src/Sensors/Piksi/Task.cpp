@@ -92,14 +92,15 @@ namespace Sensors
       TCPSocket* m_local_TCP_sock;
       Address m_local_TCP_addr;
       uint16_t m_local_TCP_port;
+      bool m_error_local_missing_data;
       //! TCP socket - Base
       TCPSocket* m_base_TCP_sock;
       Address m_base_TCP_addr;
       uint16_t m_base_TCP_port;
-      bool m_error_local_missing_data;
       bool m_error_base_missing_data;
       //! Navdata from Piksi - Rover
       IMC::RtkFix m_rtk_fix;
+      uint16_t m_gps_week;
 
 
       //! Sensor Type
@@ -117,7 +118,8 @@ namespace Sensors
         m_base_TCP_port(0),
         m_error_local_missing_data(false),
         m_error_base_missing_data(false),
-        m_type(ROVER)
+        m_type(ROVER),
+        m_gps_week(0)
       {
 
         param("Type", m_args.type)
@@ -146,7 +148,7 @@ namespace Sensors
         .units(Units::Second)
         .description("Timeout for base and local communication.");
 
-        // Bind to incomming IMC messages
+        // Bind to incoming IMC messages
         bind<IMC::RemoteActions>(this);
 
         // Init piksi interface
@@ -580,13 +582,27 @@ namespace Sensors
       handleDops(sbp_dops_t& msg)
       {
         (void) msg;
-        inf("got dops");
+        inf("GOT dops");
       }
       void
       handleGpsTime(sbp_gps_time_t& msg)
       {
-        (void) msg;
-        inf("got gps time");
+        //(void) msg;
+        inf("Got GPS time");
+
+        uint16_t gps_week = (uint16_t)msg.wn;
+
+        if (m_gps_week == 0)
+        {
+          m_gps_week = gps_week;
+          inf("GPS week number set");
+        }
+        else if (m_gps_week != gps_week)
+        {
+          m_gps_week = gps_week;
+          war("GPS week number has changed and has been reset");
+        }
+
       }
 
 
