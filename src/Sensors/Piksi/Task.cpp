@@ -46,9 +46,9 @@ namespace Sensors
     //! %Sensor type
     enum SENSOR_TYPE
     {
-      ROVER = 0,
-      ROVER_SINGLE,
-      BASE
+      ROVER = 0,  // Vehicle, calc and send BL etc
+      STANDALONE, // Only broadcasts LLH
+      BASE        // Only broadcasts observations
     };
 
     const int PIKSI_MSG_INIT_BASELINE = 0x23;
@@ -133,8 +133,8 @@ namespace Sensors
 
         param("Type", m_args.type)
         .defaultValue("Rover")
-        .values("Rover,Single Rover,Base")
-        .description("Sensor Type - Rover or Base");
+        .values("Rover,Standalone,Base")
+        .description("Sensor Type - Rover, Standalone or Base");
 
         param("Local TCP - Port", m_args.local_TCP_port)
         .defaultValue("8880")
@@ -192,8 +192,8 @@ namespace Sensors
         // Check type
         if (m_args.type == "Base")
           m_type = BASE;
-        else if (m_args.type == "Single Rover")
-          m_type = ROVER_SINGLE;
+        else if (m_args.type == "Standalone")
+          m_type = STANDALONE;
         else
           m_type = ROVER;
       }
