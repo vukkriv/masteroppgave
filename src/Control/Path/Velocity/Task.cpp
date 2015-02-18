@@ -56,7 +56,7 @@ namespace Control
 
           param("Max Speed", m_args.max_speed)
             .defaultValue("5.0")
-            .units(Units::Types::MeterPerSecond)
+            .units(Units::MeterPerSecond)
             .description("Max speed of the vehicle");
 
         }
