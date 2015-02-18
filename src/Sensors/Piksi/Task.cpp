@@ -72,6 +72,8 @@ namespace Sensors
       //! Sensor type
       std::string type;
 
+      bool dispatch_gpsfix;
+
     };
 
     struct Task: public DUNE::Tasks::Task
@@ -110,6 +112,8 @@ namespace Sensors
       //! Sensor Type
       SENSOR_TYPE m_type;
 
+      bool m_dispatch_gpsfix;
+
 
       //! Constructor.
       //! @param[in] name task name.
@@ -128,7 +132,8 @@ namespace Sensors
         m_pos_scale(1E-3), // Piksi sends positions in mm, scale to m
         m_vel_scale(1E-3), // Piksi sends velocities in mm/s, scale to m/s
         m_dop_scale(1E-2), // Piksi sends dop in 0.01, scale to 1
-        m_type(ROVER)
+        m_type(ROVER),
+        m_dispatch_gpsfix(true)
       {
 
         param("Type", m_args.type)
@@ -156,6 +161,10 @@ namespace Sensors
         .defaultValue("5")
         .units(Units::Second)
         .description("Timeout for base and local communication.");
+
+        param("Dispatch GpsFix", m_args.dispatch_gpsfix)
+        .defaultValue("True")
+        .description("Dispatch GpsFix or not.");
 
         // Bind to incoming IMC messages
         bind<IMC::RemoteActions>(this);
@@ -196,6 +205,9 @@ namespace Sensors
           m_type = STANDALONE;
         else
           m_type = ROVER;
+
+        // Set gps dispatch
+        m_dispatch_gpsfix = m_args.dispatch_gpsfix;
       }
 
       //! Reserve entity identifiers.
@@ -566,31 +578,34 @@ namespace Sensors
       {
         trace("Got Pos LLH");
 
-        // Check that GPS week has been set by a dops message
-        if (m_gps_week > 0)
+        if (m_dispatch_gpsfix)
         {
-          // Convert from GPS week and TOW to UTC
-          gps_to_ymdt(m_gps_week, msg.tow, &m_gps_fix.utc_year, &m_gps_fix.utc_month, &m_gps_fix.utc_day, &m_gps_fix.utc_time);
-          m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_DATE;
-          m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_TIME;
+          // Check that GPS week has been set by a dops message
+          if (m_gps_week > 0)
+          {
+            // Convert from GPS week and TOW to UTC
+            gps_to_ymdt(m_gps_week, msg.tow, &m_gps_fix.utc_year, &m_gps_fix.utc_month, &m_gps_fix.utc_day, &m_gps_fix.utc_time);
+            m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_DATE;
+            m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_TIME;
 
-          m_gps_fix.lat = Angles::radians(msg.lat);
-          m_gps_fix.lon = Angles::radians(msg.lon);
-          m_gps_fix.height = (fp32_t)msg.height;
-          m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_POS;
+            m_gps_fix.lat = Angles::radians(msg.lat);
+            m_gps_fix.lon = Angles::radians(msg.lon);
+            m_gps_fix.height = (fp32_t)msg.height;
+            m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_POS;
 
-          m_gps_fix.hacc = m_pos_scale*(fp32_t)msg.h_accuracy;
-          m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_HACC;
+            m_gps_fix.hacc = m_pos_scale*(fp32_t)msg.h_accuracy;
+            m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_HACC;
 
-          m_gps_fix.vacc = m_pos_scale*(fp32_t)msg.v_accuracy;
-          m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_VACC;
+            m_gps_fix.vacc = m_pos_scale*(fp32_t)msg.v_accuracy;
+            m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_VACC;
 
-          m_gps_fix.satellites = (uint8_t)msg.n_sats;
-          m_gps_fix.type = IMC::GpsFix::GFT_STANDALONE;
+            m_gps_fix.satellites = (uint8_t)msg.n_sats;
+            m_gps_fix.type = IMC::GpsFix::GFT_STANDALONE;
 
-          dispatch(m_gps_fix);
-          trace("Sent GPS Fix");
-          //m_gps_fix.toText(std::cerr);
+            dispatch(m_gps_fix);
+            trace("Sent GPS Fix");
+            //m_gps_fix.toText(std::cerr);
+          }
         }
       }
 
@@ -651,13 +666,16 @@ namespace Sensors
       {
         trace("GOT dops");
 
-        m_gps_fix.hdop = m_dop_scale*(fp32_t)msg.hdop;
-        m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_HDOP;
+        if (m_dispatch_gpsfix)
+        {
+          m_gps_fix.hdop = m_dop_scale*(fp32_t)msg.hdop;
+          m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_HDOP;
 
-        m_gps_fix.vdop = m_dop_scale*(fp32_t)msg.vdop;
-        m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_VDOP;
+          m_gps_fix.vdop = m_dop_scale*(fp32_t)msg.vdop;
+          m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_VDOP;
 
-        // gps_fix is only dispatched by handlePosllh
+          // gps_fix is only dispatched by handlePosllh
+        }
       }
 
       void
@@ -665,19 +683,21 @@ namespace Sensors
       {
         trace("Got GPS time");
 
-        uint16_t gps_week = (uint16_t)msg.wn;
-
-        if (m_gps_week == 0)
+        if (m_dispatch_gpsfix)
         {
-          m_gps_week = gps_week;
-          inf("GPS week number set");
-        }
-        else if (m_gps_week != gps_week)
-        {
-          m_gps_week = gps_week;
-          war("GPS week number has changed and has been reset");
-        }
+          uint16_t gps_week = (uint16_t)msg.wn;
 
+          if (m_gps_week == 0)
+          {
+            m_gps_week = gps_week;
+            inf("GPS week number set");
+          }
+          else if (m_gps_week != gps_week)
+          {
+            m_gps_week = gps_week;
+            war("GPS week number has changed and has been reset");
+          }
+        }
       }
 
 
