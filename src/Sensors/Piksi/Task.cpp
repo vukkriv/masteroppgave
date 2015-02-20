@@ -570,7 +570,7 @@ namespace Sensors
 
         dispatch(m_rtk_fix);
         trace("Sent RTK Fix");
-        //m_rtk_fix.toText(std::cerr);
+        //m_rtk_fix.toText(std::cout);
       }
 
       void
