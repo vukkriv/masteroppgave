@@ -88,8 +88,9 @@ namespace Control
           // Move at a rate towards the target
 
           // Head straight to target
-          m_velocity.u = ts.end.x - ts.start.x;
-          m_velocity.v = ts.end.y - ts.start.y;
+          m_velocity.u = ts.end.x - state.x;
+          m_velocity.v = ts.end.y - state.y;
+          m_velocity.w = ts.end.z - state.z;
 
           m_velocity.flags = IMC::DesiredVelocity::FL_SURGE | IMC::DesiredVelocity::FL_SWAY;
 
