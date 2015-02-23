@@ -92,7 +92,7 @@ namespace Control
           m_velocity.v = ts.end.y - state.y;
           m_velocity.w = ts.end.z - state.z;
 
-          m_velocity.flags = IMC::DesiredVelocity::FL_SURGE | IMC::DesiredVelocity::FL_SWAY;
+          m_velocity.flags = IMC::DesiredVelocity::FL_SURGE | IMC::DesiredVelocity::FL_SWAY | IMC::DesiredVelocity::FL_HEAVE;
 
           dispatch(m_velocity);
           debug("Sent vel data.");
