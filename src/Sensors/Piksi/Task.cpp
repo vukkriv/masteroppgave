@@ -46,10 +46,13 @@ namespace Sensors
     //! %Sensor type
     enum SENSOR_TYPE
     {
-      ROVER = 0,
-      ROVER_SINGLE,
-      BASE
+      ROVER = 0,  // Vehicle, calc and send BL etc
+      STANDALONE, // Only broadcasts LLH
+      BASE        // Only broadcasts observations
     };
+
+    const int PIKSI_MSG_INIT_BASELINE = 0x23;
+    const int PIKSI_MSG_RESET_FILTERS = 0x22;
 
     //! %Task arguments.
     struct Arguments
@@ -69,35 +72,49 @@ namespace Sensors
       //! Sensor type
       std::string type;
 
+      bool dispatch_gpsfix;
+
     };
 
     struct Task: public DUNE::Tasks::Task
     {
       //! Task arguments.
       Arguments m_args;
-      //! Processing state of incomming sbp messages
+      //! Processing state of incoming sbp messages
       sbp_state_t m_sbp_state;
       uint8_t m_buf[512];
       //! Map of callback-nodes for swiftnav API
       typedef std::map<int, sbp_msg_callbacks_node_t> CallbackNodeMap;
       CallbackNodeMap m_nodemap;
-      //! Timestamp on prevoius local packet
+      //! Timestamp on previous local packet
       double m_local_last_pkt_time;
-      //! Timestamp on prevoius local packet
+      //! Timestamp on previous base packet
       double m_base_last_pkt_time;
       //! TCP socket - Sensor
       TCPSocket* m_local_TCP_sock;
       Address m_local_TCP_addr;
       uint16_t m_local_TCP_port;
+      bool m_error_local_missing_data;
       //! TCP socket - Base
       TCPSocket* m_base_TCP_sock;
       Address m_base_TCP_addr;
       uint16_t m_base_TCP_port;
-      bool m_error_local_missing_data;
       bool m_error_base_missing_data;
+      //! Navdata from Piksi - Rover
+      IMC::RtkFix m_rtk_fix;
+      IMC::GpsFix m_gps_fix;
+      uint16_t m_gps_week;
+      //! Piksi data scaling
+      const double m_pos_scale;
+      const double m_vel_scale;
+      const double m_dop_scale;
 
       //! Sensor Type
       SENSOR_TYPE m_type;
+
+      bool m_dispatch_gpsfix;
+
+
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
@@ -107,32 +124,37 @@ namespace Sensors
         m_base_last_pkt_time(0),
         m_local_TCP_sock(NULL),
         m_local_TCP_port(0),
+        m_error_local_missing_data(false),
         m_base_TCP_sock(NULL),
         m_base_TCP_port(0),
-        m_error_local_missing_data(false),
         m_error_base_missing_data(false),
-        m_type(ROVER)
+        m_gps_week(0),
+        m_pos_scale(1E-3), // Piksi sends positions in mm, scale to m
+        m_vel_scale(1E-3), // Piksi sends velocities in mm/s, scale to m/s
+        m_dop_scale(1E-2), // Piksi sends dop in 0.01, scale to 1
+        m_type(ROVER),
+        m_dispatch_gpsfix(true)
       {
 
         param("Type", m_args.type)
         .defaultValue("Rover")
-        .values("Rover,Single Rover,Base")
-        .description("Sensor Type - Rover or Base");
+        .values("Rover,Standalone,Base")
+        .description("Sensor Type - Rover, Standalone or Base");
 
         param("Local TCP - Port", m_args.local_TCP_port)
-        .defaultValue("9999")
-        .description("Port for connection to Piksi");
+        .defaultValue("8880")
+        .description("Port for connection to local Piksi");
 
         param("Local TCP - Address", m_args.local_TCP_addr)
         .defaultValue("127.0.0.1")
         .description("Address for connection to local Piksi");
 
         param("Rover -- Base TCP - Port", m_args.base_TCP_port)
-        .defaultValue("9999")
+        .defaultValue("8880")
         .description("Port for connection to remote base-station Piksi");
 
         param("Rover -- Base TCP - Address", m_args.base_TCP_addr)
-        .defaultValue("192.168.1.41")
+        .defaultValue("192.168.1.46")
         .description("Address for connection to remote base-station Piksi");
 
         param("Communication Timeout", m_args.comm_timeout)
@@ -140,12 +162,19 @@ namespace Sensors
         .units(Units::Second)
         .description("Timeout for base and local communication.");
 
+        param("Dispatch GpsFix", m_args.dispatch_gpsfix)
+        .defaultValue("True")
+        .description("Dispatch GpsFix or not.");
+
+        // Bind to incoming IMC messages
+        bind<IMC::RemoteActions>(this);
+
         // Init piksi interface
         sbp_state_init(&m_sbp_state);
 
 
         // Populate callback nodes.
-        // value are copied to the map.
+        // values are copied to the map.
         sbp_msg_callbacks_node_t tmp;
         m_nodemap[SBP_GPS_TIME] = tmp;
         m_nodemap[SBP_POS_LLH]  = tmp;
@@ -172,10 +201,13 @@ namespace Sensors
         // Check type
         if (m_args.type == "Base")
           m_type = BASE;
-        else if (m_args.type == "Single Rover")
-          m_type = ROVER_SINGLE;
+        else if (m_args.type == "Standalone")
+          m_type = STANDALONE;
         else
           m_type = ROVER;
+
+        // Set gps dispatch
+        m_dispatch_gpsfix = m_args.dispatch_gpsfix;
       }
 
       //! Reserve entity identifiers.
@@ -219,6 +251,7 @@ namespace Sensors
           setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_COM_ERROR);
         }
       }
+
       void
       openBaseConnection()
       {
@@ -254,6 +287,44 @@ namespace Sensors
         Memory::clear(m_base_TCP_sock);
       }
 
+      void
+      consume(const IMC::RemoteActions* action)
+      {
+        inf("Got an action: %s", action->actions.c_str());
+
+        TupleList list = TupleList(action->actions);
+        if(list.get("piksiInitZeroBaseline") == "1")
+        {
+          // Send message to init baseline
+          inf("Resetting piksi baseline.");
+          u16 sender_id = 99;
+          sbp_send_message(&m_sbp_state, PIKSI_MSG_INIT_BASELINE, sender_id, 0, NULL, &sendLocalData);
+        }
+        if(list.get("piksiResetFilters") == "1")
+        {
+          // Send message to reset Filters¨
+          inf("Resetting Piksi Filters");
+
+          u8 value = 0x00;
+          u16 sender_id = 99;
+          sbp_send_message(&m_sbp_state, PIKSI_MSG_RESET_FILTERS, sender_id, 1, &value, &sendLocalData);
+
+        }
+
+        if(list.get("piksiResetIARs") == "1")
+        {
+          // Send message to reset IAR
+          inf("Resetting Piksi IARs");
+
+
+          u8 value = 0x01;
+          u16 sender_id = 99;
+          sbp_send_message(&m_sbp_state, PIKSI_MSG_RESET_FILTERS, sender_id, 1, &value, &sendLocalData);
+        }
+
+
+      }
+
       bool
       local_poll(double timeout)
       {
@@ -274,6 +345,18 @@ namespace Sensors
 
       static int
       sendData(uint8_t* bfr, int size, void* context)
+      {
+        Task* task = (Task*)(context);
+        if (task->m_local_TCP_sock)
+        {
+          task->trace("Sending something");
+          return task->m_local_TCP_sock->write((char*)bfr, size);
+        }
+        return 0;
+      }
+
+      static u32
+      sendLocalData(u8* bfr, u32 size, void* context)
       {
         Task* task = (Task*)(context);
         if (task->m_local_TCP_sock)
@@ -376,7 +459,7 @@ namespace Sensors
       handleLocalPiksiData(void)
       {
 
-        // Reads incomming data and processes it with Piksi API.
+        // Reads incoming data and processes it with Piksi API.
         // This uses the call-back functions.
         double now = Clock::get();
         int counter = 0;
@@ -423,7 +506,7 @@ namespace Sensors
       void
       handleBasePiksiData(void)
       {
-        // Reads incomming data from base.
+        // Reads incoming data from base.
         // If any, just write to base TCP port.
 
 
@@ -448,7 +531,7 @@ namespace Sensors
             }
             // Forward to local Piksi
             int n2 = sendData(m_buf, n, (void*) this);
-            trace("Sent %d bytes to local piksi from base. ", n2);
+            trace("Sent %d bytes to local Piksi from base. ", n2);
             now = Clock::get();
 
 
@@ -474,39 +557,151 @@ namespace Sensors
       void
       handleBaselineNed(sbp_baseline_ned_t& msg)
       {
-        (void) msg;
-        inf("Got baseline ned");
+        trace("Got baseline ned");
+
+        m_rtk_fix.tow = (uint32_t)msg.tow;
+        m_rtk_fix.n = m_pos_scale*(fp32_t)msg.n;
+        m_rtk_fix.e = m_pos_scale*(fp32_t)msg.e;
+        m_rtk_fix.d = m_pos_scale*(fp32_t)msg.d;
+        m_rtk_fix.pos_hacc = m_pos_scale*(fp32_t)msg.h_accuracy;
+        m_rtk_fix.vel_hacc = m_pos_scale*(fp32_t)msg.v_accuracy;
+        m_rtk_fix.satellites = (uint8_t)msg.n_sats;
+        m_rtk_fix.type = (uint8_t)msg.flags;
+
+        dispatch(m_rtk_fix);
+        trace("Sent RTK Fix");
+        //m_rtk_fix.toText(std::cout);
       }
 
       void
       handlePosllh(sbp_pos_llh_t& msg)
       {
-        (void) msg;
-        inf("Got Pos LLH");
+        trace("Got Pos LLH");
+
+        if (m_dispatch_gpsfix)
+        {
+          // Check that GPS week has been set by a dops message
+          if (m_gps_week > 0)
+          {
+            // Convert from GPS week and TOW to UTC
+            gps_to_ymdt(m_gps_week, msg.tow, &m_gps_fix.utc_year, &m_gps_fix.utc_month, &m_gps_fix.utc_day, &m_gps_fix.utc_time);
+            m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_DATE;
+            m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_TIME;
+
+            m_gps_fix.lat = Angles::radians(msg.lat);
+            m_gps_fix.lon = Angles::radians(msg.lon);
+            m_gps_fix.height = (fp32_t)msg.height;
+            m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_POS;
+
+            m_gps_fix.hacc = m_pos_scale*(fp32_t)msg.h_accuracy;
+            m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_HACC;
+
+            m_gps_fix.vacc = m_pos_scale*(fp32_t)msg.v_accuracy;
+            m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_VACC;
+
+            m_gps_fix.satellites = (uint8_t)msg.n_sats;
+            m_gps_fix.type = IMC::GpsFix::GFT_STANDALONE;
+
+            dispatch(m_gps_fix);
+            trace("Sent GPS Fix");
+            //m_gps_fix.toText(std::cerr);
+          }
+        }
+      }
+
+      void
+      gps_to_ymdhms(uint32_t gps_week, uint32_t ITOW, uint16_t *year, uint8_t *month,
+          uint8_t* day, uint8_t *hours, uint8_t *minutes, float *seconds)
+      {
+        *seconds = (float) (ITOW % 1000) / 1000;
+
+        long gps_sec_since_1970 = 315964800 + 7 * 24 * 60 * 60 * gps_week + ITOW / 1000;
+
+        time_t t = gps_sec_since_1970;
+
+        struct tm* utc;
+
+        utc = gmtime(&t);
+
+        *year = utc->tm_year + 1900;
+        *month = utc->tm_mon +1;
+        *day = utc->tm_mday;
+        *hours = utc->tm_hour;
+        *minutes = utc->tm_min;
+        *seconds += utc->tm_sec;
+      }
+
+      void
+      gps_to_ymdt(uint32_t gps_week, uint32_t ITOW, uint16_t *year, uint8_t *month,
+          uint8_t* day, float *time)
+      {
+        uint8_t hours;
+        uint8_t minutes;
+        float seconds;
+
+        gps_to_ymdhms(gps_week, ITOW, year, month, day, &hours, &minutes, &seconds);
+
+        *time = 3600 * hours + 60 * minutes + seconds;
       }
 
       void
       handleVelNed(sbp_vel_ned_t& msg)
       {
-        (void) msg;
-        inf("Got vel ned");
+        trace("Got vel ned");
+
+        m_rtk_fix.tow = (uint32_t)msg.tow;
+        m_rtk_fix.v_n = m_vel_scale*(fp32_t)msg.n;
+        m_rtk_fix.v_e = m_vel_scale*(fp32_t)msg.e;
+        m_rtk_fix.v_d = m_vel_scale*(fp32_t)msg.d;
+        m_rtk_fix.vel_hacc = m_vel_scale*(fp32_t)msg.h_accuracy;
+        m_rtk_fix.vel_vacc = m_vel_scale*(fp32_t)msg.v_accuracy;
+        m_rtk_fix.satellites = (uint8_t)msg.n_sats;
+        m_rtk_fix.type = (uint8_t)msg.flags;
+
+        // rtk_fix is only dispatched by handleBaselineNed
       }
 
       void
       handleDops(sbp_dops_t& msg)
       {
-        (void) msg;
-        inf("got dops");
+        trace("GOT dops");
+
+        if (m_dispatch_gpsfix)
+        {
+          m_gps_fix.hdop = m_dop_scale*(fp32_t)msg.hdop;
+          m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_HDOP;
+
+          m_gps_fix.vdop = m_dop_scale*(fp32_t)msg.vdop;
+          m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_VDOP;
+
+          // gps_fix is only dispatched by handlePosllh
+        }
       }
+
       void
       handleGpsTime(sbp_gps_time_t& msg)
       {
-        (void) msg;
-        inf("got gps time");
+        trace("Got GPS time");
+
+        if (m_dispatch_gpsfix)
+        {
+          uint16_t gps_week = (uint16_t)msg.wn;
+
+          if (m_gps_week == 0)
+          {
+            m_gps_week = gps_week;
+            inf("GPS week number set");
+          }
+          else if (m_gps_week != gps_week)
+          {
+            m_gps_week = gps_week;
+            war("GPS week number has changed and has been reset");
+          }
+        }
       }
 
 
-      /* Callback-methods for piksi interface */
+      /* Callback-methods for Piksi interface */
       static void
       sbp_baseline_ned_callback(u16 sender_id, u8 len, u8 msg[], void *context)
       {
