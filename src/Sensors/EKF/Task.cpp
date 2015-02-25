@@ -25,6 +25,10 @@
 // Author: RecepCetin                                                       *
 //***************************************************************************
 
+// ISO c++ 98 headers
+#include <iomanip>
+#include <cmath>
+
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 
@@ -35,22 +39,95 @@ namespace EKF
 {
   using DUNE_NAMESPACES;
 
+  struct Arguments
+  {
+	  // Beacon treshold
+	  float bcn_treshold;
+	  // State Covariance
+	  float state_cov;
+	  // Measurement noise covariance
+	  float bcn_mnoise;
+	  // Process noise covariance
+	  float bcn_pnoise;
+	  // timeout
+	  float bcn_timeout;
+	  // node number
+  };
+
   struct Task: public DUNE::Tasks::Task
   {
+	  // Last north reference
+		double m_last_n;
+		// Last east reference
+		double m_last_e;
+		// Last down reference
+		double m_last_d;
 
-	Math::Matrix m_F, m_H, m_Q, m_R, m_P, m_X, m_S, m_K;
-	double m_Pinit, m_Rinit,m_Qinit;
-	bool newDistMeasurement;
+		bool m_measurements_active;
 
-	IMC::BeaconDistance m_beaconDist;
+		IMC::BeaconDistance* m_bcnmeas;
+
+		// navigation data - costum
+		IMC::NavigationData* m_origin;
+
+		// bcn pos estimate
+		IMC::LblEstimate* m_estimate;
+
+		// time whitout measurements
+		Time::Counter<double> m_time_whitout_meas;
+
+		// KalmanFilter matrices
+		KalmanFilter m_kal;
+
+		// Task arguments
+		Arguments m_args;
+
 
 	//! Constructor.
 	//! @param[in] name task name.
 	//! @param[in] ctx context.
 	Task(const std::string& name, Tasks::Context& ctx):
-	  DUNE::Tasks::Task(name, ctx)
+	  DUNE::Tasks::Task(name, ctx),
+	  m_origin(NULL)
 	{
-		bind<BeaconDistance>(this);
+		param("State Covariance Initial State", m_args.state_cov)
+	    .defaultValue("1.0")
+	    .minimumValue("1.0")
+	    .description("Kalman Filter State Covariance initial values");
+
+
+		param("Beacon Threshold", m_args.bcn_treshold)
+	   .defaultValue("3.14")
+	   .minimumValue("2.0")
+	   .description("Beacon Threshold value for the pos");
+
+		param("Beacon Measure Noise Covariance", m_args.bcn_mnoise)
+	   .defaultValue("50.0")
+	   .minimumValue("10")
+	   .description("Kalman Filter bcn Measurement Noise Covariance value");
+
+
+		param("LBL Process Noise Covariance", m_args.bcn_pnoise)
+	  .defaultValue("1e-1")
+	  .minimumValue("0.0")
+	  .description("Kalman Filter pos Process Noise Covariance value");
+
+		param("GPS timeout", m_args.bcn_timeout)
+	   .units(Units::Second)
+	   .defaultValue("3.0")
+	   .minimumValue("1.0")
+	   .description("No Meas readings timeout");
+
+		m_estimate = NULL;
+		m_last_n = 4.0;
+		m_last_e = 2.0;
+		m_last_d = 3.0;
+		m_measurements_active = false;
+
+		bind<IMC::BeaconDistance>(this);
+		bind<IMC::NavigationData>(this);
+		bin<IMC::LblEstimate>(this);
+
 	}
 
 
@@ -58,23 +135,8 @@ namespace EKF
 	void
 	onUpdateParameters(void)
 	{
-		newDistMeasurement = false;
-
-		m_Pinit = 1.0;
-		m_Qinit = 0.1;
-		m_Rinit = 0.550;
-
-
-		double x[] = {4,3,1};
-		m_X = Matrix(x,3,1);
-
-		double p[] = {m_Pinit, m_Pinit, m_Pinit};
-		m_P = Matrix(p,3);
-		double q[] = {m_Qinit,m_Qinit,m_Qinit};
-		m_Q = Matrix(q,3);
-		double r[] = {m_Rinit,m_Rinit,m_Rinit,m_Rinit,m_Rinit,m_Rinit};
-		m_R = Matrix(r,6);
-
+		if (paramChanged(m_args.bcn_timeout))
+			m_time_whitout_meas.setTop(m_args.bcn_timeout);
 	}
 
 	//! Reserve entity identifiers.
@@ -99,12 +161,49 @@ namespace EKF
 	void
 	onResourceInitialization(void)
 	{
+		setEntityState(IMC::EntityState::ESTA_BOOT, Status::CODE_WAIT_GPS_FIX);
 	}
 
 	//! Release resources.
 	void
 	onResourceRelease(void)
 	{
+		Memory::clear(m_origin);
+		Memory::clear(m_estimate);
+	}
+
+	void
+	consume(const IMC::BeaconDistance* msg)
+	{
+		float ni,ei,di;
+		m_time_whitout_meas.reset();
+		m_measurements_active = true;
+
+		short sender = msg->sender;
+
+		if (sender == 1) { ni = 0; ei = 0; di = 0;}
+		else if (sender == 2) { ni = 4; ei = 0; di = 0;}
+		else if (sender == 3) { ni = 8; ei = 0; di = 0;}
+		else if (sender == 4) { ni = 8; ei = 6.87; di = 0;}
+		else if (sender == 5) { ni = 4; ei = 6.87; di = 0;}
+		else if (sender == 6) { ni = 0; ei = 6.87; di = 0;}
+		else {return;}
+
+
+		double dx = m_estimate->x - ni;
+		double dy = m_estimate->y - ei;
+		double dz = m_estimate->var_x - di;
+		double exp_range = std::sqrt(dx * dx + dy * dy + dz*dz);
+
+		m_kal.setObservation(sender,1, dx / exp_range);
+		m_kal.setObservation(sender,2, dy / exp_range);
+		m_kal.setObservation(sender,3, dz / exp_range);
+
+		// REJECTION FILTER SOMEWHERE HERE
+
+		m_kal.resetOutputs();
+
+
 	}
 
 	//! Main loop.
@@ -114,32 +213,8 @@ namespace EKF
 	  while (!stopping())
 	  {
 		waitForMessages(1.0);
-		printMatrix(m_X);
+
 	  }
-	}
-
-	void
-	consume(const IMC::BeaconDistance* bcn)
-	{
-		m_beaconDist = *bcn;
-		newDistMeasurement = true;
-		handleEKF();
-	}
-
-	void
-	handleEKF(){
-
-	}
-
-	void
-	printMatrix(Matrix m){
-		printf("[TEST PRINTOUT]\n");
-		for(int i = 0; i<m.rows(); i++ ){
-		  for(int j = 0; j<m.columns();j++){
-			printf("%f ", m.element(i,j));
-		  }
-		  printf("\n");
-		}
 	}
 
 
