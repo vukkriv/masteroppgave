@@ -658,6 +658,15 @@ namespace Sensors
         m_rtk_fix.satellites = (uint8_t)msg.n_sats;
         m_rtk_fix.type = (uint8_t)msg.flags;
 
+        if (m_dispatch_gpsfix)
+        {
+          m_gps_fix.sog = m_vel_scale*(fp32_t)(Math::norm(msg.n,msg.e));
+          m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_SOG;
+
+          m_gps_fix.cog = std::atan2(msg.e,msg.n);
+          m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_COG;
+        }
+
         // rtk_fix is only dispatched by handleBaselineNed
       }
 
