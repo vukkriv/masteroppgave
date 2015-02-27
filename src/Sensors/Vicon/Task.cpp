@@ -84,6 +84,16 @@ struct Task: public DUNE::Tasks::Task
 		m_error_missing(false),
 		m_esta_ext(false)
 	{
+
+    param("TCP - Port", m_args.TCP_port)
+    .defaultValue("5760")
+    .description("Port for connection to Ardupilot");
+
+    param("TCP - Address", m_args.TCP_addr)
+    .defaultValue("127.0.0.1")
+    .description("Address for connection to Ardupilot");
+
+
 		// Setup packet handlers
 		// IMPORTANT: set up function to handle each type of MAVLINK packet here
 		m_mlh[MAVLINK_MSG_ID_VICON_POSITION_ESTIMATE] = &Task::handleViconPacket;
