@@ -82,7 +82,7 @@ namespace Sensors
       if ((m_fd = open(spi_dev.c_str(), O_RDWR)) == -1)
         throw Error("opening device", DUNE::System::Error::getLastMessage());
 #else
-      //(void)spi_dev;
+      (void)spi_dev;
       throw DUNE::NotImplemented("SPI");
 #endif
     }
