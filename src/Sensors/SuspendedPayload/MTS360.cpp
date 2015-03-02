@@ -38,7 +38,7 @@ namespace Sensors
         m_device(device)
     {
       // Set speed and mode
-      m_device.setSpeed(120000);
+      m_device.setSpeed(100000);
       m_device.setMode(MODE_1);
 
       // initialize buffers
@@ -59,11 +59,12 @@ namespace Sensors
       m_frames[0].rx_buf = m_rx_buf;
       m_frames[0].tx_buf = m_tx_buf;
       m_frames[0].len    = 2;
-      m_frames[0].delay_us = 60;
+      m_frames[0].delay_us = 140;
 
       m_frames[1].rx_buf = &m_rx_buf[2];
       m_frames[1].tx_buf = &m_tx_buf[2];
-      m_frames[1].len    = 2;
+      m_frames[1].len    = 4;
+      m_frames[1].delay_us = 100;
     }
 
     float
@@ -76,8 +77,10 @@ namespace Sensors
       uint16_t aMax = 0xFFFF - 0.1* 0xFFFF;
       uint16_t aMin = 0.1 * 0xFFFF;
 
+      printf("Got: %x%x - %x%x", m_rx_buf[2], m_rx_buf[3], m_rx_buf[4], m_rx_buf[5]);
 
-      angle = (float)((m_rx_buf[3] << 8) | m_rx_buf[2]);
+
+      angle = (float)((m_rx_buf[2] << 8) | m_rx_buf[3]);
 
       angle -= aMin;
 

@@ -82,7 +82,7 @@ namespace Sensors
         .defaultValue("/dev/spidev1.0")
         .description("Path to SPIdev device. ");
 
-        param("SPI Device", m_args.spi_device_2)
+        param("SPI Device 2", m_args.spi_device_2)
         .defaultValue("/dev/spidev1.1")
         .description("Path to SPIdev device. ");
 
@@ -137,7 +137,15 @@ namespace Sensors
         float a1 = m_sensor_1->read();
         float a2 = m_sensor_2->read();
 
-        inf("Angle: %f, %f \n", a1, a2);
+        debug("Angle: %f, %f \n", a1, a2);
+
+        IMC::EulerAngles angles;
+
+        angles.phi = a1;
+        angles.theta = a2;
+
+        dispatch(angles);
+
       }
 
       //! Main loop.
@@ -146,7 +154,7 @@ namespace Sensors
       {
         while (!stopping())
         {
-          waitForMessages(1.0);
+          waitForMessages(0.2);
 
           doRead();
         }
