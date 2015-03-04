@@ -563,10 +563,16 @@ namespace Sensors
         m_rtk_fix.n = m_pos_scale*(fp32_t)msg.n;
         m_rtk_fix.e = m_pos_scale*(fp32_t)msg.e;
         m_rtk_fix.d = m_pos_scale*(fp32_t)msg.d;
-        m_rtk_fix.pos_hacc = m_pos_scale*(fp32_t)msg.h_accuracy;
-        m_rtk_fix.vel_hacc = m_pos_scale*(fp32_t)msg.v_accuracy;
         m_rtk_fix.satellites = (uint8_t)msg.n_sats;
-        m_rtk_fix.type = (uint8_t)msg.flags;
+        switch (msg.flags)
+        {
+          case 0:
+            m_rtk_fix.type = IMC::RtkFix::RTK_FLOAT;
+            break;
+          case 1:
+            m_rtk_fix.type = IMC::RtkFix::RTK_FIXED;
+            break;
+        }
 
         dispatch(m_rtk_fix);
         trace("Sent RTK Fix");
@@ -653,10 +659,7 @@ namespace Sensors
         m_rtk_fix.v_n = m_vel_scale*(fp32_t)msg.n;
         m_rtk_fix.v_e = m_vel_scale*(fp32_t)msg.e;
         m_rtk_fix.v_d = m_vel_scale*(fp32_t)msg.d;
-        m_rtk_fix.vel_hacc = m_vel_scale*(fp32_t)msg.h_accuracy;
-        m_rtk_fix.vel_vacc = m_vel_scale*(fp32_t)msg.v_accuracy;
         m_rtk_fix.satellites = (uint8_t)msg.n_sats;
-        m_rtk_fix.type = (uint8_t)msg.flags;
 
         if (m_dispatch_gpsfix)
         {
