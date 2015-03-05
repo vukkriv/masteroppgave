@@ -101,11 +101,14 @@ namespace Sensors
         param("Static Rover IPs", m_args.rovers)
         .description("List of <IPv4> destinations that will always receive base observations");
 
-
         param("Communication Timeout", m_args.comm_timeout)
         .defaultValue("5")
         .units(Units::Second)
         .description("Timeout for base and local communication.");
+
+        param("UDP Port", m_args.UDP_port)
+        .defaultValue("6666")
+        .description("Communication port for UDP observations.");
 
         // Define configuration parameters.
         param("Serial Port - Device", m_args.uart_dev)
