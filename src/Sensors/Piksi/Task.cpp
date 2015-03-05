@@ -68,6 +68,8 @@ namespace Sensors
       uint16_t base_TCP_port;
       //! TCP Address - Sensor
       Address base_TCP_addr;
+      //! UDP port to receive observations
+      uint16_t UDP_port;
 
       //! Sensor type
       std::string type;
@@ -105,6 +107,9 @@ namespace Sensors
       TCPSocket* m_base_TCP_sock;
       Address m_base_TCP_addr;
       uint16_t m_base_TCP_port;
+      //! Udp receiving socket
+      UDPSocket* m_udp_socket;
+      uint16_t m_udp_port;
       bool m_error_base_missing_data;
       //! Navdata from Piksi - Rover
       IMC::RtkFix m_rtk_fix;
@@ -134,6 +139,8 @@ namespace Sensors
         m_error_local_missing_data(false),
         m_base_TCP_sock(NULL),
         m_base_TCP_port(0),
+        m_udp_socket(NULL),
+        m_udp_port(0),
         m_error_base_missing_data(false),
         m_gps_week(0),
         m_last_baseline_time(0),
@@ -164,6 +171,10 @@ namespace Sensors
         param("Rover -- Base TCP - Address", m_args.base_TCP_addr)
         .defaultValue("192.168.1.46")
         .description("Address for connection to remote base-station Piksi");
+
+        param("UDP Port Observations", m_args.UDP_port)
+        .defaultValue("6666")
+        .description("Communication port for observations");
 
         param("Communication Timeout", m_args.comm_timeout)
         .defaultValue("5")
@@ -226,6 +237,8 @@ namespace Sensors
 
         // Set gps dispatch
         m_dispatch_gpsfix = m_args.dispatch_gpsfix;
+
+
       }
 
       //! Reserve entity identifiers.
@@ -251,6 +264,28 @@ namespace Sensors
         m_base_TCP_port = m_args.base_TCP_port;
         openLocalConnection();
         openBaseConnection();
+
+        // Update port
+        m_udp_port = m_args.UDP_port;
+        openUdpConnection();
+
+
+      }
+
+      void
+      openUdpConnection(void)
+      {
+        try
+        {
+          m_udp_socket = new UDPSocket();
+          m_udp_socket->bind(m_udp_port);
+        }
+        catch (Exception &ex)
+        {
+          Memory::clear(m_udp_socket);
+          war(DTR("UDP bind failed. %s"), ex.what());
+          setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_COM_ERROR);
+        }
       }
 
       void
@@ -361,6 +396,15 @@ namespace Sensors
         return false;
       }
 
+      bool
+      udp_poll(double timeout)
+      {
+        if (m_udp_socket != NULL)
+          return Poll::poll(*m_udp_socket, timeout);
+
+        return false;
+      }
+
       static int
       sendData(uint8_t* bfr, int size, void* context)
       {
@@ -410,6 +454,28 @@ namespace Sensors
       }
 
       int
+      receiveUdpData(uint8_t* buf, size_t blen)
+      {
+        if (m_udp_socket)
+        {
+          try
+          {
+            return m_udp_socket->read(buf, blen);
+          }
+          catch (std::runtime_error& e)
+          {
+            err("%s", e.what());
+            war(DTR("Connection lost to Base, retrying..."));
+            Memory::clear(m_udp_socket);
+
+
+            return 0;
+          }
+        }
+        return 0;
+      }
+
+      int
       receiveBaseData(uint8_t* buf, size_t blen)
       {
         if (m_base_TCP_sock)
@@ -450,14 +516,14 @@ namespace Sensors
           }
           if (m_type == ROVER)
           {
-            if (m_base_TCP_sock)
+            if (m_udp_socket)
             {
-              handleBasePiksiData();
+              handleObservationData();
             }
             else
             {
               Time::Delay::wait(0.5);
-              openBaseConnection();
+              openUdpConnection();
             }
 
             // Check if we should send "empty" RtkFix
@@ -543,6 +609,55 @@ namespace Sensors
         else
           m_error_local_missing_data = false;
       }
+
+      void
+      handleObservationData(void)
+      {
+        // Reads incoming UDP data and forward to the local piksi.
+
+        double now = Clock::get();
+        int counter = 0;
+
+        while (udp_poll(0.01) && counter < 100)
+        {
+          counter++;
+
+          now = Clock::get();
+          // Write to local socket
+          if (m_udp_socket && m_local_TCP_sock)
+          {
+
+            int n = receiveUdpData(m_buf, sizeof(m_buf));
+
+            if (n < 0)
+            {
+              debug("Receive error");
+              break;
+            }
+            // Forward to local Piksi
+            int n2 = sendData(m_buf, n, (void*) this);
+            trace("Sent %d bytes to local Piksi from base. ", n2);
+            now = Clock::get();
+
+
+
+          }
+          m_base_last_pkt_time = now;
+
+          }
+
+        if (now - m_base_last_pkt_time >= m_args.comm_timeout)
+        {
+          if (!m_error_base_missing_data)
+          {
+            setEntityState(IMC::EntityState::ESTA_ERROR, Status::CODE_NOT_SYNCHED);
+            m_error_base_missing_data = true;
+          }
+        }
+        else
+          m_error_base_missing_data = false;
+      }
+
 
       void
       handleBasePiksiData(void)
