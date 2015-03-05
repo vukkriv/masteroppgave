@@ -72,7 +72,13 @@ namespace Sensors
       //! Sensor type
       std::string type;
 
+      //! Dispatch GpsFix or not
       bool dispatch_gpsfix;
+
+      //! Baseline timeout
+      uint8_t baseline_timeout;
+      //! Observations timeout
+      uint8_t observations_timeout;
 
     };
 
@@ -104,6 +110,7 @@ namespace Sensors
       IMC::RtkFix m_rtk_fix;
       IMC::GpsFix m_gps_fix;
       uint16_t m_gps_week;
+      double m_last_baseline_time;
       //! Piksi data scaling
       const double m_pos_scale;
       const double m_vel_scale;
@@ -129,6 +136,7 @@ namespace Sensors
         m_base_TCP_port(0),
         m_error_base_missing_data(false),
         m_gps_week(0),
+        m_last_baseline_time(0),
         m_pos_scale(1E-3), // Piksi sends positions in mm, scale to m
         m_vel_scale(1E-3), // Piksi sends velocities in mm/s, scale to m/s
         m_dop_scale(1E-2), // Piksi sends dop in 0.01, scale to 1
@@ -165,6 +173,16 @@ namespace Sensors
         param("Dispatch GpsFix", m_args.dispatch_gpsfix)
         .defaultValue("True")
         .description("Dispatch GpsFix or not.");
+
+        param("Baseline Timeout", m_args.baseline_timeout)
+        .defaultValue("1")
+        .units(Units::Second)
+        .description("Timeout for local baseline received.");
+
+        param("Observations Timeout", m_args.observations_timeout)
+        .defaultValue("1")
+        .units(Units::Second)
+        .description("Timeout for base observations received.");
 
         // Bind to incoming IMC messages
         bind<IMC::RemoteActions>(this);
@@ -441,6 +459,29 @@ namespace Sensors
               Time::Delay::wait(0.5);
               openBaseConnection();
             }
+
+            // Check if we should send "empty" RtkFix
+            double now = Clock::get();
+            if (now - m_last_baseline_time >= m_args.baseline_timeout)
+            {
+              if (now - m_base_last_pkt_time >= m_args.observations_timeout)
+              {
+                // We don't have a baseline solution
+                m_rtk_fix.type = IMC::RtkFix::RTK_NONE;
+              }
+              else
+              {
+                // We don't have a baseline solution, but we are receving observation data from BASE
+                m_rtk_fix.type = IMC::RtkFix::RTK_OBS;
+              }
+
+              // Set time for baseline so that we only send "empty" RtkFix every "baseline_timeout"
+              m_last_baseline_time = Clock::get();
+
+              // Send "empty" RtkFix"
+              dispatch(m_rtk_fix);
+              trace("Sent (empty) RTK Fix");
+            }
           }
 
           if (!m_error_local_missing_data && !m_error_base_missing_data)
@@ -559,6 +600,8 @@ namespace Sensors
       {
         trace("Got baseline ned");
 
+        m_last_baseline_time = Clock::get();
+
         m_rtk_fix.tow = (uint32_t)msg.tow;
         m_rtk_fix.n = m_pos_scale*(fp32_t)msg.n;
         m_rtk_fix.e = m_pos_scale*(fp32_t)msg.e;
@@ -655,11 +698,9 @@ namespace Sensors
       {
         trace("Got vel ned");
 
-        m_rtk_fix.tow = (uint32_t)msg.tow;
         m_rtk_fix.v_n = m_vel_scale*(fp32_t)msg.n;
         m_rtk_fix.v_e = m_vel_scale*(fp32_t)msg.e;
         m_rtk_fix.v_d = m_vel_scale*(fp32_t)msg.d;
-        m_rtk_fix.satellites = (uint8_t)msg.n_sats;
 
         if (m_dispatch_gpsfix)
         {
@@ -668,9 +709,11 @@ namespace Sensors
 
           m_gps_fix.cog = std::atan2(msg.e,msg.n);
           m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_COG;
+
+          // GpsFix is only dispatched by handlePosllh
         }
 
-        // rtk_fix is only dispatched by handleBaselineNed
+        // RtkFix is only dispatched by handleBaselineNed
       }
 
       void
