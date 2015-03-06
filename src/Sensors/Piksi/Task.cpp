@@ -165,7 +165,7 @@ namespace Sensors
         .description("Address for connection to local Piksi");
 
         param("Rover -- Base TCP - Port", m_args.base_TCP_port)
-        .defaultValue("8880")
+        .defaultValue("8881")
         .description("Port for connection to remote base-station Piksi");
 
         param("Rover -- Base TCP - Address", m_args.base_TCP_addr)
@@ -173,7 +173,7 @@ namespace Sensors
         .description("Address for connection to remote base-station Piksi");
 
         param("UDP Port Observations", m_args.UDP_port)
-        .defaultValue("6666")
+        .defaultValue("8890")
         .description("Communication port for observations");
 
         param("Communication Timeout", m_args.comm_timeout)
@@ -263,7 +263,7 @@ namespace Sensors
         m_base_TCP_addr = m_args.base_TCP_addr;
         m_base_TCP_port = m_args.base_TCP_port;
         openLocalConnection();
-        openBaseConnection();
+        //openBaseConnection();
 
         // Update port
         m_udp_port = m_args.UDP_port;

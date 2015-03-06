@@ -107,7 +107,7 @@ namespace Sensors
         .description("Timeout for base and local communication.");
 
         param("UDP Port", m_args.UDP_port)
-        .defaultValue("6666")
+        .defaultValue("8890")
         .description("Communication port for UDP observations.");
 
         // Define configuration parameters.
