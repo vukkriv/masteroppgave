@@ -43,6 +43,7 @@ namespace Control
       {
         bool use_controller;
         double max_speed;
+        double refmodel_max_speed;
         double refmodel_omega_n;
         double refmodel_xi;
         double Kp;
@@ -59,10 +60,15 @@ namespace Control
         Matrix m_refmodel_A;
         //! Reference model input matrix
         Matrix m_refmodel_B;
+        //! Desired speed profile
+        double m_desired_speed;
+        //! Current autopilot mode
+        IMC::AutopilotMode m_autopilot_mode;
 
 
         Task(const std::string& name, Tasks::Context& ctx):
-          DUNE::Control::PathController(name, ctx)
+          DUNE::Control::PathController(name, ctx),
+          m_desired_speed(0)
         {
 
           param("Velocity Controller", m_args.use_controller)
@@ -75,6 +81,9 @@ namespace Control
             .defaultValue("5.0")
             .units(Units::MeterPerSecond)
             .description("Max speed of the vehicle");
+
+          param("Reference Model - Max Speed", m_args.refmodel_max_speed)
+          .defaultValue("3.0");
 
           param("Reference Model - Natural Frequency",m_args.refmodel_omega_n)
           .units(Units::RadianPerSecond)
@@ -96,8 +105,7 @@ namespace Control
 
 
 
-          // Initialize refmodel
-          initRefmodel();
+
 
         }
 
@@ -105,6 +113,10 @@ namespace Control
         onUpdateParameters(void)
         {
           PathController::onUpdateParameters();
+
+          // update desired speed to max speed
+          m_desired_speed = m_args.refmodel_max_speed;
+
         }
 
         void
@@ -113,8 +125,29 @@ namespace Control
           PathController::onEntityReservation();
         }
 
+
+        //! Consumer for DesiredSpeed message.
+        //! @param dspeed message to consume.
         void
-        initRefmodel(void)
+        consume(const IMC::DesiredSpeed* dspeed)
+        {
+          // overloaded.
+          // Update desired speed
+          if (dspeed->value < m_args.refmodel_max_speed)
+          {
+            m_desired_speed = dspeed->value;
+          }
+          else
+          {
+            m_desired_speed = m_args.refmodel_max_speed;
+            debug("Trying to set a speed above maximum speed. ");
+          }
+
+          PathController::consume(dspeed);
+        }
+
+        void
+        initRefmodel(const IMC::EstimatedState& state)
         {
           // Convencience matrix
           double ones[] = {1.0, 1.0, 1.0};
@@ -123,6 +156,13 @@ namespace Control
 
           // Restart refmodel
           m_refmodel_x = Matrix(6, 1, 0.0);
+          m_refmodel_x(0) = state.x;
+          m_refmodel_x(1) = state.y;
+          m_refmodel_x(2) = state.z;
+
+          m_refmodel_x(3) = state.u;
+          m_refmodel_x(4) = state.v;
+          m_refmodel_x(5) = state.w;
 
           // Set model
           Matrix A_12 = eye;
@@ -140,7 +180,20 @@ namespace Control
 
         }
 
-        void
+        virtual void
+        onPathStartup(const IMC::EstimatedState& state, const TrackingState& ts)
+        {
+
+          (void)ts;
+
+
+
+          // Restart ref model
+          initRefmodel(state);
+
+        }
+
+        virtual void
         onPathActivation(void)
         {
           if (!m_args.use_controller)
@@ -152,8 +205,6 @@ namespace Control
           enableControlLoops(IMC::CL_ALTITUDE);
           inf("Vel-control activated.");
 
-          // Restart ref model
-          initRefmodel();
         }
 
         void
@@ -166,13 +217,14 @@ namespace Control
 
           /*
            *
-           * Refmodel: Deactivated for now.
-           *
-          // NB: Refmodel position is relative to start coordinates
+           * Calculates input (setpoint)
+           * NB: There is a serious bug in height calculation.
+           */
           Matrix x_d = Matrix(3,1, 0.0);
-          x_d(0) = ts.end.x - ts.start.x;
-          x_d(1) = ts.end.y - ts.start.y;
-          x_d(2) = state.height - ts.end.z - ts.start.z;
+          x_d(0) = ts.end.x;
+          x_d(1) = ts.end.y;
+          x_d(2) = ts.end.z;
+
 
           // Update reference
           m_refmodel_x += ts.delta * (m_refmodel_A * m_refmodel_x + m_refmodel_B * x_d);
@@ -181,9 +233,9 @@ namespace Control
           Matrix vel = m_refmodel_x.get(3,5,0,0);
 
 
-          if( vel.norm_2() > m_args.max_speed )
+          if( vel.norm_2() > m_args.refmodel_max_speed )
           {
-            vel = m_args.max_speed * vel / vel.norm_2();
+            vel = m_args.refmodel_max_speed * vel / vel.norm_2();
 
             m_refmodel_x.put(3,0,vel);
           }
@@ -201,13 +253,14 @@ namespace Control
           vel(1) = m_refmodel_x(4) - m_args.Kp * (state.y - m_refmodel_x(1));
           vel(2) = m_refmodel_x(5) - m_args.Kp * (state.z - m_refmodel_x(2));
 
-          */
 
+          /*
           Matrix vel = Matrix(3,1, 0.0);
 
           vel(0) = - m_args.Kp * (state.x - ts.end.x);
           vel(1) = - m_args.Kp * (state.y - ts.end.y);
           vel(2) = - m_args.Kp * (state.z - ts.end.z);
+          */
 
           if( vel.norm_2() > m_args.max_speed )
           {
