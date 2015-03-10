@@ -279,6 +279,7 @@ namespace Sensors
         {
           m_udp_socket = new UDPSocket();
           m_udp_socket->bind(m_udp_port);
+          inf(DTR("Remote Base Piksi UDP interface initialized"));
         }
         catch (Exception &ex)
         {
@@ -585,7 +586,7 @@ namespace Sensors
             case SBP_OK_CALLBACK_EXECUTED:
               break;
             case SBP_OK_CALLBACK_UNDEFINED:
-              debug("Unknown message. (NB: may be heartbeat).");
+              trace("Unknown message. (NB: may be heartbeat).");
               break;
             case SBP_CRC_ERROR:
               debug("Received message CRC error.");
@@ -636,7 +637,7 @@ namespace Sensors
             }
             // Forward to local Piksi
             int n2 = sendData(m_buf, n, (void*) this);
-            trace("Sent %d bytes to local Piksi from base. ", n2);
+            spew("Sent %d bytes to local Piksi from base. ", n2);
             now = Clock::get();
 
 
@@ -663,7 +664,7 @@ namespace Sensors
       handleBasePiksiData(void)
       {
         // Reads incoming data from base.
-        // If any, just write to base TCP port.
+        // If any, just write to rover TCP port.
 
 
         double now = Clock::get();
@@ -687,7 +688,7 @@ namespace Sensors
             }
             // Forward to local Piksi
             int n2 = sendData(m_buf, n, (void*) this);
-            trace("Sent %d bytes to local Piksi from base. ", n2);
+            spew("Sent %d bytes to local Piksi from base. ", n2);
             now = Clock::get();
 
 
@@ -713,7 +714,7 @@ namespace Sensors
       void
       handleBaselineNed(sbp_baseline_ned_t& msg)
       {
-        trace("Got baseline ned");
+        spew("Got baseline ned");
 
         m_last_baseline_time = Clock::get();
 
@@ -733,14 +734,14 @@ namespace Sensors
         }
 
         dispatch(m_rtk_fix);
-        trace("Sent RTK Fix");
+        spew("Sent RTK Fix");
         //m_rtk_fix.toText(std::cout);
       }
 
       void
       handlePosllh(sbp_pos_llh_t& msg)
       {
-        trace("Got Pos LLH");
+        spew("Got Pos LLH");
 
         if (m_dispatch_gpsfix)
         {
@@ -767,7 +768,7 @@ namespace Sensors
             m_gps_fix.type = IMC::GpsFix::GFT_STANDALONE;
 
             dispatch(m_gps_fix);
-            trace("Sent GPS Fix");
+            spew("Sent GPS Fix");
             //m_gps_fix.toText(std::cerr);
           }
         }

@@ -258,7 +258,7 @@ namespace Sensors
           ++counter;
           int n = receiveUartData(m_buf, sizeof(m_buf));
 
-          trace("Received %d bytes. Forwarding to rovers.", n);
+          spew("Received %d bytes. Forwarding to rovers.", n);
 
           if (n < 0)
           {
