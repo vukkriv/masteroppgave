@@ -124,12 +124,15 @@ namespace Transports
       {
         spew("Got RTK Fix");
 
-        m_form_pos.x = msg->n;
-        m_form_pos.y = msg->e;
-        m_form_pos.z = msg->d;
-        m_form_pos.vx = msg->v_n;
-        m_form_pos.vy = msg->v_e;
-        m_form_pos.vz = msg->v_d;
+        if (m_type == RTK)
+        {
+          m_form_pos.x = msg->n;
+          m_form_pos.y = msg->e;
+          m_form_pos.z = msg->d;
+          m_form_pos.vx = msg->v_n;
+          m_form_pos.vy = msg->v_e;
+          m_form_pos.vz = msg->v_d;
+        }
 
         dispatch(m_form_pos);
         spew("Sent Formation Position");
@@ -140,15 +143,18 @@ namespace Transports
       {
         spew("Got Estimated State");
 
-        m_form_pos.x = msg->x;
-        m_form_pos.y = msg->y;
-        m_form_pos.z = msg->z;
-        m_form_pos.vx = msg->vx;
-        m_form_pos.vy = msg->vy;
-        m_form_pos.vz = msg->vz;
+        if (m_type == ESTATE)
+        {
+          m_form_pos.x = msg->x;
+          m_form_pos.y = msg->y;
+          m_form_pos.z = msg->z;
+          m_form_pos.vx = msg->vx;
+          m_form_pos.vy = msg->vy;
+          m_form_pos.vz = msg->vz;
 
-        dispatch(m_form_pos);
-        spew("Sent Formation Position");
+          dispatch(m_form_pos);
+          spew("Sent Formation Position");
+        }
       }
 
 
