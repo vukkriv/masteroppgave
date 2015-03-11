@@ -34,20 +34,58 @@ namespace Transports
   {
     using DUNE_NAMESPACES;
 
+    //! %Input type
+    enum INPUT_TYPE
+    {
+      RTK = 0,
+      ESTATE
+    };
+
+    struct Arguments
+    {
+      //! Input type
+      std::string type;
+    };
+
     struct Task: public DUNE::Tasks::Task
     {
+      //! Task arguments.
+      Arguments m_args;
+      //! Sensor Type
+      INPUT_TYPE m_type;
+      //! Formation position to controller
+      IMC::FormPos m_form_pos;
+
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Task(name, ctx)
+        DUNE::Tasks::Task(name, ctx),
+        m_type(RTK)
       {
+        param("Input Type", m_args.type)
+        .defaultValue("RTK")
+        .values("RTK,EstimatedState")
+        .description("Input Type - RTK or EstimatedState");
+
+        // Bind to incoming IMC messages
+        bind<IMC::RtkFix>(this);
+        bind<IMC::EstimatedState>(this);
       }
 
       //! Update internal state with new parameter values.
       void
       onUpdateParameters(void)
       {
+        // Check input type
+        if (m_args.type == "EstimatedState")
+        {
+          m_type = ESTATE;
+        }
+        else
+        {
+          m_type = RTK;
+        }
       }
 
       //! Reserve entity identifiers.
@@ -79,6 +117,40 @@ namespace Transports
       onResourceRelease(void)
       {
       }
+
+
+      void
+      consume(const IMC::RtkFix* msg)
+      {
+        spew("Got RTK Fix");
+
+        m_form_pos.x = msg->n;
+        m_form_pos.y = msg->e;
+        m_form_pos.z = msg->d;
+        m_form_pos.vx = msg->v_n;
+        m_form_pos.vy = msg->v_e;
+        m_form_pos.vz = msg->v_d;
+
+        dispatch(m_form_pos);
+        spew("Sent Formation Position");
+      }
+
+      void
+      consume(const IMC::EstimatedState* msg)
+      {
+        spew("Got Estimated State");
+
+        m_form_pos.x = msg->x;
+        m_form_pos.y = msg->y;
+        m_form_pos.z = msg->z;
+        m_form_pos.vx = msg->vx;
+        m_form_pos.vy = msg->vy;
+        m_form_pos.vz = msg->vz;
+
+        dispatch(m_form_pos);
+        spew("Sent Formation Position");
+      }
+
 
       //! Main loop.
       void
