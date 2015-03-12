@@ -36,18 +36,54 @@ namespace Control
 
     struct Arguments
     {
+      //! Use controller
+      bool use_controller;
 
+      //! Formation leader
+      bool is_leader;
+
+      //! Formation identity
+      int formation_id;
+
+      //! Desired formation
+      Matrix desired_formation;
+
+      // Incidence matrix
+      Matrix incidence_matrix;
     };
 
     struct Task: public DUNE::Tasks::Periodic
     {
+      //! Task arguments
+      Arguments m_args;
+
+      //! Incidence matrix;
+      Matrix m_D;
+
+      //! Number of agents and links
+      int m_N;
+      int m_L;
+
+      //! Desired difference variables
+      Matrix m_z_d;
+
+      //! Vehicle positions
+      Matrix m_x;
+
+      //! Vehicle velocities
+      Matrix m_v;
+
+      //! Desired velocity
+      IMC::DesiredVelocity m_desired_velocity;
 
 
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Periodic(name, ctx)
+        DUNE::Tasks::Periodic(name, ctx),
+        m_N(0),
+        m_L(0)
       {
       }
 
@@ -55,6 +91,12 @@ namespace Control
       void
       onUpdateParameters(void)
       {
+        //! Update incidence matrix
+        m_D = m_args.desired_formation;
+        m_N = m_D.columns();
+        m_L = m_D.rows();
+
+        //TODO: Update z_d (kron?)
       }
 
       //! Reserve entity identifiers.
