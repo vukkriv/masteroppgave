@@ -126,16 +126,26 @@ namespace Transports
 
         if (m_type == RTK)
         {
-          m_form_pos.x = msg->n;
-          m_form_pos.y = msg->e;
-          m_form_pos.z = msg->d;
-          m_form_pos.vx = msg->v_n;
-          m_form_pos.vy = msg->v_e;
-          m_form_pos.vz = msg->v_d;
-        }
+          switch (msg->type)
+          {
+            case IMC::RtkFix::RTK_NONE:
+              break;
+            case IMC::RtkFix::RTK_OBS:
+              break;
+            case IMC::RtkFix::RTK_FLOAT:
+              break;
+            case IMC::RtkFix::RTK_FIXED:
+              m_form_pos.x = msg->n;
+              m_form_pos.y = msg->e;
+              m_form_pos.z = msg->d;
+              m_form_pos.vx = msg->v_n;
+              m_form_pos.vy = msg->v_e;
+              m_form_pos.vz = msg->v_d;
 
-        dispatch(m_form_pos);
-        spew("Sent Formation Position");
+              dispatch(m_form_pos);
+              spew("Sent Formation Position");
+          }
+        }
       }
 
       void
