@@ -26,11 +26,11 @@
 //***************************************************************************
 
 // ISO c++ 98 headers
-#include <iomanip>
-#include <cmath>
+
 
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
+
 
 
 namespace Sensors
@@ -40,103 +40,93 @@ namespace EKF
   using DUNE_NAMESPACES;
 
   struct Arguments
-  {
-	  // Beacon treshold
-	  float bcn_treshold;
-	  // State Covariance
-	  float state_cov;
-	  // Measurement noise covariance
-	  float bcn_mnoise;
-	  // Process noise covariance
-	  float bcn_pnoise;
-	  // timeout
-	  float bcn_timeout;
-	  // node number
-  };
+     {
+        double q; // process noise
+        double r; // measurement noise
+        double p; // inital covar
+        double n_init; // North
+        double e_init; // East
+        double d_init; // Down
+        std::vector<double> B1;
+        std::vector<double> B2;
+        std::vector<double> B3;
+        std::vector<double> B4;
+        std::vector<double> B5;
+        std::vector<double> B6;
+     };
 
   struct Task: public DUNE::Tasks::Task
   {
-	  // Last north reference
-		double m_last_n;
-		// Last east reference
-		double m_last_e;
-		// Last down reference
-		double m_last_d;
+    Math::Matrix m_R, m_Q,m_X,m_P,m_F,m_B,dX,gXi,m_H,m_S,m_K,m_meas;
+    double N,E,D, meas[6];
+    Arguments m_args;
+    bool init_done;
 
-		bool m_measurements_active;
-
-		IMC::BeaconDistance* m_bcnmeas;
-
-		// navigation data - costum
-		IMC::NavigationData* m_origin;
-
-		// bcn pos estimate
-		IMC::LblEstimate* m_estimate;
-
-		// time whitout measurements
-		Time::Counter<double> m_time_whitout_meas;
-
-		// KalmanFilter matrices
-		KalmanFilter m_kal;
-
-		// Task arguments
-		Arguments m_args;
 
 
 	//! Constructor.
 	//! @param[in] name task name.
 	//! @param[in] ctx context.
 	Task(const std::string& name, Tasks::Context& ctx):
-	  DUNE::Tasks::Task(name, ctx),
-	  m_origin(NULL)
+	  DUNE::Tasks::Task(name, ctx)
 	{
-		param("State Covariance Initial State", m_args.state_cov)
+		param("Process noise", m_args.q)
 	    .defaultValue("1.0")
-	    .minimumValue("1.0")
-	    .description("Kalman Filter State Covariance initial values");
+	    .description("Process noise");
 
+		param("Measurement noise", m_args.r)
+		      .defaultValue("1.0")
+		      .description("Measurement noise");
 
-		param("Beacon Threshold", m_args.bcn_treshold)
-	   .defaultValue("3.14")
-	   .minimumValue("2.0")
-	   .description("Beacon Threshold value for the pos");
+    param("Initial covariance", m_args.p)
+          .defaultValue("1.0")
+          .description("Initial covariance");
 
-		param("Beacon Measure Noise Covariance", m_args.bcn_mnoise)
-	   .defaultValue("50.0")
-	   .minimumValue("10")
-	   .description("Kalman Filter bcn Measurement Noise Covariance value");
+		param("init-North", m_args.n_init)
+		          .defaultValue("1.0")
+		          .description("Pos North");
 
+		param("init-East", m_args.e_init)
+		          .defaultValue("1.0")
+		          .description("Pos East");
 
-		param("LBL Process Noise Covariance", m_args.bcn_pnoise)
-	  .defaultValue("1e-1")
-	  .minimumValue("0.0")
-	  .description("Kalman Filter pos Process Noise Covariance value");
+		param("init-Down", m_args.d_init)
+		          .defaultValue("1.0")
+		          .description("Pos Down");
 
-		param("GPS timeout", m_args.bcn_timeout)
-	   .units(Units::Second)
-	   .defaultValue("3.0")
-	   .minimumValue("1.0")
-	   .description("No Meas readings timeout");
+    param("Anchors-1-pos", m_args.B1)
+                  .defaultValue("-1.977, 2.0115, 2.776")
+                  .description("Anchors-1-pos [NED]");
 
-		m_estimate = NULL;
-		m_last_n = 4.0;
-		m_last_e = 2.0;
-		m_last_d = 3.0;
-		m_measurements_active = false;
+    param("Anchors-2-pos", m_args.B2)
+                      .defaultValue("-0.017, 1.917, 2.76")
+                      .description("Anchors-2-pos [NED]");
 
+    param("Anchors-3-pos", m_args.B3)
+                      .defaultValue("3.1896, 1.9081, 2.7455")
+                      .description("Anchors-3-pos [NED]");
+
+    param("Anchors-4-pos", m_args.B4)
+                      .defaultValue("3.162, -3.4489, 2.759")
+                      .description("Anchors-4-pos [NED]");
+
+    param("Anchors-5-pos", m_args.B5)
+                      .defaultValue("0.464, -3.459, 2.754")
+                      .description("Anchors-5-pos [NED]");
+
+    param("Anchors-6-pos", m_args.B6)
+                      .defaultValue("-2.268, -3.4065, 2.7799")
+                      .description("Anchors-6-pos [NED]");
+
+		init_done =  false;
 		bind<IMC::BeaconDistance>(this);
-		bind<IMC::NavigationData>(this);
-		bin<IMC::LblEstimate>(this);
-
 	}
-
 
 	//! Update internal state with new parameter values.
 	void
 	onUpdateParameters(void)
 	{
-		if (paramChanged(m_args.bcn_timeout))
-			m_time_whitout_meas.setTop(m_args.bcn_timeout);
+
 	}
 
 	//! Reserve entity identifiers.
@@ -161,47 +151,145 @@ namespace EKF
 	void
 	onResourceInitialization(void)
 	{
-		setEntityState(IMC::EntityState::ESTA_BOOT, Status::CODE_WAIT_GPS_FIX);
 	}
 
 	//! Release resources.
 	void
 	onResourceRelease(void)
 	{
-		Memory::clear(m_origin);
-		Memory::clear(m_estimate);
 	}
 
 	void
 	consume(const IMC::BeaconDistance* msg)
 	{
-		float ni,ei,di;
-		m_time_whitout_meas.reset();
-		m_measurements_active = true;
+	  // REMEMBER TO CONVERT DISTANCE TO METERS!!!!!!!!!!!!!!!
 
-		short sender = msg->sender;
+	  if (init_done == true)
+	  {
 
-		if (sender == 1) { ni = 0; ei = 0; di = 0;}
-		else if (sender == 2) { ni = 4; ei = 0; di = 0;}
-		else if (sender == 3) { ni = 8; ei = 0; di = 0;}
-		else if (sender == 4) { ni = 8; ei = 6.87; di = 0;}
-		else if (sender == 5) { ni = 4; ei = 6.87; di = 0;}
-		else if (sender == 6) { ni = 0; ei = 6.87; di = 0;}
-		else {return;}
+	    predictKalman();
+	    updateKalman(msg);
+
+	  }
+	}
+
+	void
+	initKalman(double r, double q,double p, double n_init, double e_init, double d_init,std::vector<double> B1,std::vector<double> B2,std::vector<double> B3
+	    ,std::vector<double> B4,std::vector<double> B5,std::vector<double> B6)
+	{
+	  double R_init[] = {r,r,r,r,r,r};
+	  m_R = Matrix(R_init,6);
+	  double Q_init[] = {q,q,q};
+	  m_Q = Matrix(Q_init,3);
+	  double P_init[] = {p,p,p};
+	  m_P = Matrix(P_init,3);
+	  double X_init[] = {n_init,e_init,d_init};
+	  m_X = Matrix(X_init,3,1);
+	  double process[] = {1,1,1};
+	  m_F = Matrix(process,3);
+
+	  //double B[18] = {B1,B2,B3,B4,B5,B6};
 
 
-		double dx = m_estimate->x - ni;
-		double dy = m_estimate->y - ei;
-		double dz = m_estimate->var_x - di;
-		double exp_range = std::sqrt(dx * dx + dy * dy + dz*dz);
 
-		m_kal.setObservation(sender,1, dx / exp_range);
-		m_kal.setObservation(sender,2, dy / exp_range);
-		m_kal.setObservation(sender,3, dz / exp_range);
+	  double B[18];
+	  for (int i = 0; i <= 2; i++)
+	  {
+	     B[i] = B1[i];
+	     B[i+3] = B2[i];
+	     B[i+6] = B3[i];
+	     B[i+9] = B4[i];
+	     B[i+12] = B5[i];
+	     B[i+15] = B6[i];
+	  }
 
-		// REJECTION FILTER SOMEWHERE HERE
+	  m_B = Matrix(B,6,3);
+	  dX = Matrix();
+	  dX.resize(6,3);
+	  m_H = Matrix();
+	  m_H.resize(6,3);
 
-		m_kal.resetOutputs();
+
+
+	}
+	void
+	predictKalman()
+	{
+	  m_P = m_F * m_P * transpose(m_F) + m_Q;
+	}
+
+	void
+	updateKalman(const IMC::BeaconDistance* msg)
+	{
+
+
+	    meas[msg->sender-1] = msg->dist / 100.0;
+	    m_meas = Matrix(meas,6,1);
+	    // MEASUREMENT UPDATE
+	    Math::Matrix k;
+	    double gXi_val[6], K_temp[3];
+	    int a = 0;
+	    double H[6*3];
+      for (int i = 0; i < 6; i++)
+      {
+
+
+        k = Matrix(1,1,m_X.element(0) - m_B.element(i,0));
+        dX.put(i, 0, k);
+        k = Matrix(1,1,m_X.element(1) - m_B.element(i,1));
+        dX.put(i, 1, k);
+        k = Matrix(1,1,m_X.element(2) - m_B.element(i,2));
+        dX.put(i, 2, k);
+
+        gXi_val[i] = std::pow( dX.element(i,0),2) + std::pow( dX.element(i,1),2) + std::pow(dX.element(i,2),2);
+
+        // Jacobian
+        for (int j = 0; j<=2; j++)
+        {
+          H[a] = dX.element(i,j) / gXi_val[i];
+          a++;
+        }
+
+    }
+      gXi = Matrix(gXi_val,6,1);
+      m_H = Matrix(H,6,3);
+
+
+      // THE INNOVATION COVARIANCE
+      m_S = m_H * m_P * transpose(m_H) + m_R;
+
+      // The Kalman Gain
+      m_K = m_P * transpose(m_H) * inverse(m_S);
+
+      // Set K to zero for all except this measurement
+      for (int i=0; i<=2; i++)
+        K_temp[i] = m_K.element(i,msg->sender-1);
+
+
+      m_K.fill(0.0);
+
+      k = Matrix(1,1,K_temp[0]);
+      m_K.put(0,msg->sender-1,k);
+      k = Matrix(1,1,K_temp[1]);
+      m_K.put(1,msg->sender-1,k);
+      k = Matrix(1,1,K_temp[2]);
+      m_K.put(2,msg->sender-1,k);
+
+
+      m_X = m_X + m_K * (m_meas - gXi);
+      m_P = m_P - (m_P * transpose(m_H) * inverse(m_S) * m_H) * m_P;
+
+      if (m_X.element(0) != m_X.element(0) || m_X.element(1) != m_X.element(1) || m_X.element(2) != m_X.element(2))
+      {
+         initKalman(m_args.r,m_args.q,m_args.p,m_args.n_init,m_args.e_init,m_args.d_init,m_args.B1,m_args.B2,m_args.B3,m_args.B4,m_args.B5,m_args.B6);
+      }
+
+      IMC::RtkFix pos;
+      pos.n = m_P.element(0);
+      pos.e = m_P.element(1);
+      pos.d = m_P.element(2);
+      dispatch(pos);
+
 
 
 	}
@@ -210,12 +298,26 @@ namespace EKF
 	void
 	onMain(void)
 	{
+	  initKalman(m_args.r,m_args.q,m_args.p,m_args.n_init,m_args.e_init,m_args.d_init,m_args.B1,m_args.B2,m_args.B3,m_args.B4,m_args.B5,m_args.B6);
+	  init_done = true;
+
 	  while (!stopping())
 	  {
 		waitForMessages(1.0);
 
 	  }
 	}
+
+void
+printMatrix(Matrix m){
+  printf("[HERE]\n");
+  for(int i = 0; i<m.rows(); i++ ){
+    for(int j = 0; j<m.columns();j++){
+      printf("%f ", m.element(i,j));
+    }
+    printf("\n");
+  }
+}
 
 
   };
