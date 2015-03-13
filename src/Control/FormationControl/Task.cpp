@@ -34,28 +34,38 @@ namespace Control
   {
     using DUNE_NAMESPACES;
 
+    //! Vector for System Mapping.
+    typedef std::vector<uint32_t> Systems;
+
     struct Arguments
     {
       //! Use controller
       bool use_controller;
 
-      //! Formation leader
-      bool is_leader;
-
-      //! Formation identity
-      int formation_id;
+      //! Vehicle list
+      std::vector<std::string> formation_systems;
 
       //! Desired formation
       Matrix desired_formation;
 
-      // Incidence matrix
+      //! Incidence matrix
       Matrix incidence_matrix;
+
+      //! Link gains
+      std::vector<double> link_gains;
+
     };
 
     struct Task: public DUNE::Tasks::Periodic
     {
       //! Task arguments
       Arguments m_args;
+
+      //! Vehicle IDs
+      Systems m_IDs;
+
+      //! Vehicle formation number
+      int m_i;
 
       //! Incidence matrix;
       Matrix m_D;
@@ -66,6 +76,9 @@ namespace Control
 
       //! Desired difference variables
       Matrix m_z_d;
+
+      //! Difference variables
+      Matrix m_z;
 
       //! Vehicle positions
       Matrix m_x;
@@ -82,21 +95,90 @@ namespace Control
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Periodic(name, ctx),
+        m_i(0),
         m_N(0),
         m_L(0)
       {
+
+        param("Formation Controller", m_args.use_controller)
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        .defaultValue("false")
+        .description("Enable formation controller.");
+
+        param("Vehicle List", m_args.formation_systems)
+        .defaultValue("")
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        .description("System name list of the formation vehicles.");
+
+        param("Desired Formation", m_args.desired_formation)
+        .defaultValue("0.0, 0.0, 0.0")
+        .units(Units::Meter)
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        .description("Desired formation positions matrix.");
+
+        param("Incidence Matrix", m_args.incidence_matrix)
+        .defaultValue("0")
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        .description("Incidence matrix.");
+
+        param("Link Gains", m_args.link_gains)
+        .defaultValue("1.0")
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        .description("Gains assigned to formation links.");
+
       }
 
       //! Update internal state with new parameter values.
       void
       onUpdateParameters(void)
       {
-        //! Update incidence matrix
-        m_D = m_args.desired_formation;
-        m_N = m_D.columns();
+        spew("Starting update of parametes.");
+
+        if (this->paramChanged(m_args.formation_systems))
+        {
+          inf("New Formation vehicles' list.");
+
+          // Extract vehicle IDs
+          m_IDs.clear();
+          if (m_args.formation_systems.empty())
+          {
+            war("Formation vehicle list is empty!");
+            m_IDs.push_back(this->getSystemId());
+            m_N = 1;
+            m_i = 0;
+          }
+          else
+          {
+            m_N = m_args.formation_systems.size();
+            m_i = -1;
+            for (unsigned int i = 0; i < m_N; i++)
+            {
+              debug("UAV %u: %s", i, m_args.formation_systems[i].c_str());
+              m_IDs.push_back(this->resolveSystemName(m_args.formation_systems[i]));
+              if (m_IDs[i] == this->getSystemId())
+                m_i = i;
+            }
+            if (m_i < 0)
+              throw RestartNeeded("Vehicle not found in formation vehicle list!", 10);
+          }
+        }
+
+        // TODO: Check dimensions of incidence matrix to vehicle list
+        // Update incidence matrix
+        m_D = m_args.incidence_matrix;
+
+        // Extract number of links
         m_L = m_D.rows();
 
-        //TODO: Update z_d (kron?)
+        // TODO: Update z_d (kron?)
+        // TODO: compare getSystemName() with id-matrix to decide ID
+
+        // TODO: Extract link gains; multiply if scalar
       }
 
       //! Reserve entity identifiers.
