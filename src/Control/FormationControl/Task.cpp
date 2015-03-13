@@ -52,7 +52,7 @@ namespace Control
       Matrix incidence_matrix;
 
       //! Link gains
-      std::vector<double> link_gains;
+      Matrix link_gains;
 
     };
 
@@ -62,7 +62,7 @@ namespace Control
       Arguments m_args;
 
       //! Vehicle IDs
-      Systems m_IDs;
+      Systems m_uav_ID;
 
       //! Vehicle formation number
       int m_i;
@@ -71,14 +71,20 @@ namespace Control
       Matrix m_D;
 
       //! Number of agents and links
-      int m_N;
-      int m_L;
+      unsigned int m_N;
+      unsigned int m_L;
+
+      //! Link gains
+      Matrix m_delta;
 
       //! Desired difference variables
       Matrix m_z_d;
 
       //! Difference variables
       Matrix m_z;
+
+      //! Desired formation positions
+      Matrix m_x_c;
 
       //! Vehicle positions
       Matrix m_x;
@@ -139,16 +145,17 @@ namespace Control
       {
         spew("Starting update of parametes.");
 
+        spew("onUpdateParameters - 1");
         if (this->paramChanged(m_args.formation_systems))
         {
           inf("New Formation vehicles' list.");
 
           // Extract vehicle IDs
-          m_IDs.clear();
+          m_uav_ID.clear();
           if (m_args.formation_systems.empty())
           {
             war("Formation vehicle list is empty!");
-            m_IDs.push_back(this->getSystemId());
+            m_uav_ID.push_back(this->getSystemId());
             m_N = 1;
             m_i = 0;
           }
@@ -159,26 +166,85 @@ namespace Control
             for (unsigned int i = 0; i < m_N; i++)
             {
               debug("UAV %u: %s", i, m_args.formation_systems[i].c_str());
-              m_IDs.push_back(this->resolveSystemName(m_args.formation_systems[i]));
-              if (m_IDs[i] == this->getSystemId())
-                m_i = i;
+              m_uav_ID.push_back(this->resolveSystemName(m_args.formation_systems[i]));
+              if (m_uav_ID[i] == this->getSystemId())
+                m_i = i; // Set my formation id
             }
             if (m_i < 0)
+            {
+              war("Vehicle not found in formation vehicle list!");
               throw RestartNeeded("Vehicle not found in formation vehicle list!", 10);
+            }
           }
         }
 
-        // TODO: Check dimensions of incidence matrix to vehicle list
-        // Update incidence matrix
-        m_D = m_args.incidence_matrix;
+        spew("onUpdateParameters - 2");
+        if (paramChanged(m_args.desired_formation))
+        {
+          inf("New desired formation.");
 
-        // Extract number of links
-        m_L = m_D.rows();
+          if (m_args.desired_formation.size() == 0)
+            throw DUNE::Exception("Desired formation positons matrix is empty!");
+          if (m_args.desired_formation.size()%3 != 0)
+            throw DUNE::Exception("Unvalid number of coordinates in desired formation positions matrix!");
+          if (m_args.desired_formation.size()/3 != m_N)
+            throw DUNE::Exception("Incorrect number of vehicles in desired formation positions matrix!");
 
-        // TODO: Update z_d (kron?)
-        // TODO: compare getSystemName() with id-matrix to decide ID
+          m_x_c.resize(3, m_N);
+          for (unsigned int uav_id = 0; uav_id < m_N; uav_id++)
+          {
+            for (unsigned int coord = 0; coord < 3; coord++)
+              m_x_c(coord, uav_id) = m_args.desired_formation(coord + uav_id*3);
+            debug("UAV %u: [x=%1.1f, y=%1.1f, z=%1.1f]", uav_id,
+                m_x_c(0, uav_id), m_x_c(1, uav_id), m_x_c(2, uav_id));
+          }
 
-        // TODO: Extract link gains; multiply if scalar
+          // TODO: Calculate z_d based on x_c
+        }
+
+        spew("onUpdateParameters - 3");
+        if (paramChanged(m_args.incidence_matrix))
+        {
+          inf("New incidence matrix.");
+
+          if (m_args.incidence_matrix.size() == 0)
+            throw RestartNeeded("Incidence matrix is empty!", 10);
+          if (m_args.incidence_matrix.rows()%m_N != 0)
+            throw RestartNeeded("Incidence matrix doesn't match number of vehicles!", 10);
+
+          // Update number of links
+          m_L = m_args.incidence_matrix.rows()/m_N;
+          // Resize incidence matrix
+          m_D.resize(m_L,m_N);
+          // Update incidence matrix
+          for (unsigned int link = 0; link < m_L; link++)
+          {
+            for (unsigned int uav = 0; uav < 3; uav++)
+              m_D(uav, link) = m_args.incidence_matrix(uav + link*m_L);
+          }
+
+          //printMatrix(m_D);
+        }
+
+        spew("onUpdateParameters - 4");
+        if (paramChanged(m_args.link_gains))
+        {
+          inf("New link gains.");
+
+          if (m_args.link_gains.size() == 1)
+          {
+            // Scalar gain, set all to this
+            m_delta = Matrix(m_L, 1, m_args.link_gains(0));
+          }
+          else if (m_args.link_gains.size() != m_L)
+            throw DUNE::Exception("Link gains doesn't match number of links!");
+          else
+          {
+            m_delta = m_args.link_gains;
+          }
+
+          //printMatrix(m_delta);
+        }
       }
 
       //! Reserve entity identifiers.
@@ -209,6 +275,17 @@ namespace Control
       void
       onResourceRelease(void)
       {
+      }
+
+      void
+      printMatrix(Matrix m){
+        printf("[HERE]\n");
+        for(int i = 0; i<m.rows(); i++ ){
+          for(int j = 0; j<m.columns();j++){
+            printf("%f ", m.element(i,j));
+          }
+          printf("\n");
+        }
       }
 
       //! Main loop.
