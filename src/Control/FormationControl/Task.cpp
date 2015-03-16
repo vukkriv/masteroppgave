@@ -92,6 +92,9 @@ namespace Control
       //! Vehicle velocities
       Matrix m_v;
 
+      //! Mission velocity
+      Matrix m_v_mission;
+
       //! Desired velocity
       IMC::DesiredVelocity m_desired_velocity;
 
@@ -139,6 +142,7 @@ namespace Control
 
         // Bind incoming IMC messages
         bind<IMC::FormPos>(this);
+        bind<IMC::DesiredVelocity>(this);
 
       }
 
@@ -206,7 +210,7 @@ namespace Control
           {
             for (unsigned int coord = 0; coord < 3; coord++)
               m_x_c(coord, uav_id) = m_args.desired_formation(coord + uav_id*3);
-            debug("UAV %u: [x=%1.1f, y=%1.1f, z=%1.1f]", uav_id,
+            debug("UAV %u: [%1.1f,\t %1.1f,\t %1.1f]", uav_id,
                 m_x_c(0, uav_id), m_x_c(1, uav_id), m_x_c(2, uav_id));
           }
         }
@@ -289,6 +293,8 @@ namespace Control
       void
       onResourceAcquisition(void)
       {
+        // Initialize mission velocity matrix
+        m_v_mission.resizeAndFill(3,1,0);
       }
 
       //! Initialize resources.
@@ -301,6 +307,47 @@ namespace Control
       void
       onResourceRelease(void)
       {
+      }
+
+      //! Consume Formation Position
+      void
+      consume(const IMC::FormPos* msg)
+      {
+        spew("Got Formation Position");
+
+        bool id_found = false;
+        for (unsigned int uav = 0; uav < m_N; uav++)
+        {
+          if (m_uav_ID[uav] == msg->getSource())
+          {
+            id_found = true;
+            // Update position
+            m_x(0,uav) = msg->x;
+            m_x(1,uav) = msg->y;
+            m_x(2,uav) = msg->z;
+            // Update velocity (only really needed from local vehicle)
+            m_v(0,uav) = msg->vx;
+            m_v(1,uav) = msg->vy;
+            m_v(2,uav) = msg->vz;
+            spew("Updated position of vehicle '%s'", resolveSystemId(msg->getSource()));
+            printMatrix(m_x);
+            break;
+          }
+        }
+        if (!id_found)
+          war("Received FormPos from unknown vehicle '%s'", resolveSystemId(msg->getSource()));
+      }
+
+      //! Consume Desired Velocity (mission velocity from FormationGuidance)
+      void
+      consume(const IMC::DesiredVelocity* msg)
+      {
+        if (msg->getSourceEntity() == resolveEntity("Formation Guidance"))
+        {
+          spew("Got Mission Velocity");
+
+          // TODO:
+        }
       }
 
       //! Print matrix (for debuging)
@@ -339,39 +386,35 @@ namespace Control
         }
       }
 
-      //! Consume Formation Position
       void
-      consume(const IMC::FormPos* msg)
+      sendDesiredVelocity(Matrix velocity)
       {
-        spew("Got Formation Position");
+        m_desired_velocity.u = velocity(0);
+        m_desired_velocity.v = velocity(1);
+        m_desired_velocity.w = velocity(2);
 
-        bool id_found = false;
-        for (unsigned int uav = 0; uav < m_N; uav++)
-        {
-          if (m_uav_ID[uav] == msg->getSource())
-          {
-            id_found = true;
-            // Update position
-            m_x(0,uav) = msg->x;
-            m_x(1,uav) = msg->y;
-            m_x(2,uav) = msg->z;
-            // Update velocity (only really needed from local vehicle)
-            m_v(0,uav) = msg->vx;
-            m_v(1,uav) = msg->vy;
-            m_v(2,uav) = msg->vz;
-            spew("Updated position of vehicle '%s'", resolveSystemId(msg->getSource()));
-            printMatrix(m_x);
-            break;
-          }
-        }
-        if (!id_found)
-          war("Received FormPos from unknown vehicle '%s'", resolveSystemId(msg->getSource()));
+        dispatch(m_desired_velocity);
+        spew("Sent desired velocity: [%1.1f\t %1.1f\t %1.1f]",
+            m_desired_velocity.u, m_desired_velocity.v, m_desired_velocity.w);
       }
 
       //! Main loop.
       void
       task(void)
       {
+        // Calculate z
+        calcDiffVariable(&m_z, m_D, m_x);
+
+        Matrix z_tilde = m_z - m_z_d;
+
+        Matrix u = Matrix(3,1,0);
+        for (unsigned int link = 0; link < m_L; link++)
+        {
+          u -= m_D(m_i,link)*m_delta(link)*z_tilde.column(link);
+        }
+        // TODO: Implement collision avoidance
+
+        sendDesiredVelocity(u + m_v_mission);
       }
     };
   }
