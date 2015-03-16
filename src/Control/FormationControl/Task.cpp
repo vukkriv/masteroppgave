@@ -163,17 +163,17 @@ namespace Control
           {
             m_N = m_args.formation_systems.size();
             m_i = -1;
-            for (unsigned int i = 0; i < m_N; i++)
+            for (unsigned int uav = 0; uav < m_N; uav++)
             {
-              debug("UAV %u: %s", i, m_args.formation_systems[i].c_str());
-              m_uav_ID.push_back(this->resolveSystemName(m_args.formation_systems[i]));
-              if (m_uav_ID[i] == this->getSystemId())
-                m_i = i; // Set my formation id
+              debug("UAV %u: %s", uav, m_args.formation_systems[uav].c_str());
+              m_uav_ID.push_back(this->resolveSystemName(m_args.formation_systems[uav]));
+              if (m_uav_ID[uav] == this->getSystemId())
+                m_i = uav; // Set my formation id
             }
             if (m_i < 0)
             {
               war("Vehicle not found in formation vehicle list!");
-              throw RestartNeeded("Vehicle not found in formation vehicle list!", 10);
+              throw DUNE::Exception("Vehicle not found in formation vehicle list!");
             }
           }
         }
@@ -208,9 +208,9 @@ namespace Control
           inf("New incidence matrix.");
 
           if (m_args.incidence_matrix.size() == 0)
-            throw RestartNeeded("Incidence matrix is empty!", 10);
+            throw DUNE::Exception("Incidence matrix is empty!");
           if (m_args.incidence_matrix.rows()%m_N != 0)
-            throw RestartNeeded("Incidence matrix doesn't match number of vehicles!", 10);
+            throw DUNE::Exception("Incidence matrix doesn't match number of vehicles!");
 
           // Update number of links
           m_L = m_args.incidence_matrix.rows()/m_N;
@@ -245,6 +245,11 @@ namespace Control
 
           //printMatrix(m_delta);
         }
+
+        spew("onUpdateParameters - 4");
+        // Resize position and velocity matrices to fit number of vehicles
+        m_x.resize(3,m_N);
+        m_v.resize(3,m_N);
       }
 
       //! Reserve entity identifiers.
