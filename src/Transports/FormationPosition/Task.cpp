@@ -151,7 +151,9 @@ namespace Transports
       void
       consume(const IMC::EstimatedState* msg)
       {
-        spew("Got Estimated State");
+        spew("Got Estimated State from system '%s' and entity '%s'.",
+                resolveSystemId(msg->getSource()),
+                resolveEntity(msg->getSourceEntity()).c_str());
 
         if (m_type == ESTATE)
         {
