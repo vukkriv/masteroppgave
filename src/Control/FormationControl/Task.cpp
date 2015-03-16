@@ -277,6 +277,7 @@ namespace Control
       {
       }
 
+      //! Print matrix (for debuging)
       void
       printMatrix(Matrix m){
         printf("[HERE]\n");
@@ -286,6 +287,34 @@ namespace Control
           }
           printf("\n");
         }
+      }
+
+      //! Consume Formation Position
+      void
+      consume(const IMC::FormPos* msg)
+      {
+        spew("Got Formation Position");
+
+        bool id_found = false;
+        for (unsigned int uav = 0; uav < m_N; uav++)
+        {
+          if (m_uav_ID[uav] == msg->getSource())
+          {
+            id_found = true;
+            // Update position
+            m_x(0,uav) = msg->x;
+            m_x(1,uav) = msg->y;
+            m_x(2,uav) = msg->z;
+            // Update velocity (only really needed from local vehicle)
+            m_v(0,uav) = msg->vx;
+            m_v(1,uav) = msg->vy;
+            m_v(2,uav) = msg->vz;
+            spew("Updated position of vehicle '%s'", resolveSystemId(msg->getSource()));
+            break;
+          }
+        }
+        if (!id_found)
+          war("Received FormPos from unknown vehicle '%s'", resolveSystemId(msg->getSource()));
       }
 
       //! Main loop.
