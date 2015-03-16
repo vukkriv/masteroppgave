@@ -148,8 +148,9 @@ namespace Control
       {
         spew("Starting update of parametes.");
 
+
         spew("onUpdateParameters - 1");
-        if (this->paramChanged(m_args.formation_systems))
+        if (paramChanged(m_args.formation_systems))
         {
           inf("New Formation vehicles' list.");
 
@@ -179,13 +180,18 @@ namespace Control
               throw DUNE::Exception("Vehicle not found in formation vehicle list!");
             }
           }
+          // Resize and reset position and velocity matrices to fit number of vehicles
+          m_x.resizeAndFill(3,m_N,0);
+          m_v.resizeAndFill(3,m_N,0);
         }
+
 
         spew("onUpdateParameters - 2");
         if (paramChanged(m_args.desired_formation))
         {
           inf("New desired formation.");
 
+          // Check dimensions
           if (m_args.desired_formation.size() == 0)
             throw DUNE::Exception("Desired formation positons matrix is empty!");
           if (m_args.desired_formation.size()%3 != 0)
@@ -193,7 +199,9 @@ namespace Control
           if (m_args.desired_formation.size()/3 != m_N)
             throw DUNE::Exception("Incorrect number of vehicles in desired formation positions matrix!");
 
-          m_x_c.resize(3, m_N);
+          // Resize desired formation matrix to fit number of vehicles
+          m_x_c.resizeAndFill(3, m_N, 0);
+          // Update desired formation matrix
           for (unsigned int uav_id = 0; uav_id < m_N; uav_id++)
           {
             for (unsigned int coord = 0; coord < 3; coord++)
@@ -201,15 +209,15 @@ namespace Control
             debug("UAV %u: [x=%1.1f, y=%1.1f, z=%1.1f]", uav_id,
                 m_x_c(0, uav_id), m_x_c(1, uav_id), m_x_c(2, uav_id));
           }
-
-          // TODO: Calculate z_d based on x_c
         }
+
 
         spew("onUpdateParameters - 3");
         if (paramChanged(m_args.incidence_matrix))
         {
           inf("New incidence matrix.");
 
+          // Check dimensions
           if (m_args.incidence_matrix.size() == 0)
             throw DUNE::Exception("Incidence matrix is empty!");
           if (m_args.incidence_matrix.rows()%m_N != 0)
@@ -218,16 +226,17 @@ namespace Control
           // Update number of links
           m_L = m_args.incidence_matrix.rows()/m_N;
           // Resize incidence matrix
-          m_D.resize(m_L,m_N);
+          m_D.resize(m_N,m_L);
           // Update incidence matrix
           for (unsigned int link = 0; link < m_L; link++)
           {
-            for (unsigned int uav = 0; uav < 3; uav++)
-              m_D(uav, link) = m_args.incidence_matrix(uav + link*m_L);
+            for (unsigned int uav = 0; uav < m_N; uav++)
+              m_D(uav, link) = m_args.incidence_matrix(uav + link*m_N);
           }
 
-          //printMatrix(m_D);
+          printMatrix(m_D);
         }
+
 
         spew("onUpdateParameters - 4");
         if (paramChanged(m_args.link_gains))
@@ -243,16 +252,25 @@ namespace Control
             throw DUNE::Exception("Link gains doesn't match number of links!");
           else
           {
+            // Update gains
             m_delta = m_args.link_gains;
           }
 
-          //printMatrix(m_delta);
+          printMatrix(m_delta);
         }
 
+
+        // TODO: Only update m_z and m_z_d when neccessary
         spew("onUpdateParameters - 5");
-        // Resize position and velocity matrices to fit number of vehicles
-        m_x.resize(3,m_N);
-        m_v.resize(3,m_N);
+        inf("New desired difference variables.");
+
+        // Resize and reset difference variables matrices to fit number of links
+        m_z.resizeAndFill(3, m_L, 0);
+        m_z_d.resizeAndFill(3, m_L, 0);
+        // Update desired difference variables matrix
+        calcDiffVariable(&m_z_d,m_D,m_x_c);
+
+        printMatrix(m_z_d);
       }
 
       //! Reserve entity identifiers.
@@ -288,12 +306,36 @@ namespace Control
       //! Print matrix (for debuging)
       void
       printMatrix(Matrix m){
-        printf("[HERE]\n");
-        for(int i = 0; i<m.rows(); i++ ){
-          for(int j = 0; j<m.columns();j++){
-            printf("%f ", m.element(i,j));
+        if (getDebugLevel())
+        {
+          printf("[DEBUG Matrix]\n");
+          for(int i = 0; i<m.rows(); i++ ){
+            for(int j = 0; j<m.columns();j++){
+              printf("%f ", m.element(i,j));
+            }
+            printf("\n");
           }
-          printf("\n");
+        }
+      }
+
+      //! Calculate difference variables
+      //! @param[in] z reference to matrix with difference variables
+      //! @param[in] D incidence matrix
+      //! @param[in] x matrix with coordinated variables
+      void
+      calcDiffVariable(Matrix* z, Matrix D, Matrix x)
+      {
+        unsigned int N = D.rows();
+        unsigned int L = D.columns();
+
+        for (unsigned int link = 0; link < L; link++)
+        {
+          Matrix z_k(3,1,0);
+          for (unsigned int uav = 0; uav < N; uav++)
+          {
+            z_k += D(uav,link)*x.column(uav);
+          }
+          z->put(0,link,z_k);
         }
       }
 
