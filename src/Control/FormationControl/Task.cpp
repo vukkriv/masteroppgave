@@ -137,6 +137,9 @@ namespace Control
         .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Gains assigned to formation links.");
 
+        // Bind incoming IMC messages
+        bind<IMC::FormPos>(this);
+
       }
 
       //! Update internal state with new parameter values.
@@ -246,7 +249,7 @@ namespace Control
           //printMatrix(m_delta);
         }
 
-        spew("onUpdateParameters - 4");
+        spew("onUpdateParameters - 5");
         // Resize position and velocity matrices to fit number of vehicles
         m_x.resize(3,m_N);
         m_v.resize(3,m_N);
@@ -315,6 +318,7 @@ namespace Control
             m_v(1,uav) = msg->vy;
             m_v(2,uav) = msg->vz;
             spew("Updated position of vehicle '%s'", resolveSystemId(msg->getSource()));
+            printMatrix(m_x);
             break;
           }
         }
