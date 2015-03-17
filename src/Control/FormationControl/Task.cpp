@@ -54,8 +54,14 @@ namespace Control
       //! Link gains
       Matrix link_gains;
 
-      //! (optional) Constant Mission Velocity
+      //! (optional) Constant mission velocity
       Matrix const_mission_velocity;
+
+      //! Collision avoidance radius
+      double collision_radius;
+
+      //! Collision avoidance gain
+      double collision_gain;
 
     };
 
@@ -145,9 +151,24 @@ namespace Control
 
         param("Constant Mission Velocity", m_args.const_mission_velocity)
         .defaultValue("0.0, 0.0, 0.0")
+        .units(Units::MeterPerSecond)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
         .scope(Tasks::Parameter::SCOPE_MANEUVER)
-        .description("Constant mission velocity");
+        .description("Constant mission velocity.");
+
+        param("Collision Avoidance Radius", m_args.collision_radius)
+        .defaultValue("5.0")
+        .units(Units::Meter)
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        .description("Radius for collision avoidance potential field.");
+
+        param("Collision Avoidance Gain", m_args.collision_gain)
+        .defaultValue("0.0")
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        .description("Gain for collision avoidance potential field.");
+
 
 
         // Initialize mission velocity matrix
@@ -291,7 +312,7 @@ namespace Control
 
           // Set constant mission velocity
           m_v_mission = m_args.const_mission_velocity;
-          debug("Mission Velocity: [%1.1f, %1,1f, %1.1f]",
+          debug("Mission Velocity: [%1.1f, %1.1f, %1.1f]",
               m_v_mission(0), m_v_mission(1), m_v_mission(2));
         }
       }
@@ -406,6 +427,7 @@ namespace Control
         }
       }
 
+      //! Dispatch desired velocity
       void
       sendDesiredVelocity(Matrix velocity)
       {
@@ -414,25 +436,73 @@ namespace Control
         m_desired_velocity.w = velocity(2);
 
         dispatch(m_desired_velocity);
-        spew("Sent desired velocity: [%1.1f, %1.1f, %1.1f]",
+        spew("v_d: [%1.1f, %1.1f, %1.1f]",
             m_desired_velocity.u, m_desired_velocity.v, m_desired_velocity.w);
+      }
+
+      //! Calculate formation velocity
+      Matrix
+      formationVelocity(void)
+      {
+        // Calculate z_tilde
+        calcDiffVariable(&m_z, m_D, m_x);
+        Matrix z_tilde = m_z - m_z_d;
+
+        // Calculate formation velocity component
+        Matrix u_form(3,1,0);
+        for (unsigned int link = 0; link < m_L; link++)
+        {
+          u_form -= m_D(m_i,link)*m_delta(link)*z_tilde.column(link);
+        }
+
+        spew("u_form: [%1.1f, %1.1f, %1.1f]",
+            u_form(0), u_form(1), u_form(2));
+        return u_form;
+      }
+
+      //! Calculate collision avoidance velocity
+      Matrix
+      collAvoidVelocity(void)
+      {
+        Matrix u_coll(3,1,0);
+        static double u_coll_max = 0;
+        static double d_ij_min = std::numeric_limits<double>::infinity();
+
+        for (unsigned int uav = 0; uav < m_N; uav++)
+        {
+          if (uav != m_i)
+          {
+            // Get vector and distance to neighbour
+            Matrix x_ij = m_x.column(uav) - m_x.column(m_i);
+            double d_ij = x_ij.norm_2();
+            // Check if inside potential field
+            if (d_ij < m_args.collision_radius)
+            {
+              // Add repelling velocity
+              u_coll -= (m_args.collision_radius - d_ij)*x_ij/d_ij;
+            }
+            // Save minimum distance
+            d_ij_min = std::min(d_ij_min, d_ij);
+          }
+        }
+        // Multiply total repelling velocity with gain
+        u_coll *= m_args.collision_gain;
+        // Save maximum repelling speed
+        u_coll_max = std::max(u_coll_max, u_coll.norm_2());
+
+        spew("u_coll: [%1.1f, %1.1f, %1.1f]",
+            u_coll(0), u_coll(1), u_coll(2));
+        spew("Max u_coll: %1.1f", u_coll_max);
+        spew("Min dist: %1.1f", d_ij_min);
+        return u_coll;
       }
 
       //! Main loop.
       void
       task(void)
       {
-        // Calculate z_tilde
-        calcDiffVariable(&m_z, m_D, m_x);
-        Matrix z_tilde = m_z - m_z_d;
-
-        // Calculate external feedback, u
-        Matrix u = Matrix(3,1,0);
-        for (unsigned int link = 0; link < m_L; link++)
-        {
-          u -= m_D(m_i,link)*m_delta(link)*z_tilde.column(link);
-        }
-        // TODO: Implement collision avoidance
+        //Calculate external feedback
+        Matrix u = formationVelocity() + collAvoidVelocity();
 
         // Send internal feedback, tau
         sendDesiredVelocity(u + m_v_mission);
