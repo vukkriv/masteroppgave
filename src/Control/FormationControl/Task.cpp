@@ -54,6 +54,9 @@ namespace Control
       //! Link gains
       Matrix link_gains;
 
+      //! (optional) Constant Mission Velocity
+      Matrix const_mission_velocity;
+
     };
 
     struct Task: public DUNE::Tasks::Periodic
@@ -140,20 +143,29 @@ namespace Control
         .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Gains assigned to formation links.");
 
+        param("Constant Mission Velocity", m_args.const_mission_velocity)
+        .defaultValue("0.0, 0.0, 0.0")
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        .description("Constant mission velocity");
+
+
+        // Initialize mission velocity matrix
+        m_v_mission.resizeAndFill(3,1,0);
+
+
         // Bind incoming IMC messages
         bind<IMC::FormPos>(this);
         //bind<IMC::DesiredVelocity>(this);
-
       }
 
       //! Update internal state with new parameter values.
       void
       onUpdateParameters(void)
       {
-        spew("Starting update of parametes.");
+        debug("Starting update of parametes.");
 
 
-        spew("onUpdateParameters - 1");
         if (paramChanged(m_args.formation_systems))
         {
           inf("New Formation vehicles' list.");
@@ -179,10 +191,7 @@ namespace Control
                 m_i = uav; // Set my formation id
             }
             if (m_i < 0)
-            {
-              war("Vehicle not found in formation vehicle list!");
               throw DUNE::Exception("Vehicle not found in formation vehicle list!");
-            }
           }
           // Resize and reset position and velocity matrices to fit number of vehicles
           m_x.resizeAndFill(3,m_N,0);
@@ -190,7 +199,6 @@ namespace Control
         }
 
 
-        spew("onUpdateParameters - 2");
         if (paramChanged(m_args.desired_formation))
         {
           inf("New desired formation.");
@@ -210,13 +218,12 @@ namespace Control
           {
             for (unsigned int coord = 0; coord < 3; coord++)
               m_x_c(coord, uav_id) = m_args.desired_formation(coord + uav_id*3);
-            debug("UAV %u: [%1.1f,\t %1.1f,\t %1.1f]", uav_id,
+            debug("UAV %u: [%1.1f, %1.1f, %1.1f]", uav_id,
                 m_x_c(0, uav_id), m_x_c(1, uav_id), m_x_c(2, uav_id));
           }
         }
 
 
-        spew("onUpdateParameters - 3");
         if (paramChanged(m_args.incidence_matrix))
         {
           inf("New incidence matrix.");
@@ -242,7 +249,6 @@ namespace Control
         }
 
 
-        spew("onUpdateParameters - 4");
         if (paramChanged(m_args.link_gains))
         {
           inf("New link gains.");
@@ -265,7 +271,6 @@ namespace Control
 
 
         // TODO: Only update m_z and m_z_d when neccessary
-        spew("onUpdateParameters - 5");
         inf("New desired difference variables.");
 
         // Resize and reset difference variables matrices to fit number of links
@@ -275,6 +280,20 @@ namespace Control
         calcDiffVariable(&m_z_d,m_D,m_x_c);
 
         printMatrix(m_z_d);
+
+        if (paramChanged(m_args.const_mission_velocity))
+        {
+          inf("New constant mission velocity.");
+
+          // Check dimension
+          if (m_args.const_mission_velocity.rows() != 3)
+            throw DUNE::Exception("Unvalid mission velocity vector!");
+
+          // Set constant mission velocity
+          m_v_mission = m_args.const_mission_velocity;
+          debug("Mission Velocity: [%1.1f, %1,1f, %1.1f]",
+              m_v_mission(0), m_v_mission(1), m_v_mission(2));
+        }
       }
 
       //! Reserve entity identifiers.
@@ -293,8 +312,6 @@ namespace Control
       void
       onResourceAcquisition(void)
       {
-        // Initialize mission velocity matrix
-        m_v_mission.resizeAndFill(3,1,0);
       }
 
       //! Initialize resources.
