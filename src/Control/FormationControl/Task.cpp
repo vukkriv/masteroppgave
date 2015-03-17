@@ -142,7 +142,7 @@ namespace Control
 
         // Bind incoming IMC messages
         bind<IMC::FormPos>(this);
-        bind<IMC::DesiredVelocity>(this);
+        //bind<IMC::DesiredVelocity>(this);
 
       }
 
@@ -330,7 +330,7 @@ namespace Control
             m_v(1,uav) = msg->vy;
             m_v(2,uav) = msg->vz;
             spew("Updated position of vehicle '%s'", resolveSystemId(msg->getSource()));
-            printMatrix(m_x);
+            printMatrix(m_x,DEBUG_LEVEL_SPEW);
             break;
           }
         }
@@ -344,16 +344,19 @@ namespace Control
       {
         if (msg->getSourceEntity() == resolveEntity("Formation Guidance"))
         {
-          spew("Got Mission Velocity");
+          m_v_mission(0) = msg->u;
+          m_v_mission(1) = msg->v;
+          m_v_mission(2) = msg->w;
 
-          // TODO:
+          spew("Got Mission Velocity: [%1.1f, %1.1f, %1.1f]",
+              m_v_mission(0), m_v_mission(1), m_v_mission(2));
         }
       }
 
       //! Print matrix (for debuging)
       void
-      printMatrix(Matrix m){
-        if (getDebugLevel())
+      printMatrix(Matrix m, DUNE::Tasks::DebugLevel dbg = DEBUG_LEVEL_DEBUG){
+        if (getDebugLevel() >= dbg)
         {
           printf("[DEBUG Matrix]\n");
           for(int i = 0; i<m.rows(); i++ ){
@@ -394,7 +397,7 @@ namespace Control
         m_desired_velocity.w = velocity(2);
 
         dispatch(m_desired_velocity);
-        spew("Sent desired velocity: [%1.1f\t %1.1f\t %1.1f]",
+        spew("Sent desired velocity: [%1.1f, %1.1f, %1.1f]",
             m_desired_velocity.u, m_desired_velocity.v, m_desired_velocity.w);
       }
 
@@ -402,11 +405,11 @@ namespace Control
       void
       task(void)
       {
-        // Calculate z
+        // Calculate z_tilde
         calcDiffVariable(&m_z, m_D, m_x);
-
         Matrix z_tilde = m_z - m_z_d;
 
+        // Calculate external feedback, u
         Matrix u = Matrix(3,1,0);
         for (unsigned int link = 0; link < m_L; link++)
         {
@@ -414,6 +417,7 @@ namespace Control
         }
         // TODO: Implement collision avoidance
 
+        // Send internal feedback, tau
         sendDesiredVelocity(u + m_v_mission);
       }
     };
