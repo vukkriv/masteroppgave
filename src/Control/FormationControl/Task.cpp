@@ -391,6 +391,17 @@ namespace Control
         }
       }
 
+      void
+      consume(const IMC::ControlLoops* msg)
+      {
+        IMC::ControlLoops cloops;
+        cloops.enable = IMC::ControlLoops::CL_ENABLE;
+        cloops.mask = IMC::CL_SPEED;
+        cloops.scope_ref = msg->scope_ref;
+        dispatch(cloops);
+        debug("Sent ControlLoops");
+      }
+
       //! Print matrix (for debuging)
       void
       printMatrix(Matrix m, DUNE::Tasks::DebugLevel dbg = DEBUG_LEVEL_DEBUG){
@@ -434,6 +445,10 @@ namespace Control
         m_desired_velocity.u = velocity(0);
         m_desired_velocity.v = velocity(1);
         m_desired_velocity.w = velocity(2);
+
+        m_desired_velocity.flags |= IMC::DesiredVelocity::FL_SURGE;
+        m_desired_velocity.flags |= IMC::DesiredVelocity::FL_SWAY;
+        m_desired_velocity.flags |= IMC::DesiredVelocity::FL_HEAVE;
 
         dispatch(m_desired_velocity);
         spew("v_d: [%1.1f, %1.1f, %1.1f]",
