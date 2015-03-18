@@ -187,6 +187,8 @@ namespace Control
           (void)ts;
 
 
+          // Print end coordinates
+          debug("End coordinates: %f, %f", ts.end.x, ts.end.y);
 
           // Restart ref model
           initRefmodel(state);
@@ -197,7 +199,10 @@ namespace Control
         onPathActivation(void)
         {
           if (!m_args.use_controller)
+          {
+            requestDeactivation();
             return;
+          }
           // Activate velocity controller.
           enableControlLoops(IMC::CL_SPEED);
 
