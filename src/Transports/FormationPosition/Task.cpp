@@ -45,6 +45,12 @@ namespace Transports
     {
       //! Input type
       std::string type;
+      //! Reference latitude
+      double ref_lat;
+      //! Reference longitude
+      double ref_lon;
+      //! Reference height (above elipsoid)
+      double ref_hae;
     };
 
     struct Task: public DUNE::Tasks::Task
@@ -55,18 +61,42 @@ namespace Transports
       INPUT_TYPE m_type;
       //! Formation position to controller
       IMC::FormPos m_form_pos;
+      //! Localization origin (WGS-84)
+      fp64_t m_ref_lat, m_ref_lon;
+      fp32_t m_ref_hae;
+      bool m_ref_valid;
+
 
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Task(name, ctx),
-        m_type(RTK)
+        m_type(RTK),
+        m_ref_lat(0.0),
+        m_ref_lon(0.0),
+        m_ref_hae(0.0),
+        m_ref_valid(false)
       {
         param("Input Type", m_args.type)
         .defaultValue("RTK")
         .values("RTK,EstimatedState")
         .description("Input Type - RTK or EstimatedState");
+
+        param("Latitude", m_args.ref_lat)
+        .defaultValue("-999.0")
+        .units(Units::Degree)
+        .description("Reference Latitude");
+
+        param("Longitude", m_args.ref_lon)
+        .defaultValue("0.0")
+        .units(Units::Degree)
+        .description("Reference Longitude");
+
+        param("Height", m_args.ref_hae)
+        .defaultValue("0.0")
+        .units(Units::Meter)
+        .description("Reference Height (above elipsoid)");
 
         // Bind to incoming IMC messages
         bind<IMC::RtkFix>(this);
@@ -85,6 +115,20 @@ namespace Transports
         else
         {
           m_type = RTK;
+        }
+
+        if (paramChanged(m_args.ref_lat) || paramChanged(m_args.ref_lon) || paramChanged(m_args.ref_hae))
+        {
+          if (m_args.ref_lat == -999) // Reference not set; return
+            return;
+
+          inf("New reference position.");
+          m_ref_lat = Angles::radians(m_args.ref_lat);
+          m_ref_lon = Angles::radians(m_args.ref_lon);
+          m_ref_hae = m_args.ref_hae;
+          m_ref_valid = true;
+          inf("Reference LLH set: [Lat = %1.1f, Lon = %1.1f, Height = %1.1f]",
+              m_ref_lat, m_ref_lon, m_ref_hae);
         }
       }
 
@@ -157,9 +201,26 @@ namespace Transports
 
         if (m_type == ESTATE)
         {
-          m_form_pos.x = msg->x;
-          m_form_pos.y = msg->y;
-          m_form_pos.z = msg->z;
+          if (!m_ref_valid)
+          {
+            // Set main reference LLH to reference from first state received
+            m_ref_lat = msg->lat;
+            m_ref_lon = msg->lon;
+            m_ref_hae = msg->height;
+            m_ref_valid = true;
+            inf("Reference LLH set: [Lat = %1.1f, Lon = %1.1f, Height = %1.1f]",
+                m_ref_lat, m_ref_lon, m_ref_hae);
+          }
+
+          // Set displacement of agent reference from main reference LLH
+          WGS84::displacement(m_ref_lat, m_ref_lon, m_ref_hae,
+                              msg->lat, msg->lon, msg->height,
+                              &m_form_pos.x, &m_form_pos.y, &m_form_pos.z);
+          // Add displacement from agent reference
+          m_form_pos.x += msg->x;
+          m_form_pos.y += msg->y;
+          m_form_pos.z += msg->z;
+          // Set velocity
           m_form_pos.vx = msg->vx;
           m_form_pos.vy = msg->vy;
           m_form_pos.vz = msg->vz;
