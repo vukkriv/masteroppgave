@@ -363,12 +363,17 @@ namespace Control
             m_x(0,uav) = msg->x;
             m_x(1,uav) = msg->y;
             m_x(2,uav) = msg->z;
+            spew("Updated position of vehicle '%s'",
+                resolveSystemId(msg->getSource()));
+            printMatrix(m_x,DEBUG_LEVEL_SPEW);
+
             // Update velocity (only really needed from local vehicle)
             m_v(0,uav) = msg->vx;
             m_v(1,uav) = msg->vy;
             m_v(2,uav) = msg->vz;
-            spew("Updated position of vehicle '%s'", resolveSystemId(msg->getSource()));
-            printMatrix(m_x,DEBUG_LEVEL_SPEW);
+            spew("Updated velocity of vehicle '%s'",
+                resolveSystemId(msg->getSource()));
+            printMatrix(m_v,DEBUG_LEVEL_SPEW);
             break;
           }
         }
@@ -443,11 +448,12 @@ namespace Control
       sendDesiredVelocity(Matrix velocity)
       {
         m_desired_velocity.u = velocity(0);
-        m_desired_velocity.v = velocity(1);
-        m_desired_velocity.w = velocity(2);
-
         m_desired_velocity.flags |= IMC::DesiredVelocity::FL_SURGE;
+
+        m_desired_velocity.v = velocity(1);
         m_desired_velocity.flags |= IMC::DesiredVelocity::FL_SWAY;
+
+        m_desired_velocity.w = velocity(2);
         m_desired_velocity.flags |= IMC::DesiredVelocity::FL_HEAVE;
 
         dispatch(m_desired_velocity);
@@ -516,6 +522,12 @@ namespace Control
       void
       task(void)
       {
+        IMC::ControlLoops cloops;
+        cloops.enable = IMC::ControlLoops::CL_ENABLE;
+        cloops.mask = IMC::CL_SPEED;
+        //cloops.scope_ref = msg->scope_ref;
+        dispatch(cloops);
+        //debug("Sent ControlLoops");
         //Calculate external feedback
         Matrix u = formationVelocity() + collAvoidVelocity();
 
