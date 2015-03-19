@@ -223,7 +223,7 @@ namespace EKF
 	{
 
 
-	    meas[msg->sender-1] = msg->dist / 100.0;
+	    meas[msg->sender-1] = msg->dist / 100.0  ;
 	    m_meas = Matrix(meas,6,1);
 	    // MEASUREMENT UPDATE
 	    Math::Matrix k;
