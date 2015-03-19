@@ -117,6 +117,8 @@ namespace Control
         m_N(0),
         m_L(0)
       {
+        paramActive(Tasks::Parameter::SCOPE_MANEUVER,
+                    Tasks::Parameter::VISIBILITY_USER);
 
         param("Formation Controller", m_args.use_controller)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -347,6 +349,30 @@ namespace Control
       {
       }
 
+      void
+      onActivation(void)
+      {
+        IMC::ControlLoops cloops;
+        cloops.enable = IMC::ControlLoops::CL_ENABLE;
+        cloops.mask = IMC::CL_SPEED;
+        //cloops.scope_ref = msg->scope_ref;
+        dispatch(cloops);
+        inf("Sent ControlLoops enable SPEED");
+      }
+
+      void
+      onDeactivation(void)
+      {
+        Matrix zero_vel(3,1,0.0);
+        sendDesiredVelocity(zero_vel);
+
+        IMC::ControlLoops cloops;
+        cloops.enable = IMC::ControlLoops::CL_DISABLE;
+        cloops.mask = IMC::CL_SPEED;
+        dispatch(cloops);
+        inf("Sent ControlLoops disable SPEED");
+      }
+
       //! Consume Formation Position
       void
       consume(const IMC::FormPos* msg)
@@ -522,12 +548,9 @@ namespace Control
       void
       task(void)
       {
-        IMC::ControlLoops cloops;
-        cloops.enable = IMC::ControlLoops::CL_ENABLE;
-        cloops.mask = IMC::CL_SPEED;
-        //cloops.scope_ref = msg->scope_ref;
-        dispatch(cloops);
-        //debug("Sent ControlLoops");
+        if(!isActive())
+          return;
+
         //Calculate external feedback
         Matrix u = formationVelocity() + collAvoidVelocity();
 
