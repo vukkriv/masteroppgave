@@ -63,6 +63,8 @@ namespace Control
       //! Collision avoidance gain
       double collision_gain;
 
+      //! Maximum speed
+      double max_speed;
     };
 
     struct Task: public DUNE::Tasks::Periodic
@@ -74,7 +76,7 @@ namespace Control
       Systems m_uav_ID;
 
       //! Vehicle formation number
-      int m_i;
+      unsigned int m_i;
 
       //! Incidence matrix;
       Matrix m_D;
@@ -171,6 +173,12 @@ namespace Control
         .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Gain for collision avoidance potential field.");
 
+        param("Maximum Speed", m_args.max_speed)
+        .defaultValue("5.0")
+        .units(Units::MeterPerSecond)
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        .description("Maximum speed, i.e. controller saturation.");
 
 
         // Initialize mission velocity matrix
@@ -205,15 +213,19 @@ namespace Control
           else
           {
             m_N = m_args.formation_systems.size();
-            m_i = -1;
+            bool found_self = false;
             for (unsigned int uav = 0; uav < m_N; uav++)
             {
               debug("UAV %u: %s", uav, m_args.formation_systems[uav].c_str());
               m_uav_ID.push_back(this->resolveSystemName(m_args.formation_systems[uav]));
               if (m_uav_ID[uav] == this->getSystemId())
+              {
                 m_i = uav; // Set my formation id
+                found_self = true;
+              }
+
             }
-            if (m_i < 0)
+            if (!found_self)
               throw DUNE::Exception("Vehicle not found in formation vehicle list!");
           }
           // Resize and reset position and velocity matrices to fit number of vehicles
@@ -231,7 +243,7 @@ namespace Control
             throw DUNE::Exception("Desired formation positons matrix is empty!");
           if (m_args.desired_formation.size()%3 != 0)
             throw DUNE::Exception("Unvalid number of coordinates in desired formation positions matrix!");
-          if (m_args.desired_formation.size()/3 != m_N)
+          if ((unsigned int)m_args.desired_formation.size()/3 != m_N)
             throw DUNE::Exception("Incorrect number of vehicles in desired formation positions matrix!");
 
           // Resize desired formation matrix to fit number of vehicles
@@ -281,7 +293,7 @@ namespace Control
             // Scalar gain, set all to this
             m_delta = Matrix(m_L, 1, m_args.link_gains(0));
           }
-          else if (m_args.link_gains.size() != m_L)
+          else if ((unsigned int)m_args.link_gains.size() != m_L)
             throw DUNE::Exception("Link gains doesn't match number of links!");
           else
           {
@@ -448,6 +460,15 @@ namespace Control
         }
       }
 
+      //! Saturate
+      Matrix
+      saturate(Matrix vect, double sat)
+      {
+        if (vect.norm_2() > sat)
+          vect *= sat/vect.norm_2();
+        return vect;
+      }
+
       //! Calculate difference variables
       //! @param[in] z reference to matrix with difference variables
       //! @param[in] D incidence matrix
@@ -467,24 +488,6 @@ namespace Control
           }
           z->put(0,link,z_k);
         }
-      }
-
-      //! Dispatch desired velocity
-      void
-      sendDesiredVelocity(Matrix velocity)
-      {
-        m_desired_velocity.u = velocity(0);
-        m_desired_velocity.flags |= IMC::DesiredVelocity::FL_SURGE;
-
-        m_desired_velocity.v = velocity(1);
-        m_desired_velocity.flags |= IMC::DesiredVelocity::FL_SWAY;
-
-        m_desired_velocity.w = velocity(2);
-        m_desired_velocity.flags |= IMC::DesiredVelocity::FL_HEAVE;
-
-        dispatch(m_desired_velocity);
-        spew("v_d: [%1.1f, %1.1f, %1.1f]",
-            m_desired_velocity.u, m_desired_velocity.v, m_desired_velocity.w);
       }
 
       //! Calculate formation velocity
@@ -544,6 +547,24 @@ namespace Control
         return u_coll;
       }
 
+      //! Dispatch desired velocity
+      void
+      sendDesiredVelocity(Matrix velocity)
+      {
+        m_desired_velocity.u = velocity(0);
+        m_desired_velocity.flags |= IMC::DesiredVelocity::FL_SURGE;
+
+        m_desired_velocity.v = velocity(1);
+        m_desired_velocity.flags |= IMC::DesiredVelocity::FL_SWAY;
+
+        m_desired_velocity.w = velocity(2);
+        m_desired_velocity.flags |= IMC::DesiredVelocity::FL_HEAVE;
+
+        dispatch(m_desired_velocity);
+        spew("v_d: [%1.1f, %1.1f, %1.1f]",
+            m_desired_velocity.u, m_desired_velocity.v, m_desired_velocity.w);
+      }
+
       //! Main loop.
       void
       task(void)
@@ -551,11 +572,13 @@ namespace Control
         if(!isActive())
           return;
 
-        //Calculate external feedback
+        // Calculate external feedback, u
         Matrix u = formationVelocity() + collAvoidVelocity();
 
-        // Send internal feedback, tau
-        sendDesiredVelocity(u + m_v_mission);
+        // Calculate internal feedback, tau
+        Matrix tau = u + m_v_mission;
+        tau = saturate(tau,m_args.max_speed);
+        sendDesiredVelocity(tau);
       }
     };
   }
