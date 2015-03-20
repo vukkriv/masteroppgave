@@ -65,6 +65,9 @@ namespace Control
 
       //! Maximum speed
       double max_speed;
+
+      //! Memory factor when calculating average update rates
+      double mem_factor;
     };
 
     struct Task: public DUNE::Tasks::Periodic
@@ -106,6 +109,15 @@ namespace Control
       //! Mission velocity
       Matrix m_v_mission;
 
+      //! Last time position was updated for each vehicle
+      Matrix m_last_pos_update;
+
+      //! Rate [Hz] and delay [ms] of position update for each vehicle
+      Matrix m_pos_update_rate, m_pos_update_delay;
+
+      //! Memory factor when calculating average update rates
+      double m_mf;
+
       //! Desired velocity
       IMC::DesiredVelocity m_desired_velocity;
 
@@ -117,7 +129,8 @@ namespace Control
         DUNE::Tasks::Periodic(name, ctx),
         m_i(0),
         m_N(0),
-        m_L(0)
+        m_L(0),
+        m_mf(0)
       {
         paramActive(Tasks::Parameter::SCOPE_MANEUVER,
                     Tasks::Parameter::VISIBILITY_USER);
@@ -180,9 +193,13 @@ namespace Control
         .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Maximum speed, i.e. controller saturation.");
 
+        param("Memory Factor", m_args.mem_factor)
+        .defaultValue("0.95")
+        .description("Memory factor when calculating update rates.");
+
 
         // Initialize mission velocity matrix
-        m_v_mission.resizeAndFill(3,1,0);
+        //m_v_mission.resizeAndFill(3,1,0);
 
 
         // Bind incoming IMC messages
@@ -316,6 +333,7 @@ namespace Control
 
         printMatrix(m_z_d);
 
+
         if (paramChanged(m_args.const_mission_velocity))
         {
           inf("New constant mission velocity.");
@@ -328,6 +346,21 @@ namespace Control
           m_v_mission = m_args.const_mission_velocity;
           debug("Mission Velocity: [%1.1f, %1.1f, %1.1f]",
               m_v_mission(0), m_v_mission(1), m_v_mission(2));
+        }
+
+
+        if (paramChanged(m_args.mem_factor))
+        {
+          inf("New memory factor.");
+
+          if (m_args.mem_factor >= 1 || m_args.mem_factor < 0)
+          {
+            war("Invalid memory factor %1.1f; using default value 0.95.",
+                m_args.mem_factor);
+            m_mf = 0.95;
+          }
+          else
+            m_mf = m_args.mem_factor;
         }
       }
 
@@ -353,6 +386,10 @@ namespace Control
       void
       onResourceInitialization(void)
       {
+        // Initialize matrices
+        m_last_pos_update = Matrix(1, m_N, Clock::get());
+        m_pos_update_rate = Matrix(1, m_N, 0);
+        m_pos_update_delay = Matrix(1, m_N, 0);
       }
 
       //! Release resources.
@@ -391,27 +428,63 @@ namespace Control
       {
         spew("Got Formation Position");
 
+        static Matrix n_msg_rcv(1,m_N,0);
+
+        // TODO: stamp should be time of pos sent from source, not FormationPosition
+        double stamp = msg->getTimeStamp();
         bool id_found = false;
         for (unsigned int uav = 0; uav < m_N; uav++)
         {
           if (m_uav_ID[uav] == msg->getSource())
           {
             id_found = true;
+            n_msg_rcv(uav) += 1;
+
+            // Calculate update frequency and delay
+            double delay = (Clock::getSinceEpoch() - stamp)*1E3;
+            double diff = stamp - m_last_pos_update(uav);
+            if (diff > 0)
+            {
+              if (!m_pos_update_rate(uav))
+                m_pos_update_rate(uav) = 1/diff;
+              else
+                m_pos_update_rate(uav) = m_mf*m_pos_update_rate(uav) + (1-m_mf)/diff;
+            }
+            else
+            {
+              war("Received old FormPos! Diff = %f, Delay = %f",
+                  diff, delay);
+            }
+            m_last_pos_update(uav) = stamp;
+
+            if (!m_pos_update_delay(uav))
+              m_pos_update_delay(uav) = delay;
+            else
+              m_pos_update_delay(uav) = m_mf*m_pos_update_delay(uav) + (1-m_mf)*delay;
+
+            spew("Update frequency [Hz]:");
+            printMatrix(m_pos_update_rate,DEBUG_LEVEL_SPEW);
+            spew("Update delay [ms]:");
+            printMatrix(m_pos_update_delay,DEBUG_LEVEL_SPEW);
+
             // Update position
             m_x(0,uav) = msg->x;
             m_x(1,uav) = msg->y;
             m_x(2,uav) = msg->z;
             spew("Updated position of vehicle '%s'",
                 resolveSystemId(msg->getSource()));
-            printMatrix(m_x,DEBUG_LEVEL_SPEW);
+            //printMatrix(m_x,DEBUG_LEVEL_SPEW);
 
             // Update velocity (only really needed from local vehicle)
             m_v(0,uav) = msg->vx;
             m_v(1,uav) = msg->vy;
             m_v(2,uav) = msg->vz;
-            spew("Updated velocity of vehicle '%s'",
+            /*spew("Updated velocity of vehicle '%s'",
                 resolveSystemId(msg->getSource()));
-            printMatrix(m_v,DEBUG_LEVEL_SPEW);
+            printMatrix(m_v,DEBUG_LEVEL_SPEW);*/
+
+            spew("Number of messages received:");
+            printMatrix(n_msg_rcv,DEBUG_LEVEL_SPEW);
             break;
           }
         }
