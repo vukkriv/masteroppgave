@@ -373,7 +373,7 @@ namespace Transports
           if (m_udp_sock_rc_in != NULL)
           {
 
-            while (poll(0.0))
+            while (poll(0.01))
             {
 
               spew(DTR("Got data from ardpilot SIL."));
