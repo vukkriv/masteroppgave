@@ -198,9 +198,6 @@ namespace Control
         .description("Memory factor when calculating update rates.");
 
 
-        // Initialize mission velocity matrix
-        //m_v_mission.resizeAndFill(3,1,0);
-
 
         // Bind incoming IMC messages
         bind<IMC::FormPos>(this);
@@ -404,7 +401,6 @@ namespace Control
         IMC::ControlLoops cloops;
         cloops.enable = IMC::ControlLoops::CL_ENABLE;
         cloops.mask = IMC::CL_SPEED;
-        //cloops.scope_ref = msg->scope_ref;
         dispatch(cloops);
         inf("Sent ControlLoops enable SPEED");
       }
@@ -428,8 +424,6 @@ namespace Control
       {
         spew("Got Formation Position");
 
-        static Matrix n_msg_rcv(1,m_N,0);
-
         // TODO: stamp should be time of pos sent from source, not FormationPosition
         double stamp = msg->getTimeStamp();
         bool id_found = false;
@@ -438,7 +432,6 @@ namespace Control
           if (m_uav_ID[uav] == msg->getSource())
           {
             id_found = true;
-            n_msg_rcv(uav) += 1;
 
             // Calculate update frequency and delay
             double delay = (Clock::getSinceEpoch() - stamp)*1E3;
@@ -473,7 +466,7 @@ namespace Control
             m_x(2,uav) = msg->z;
             spew("Updated position of vehicle '%s'",
                 resolveSystemId(msg->getSource()));
-            //printMatrix(m_x,DEBUG_LEVEL_SPEW);
+            printMatrix(m_x,DEBUG_LEVEL_SPEW);
 
             // Update velocity (only really needed from local vehicle)
             m_v(0,uav) = msg->vx;
@@ -483,8 +476,6 @@ namespace Control
                 resolveSystemId(msg->getSource()));
             printMatrix(m_v,DEBUG_LEVEL_SPEW);*/
 
-            spew("Number of messages received:");
-            printMatrix(n_msg_rcv,DEBUG_LEVEL_SPEW);
             break;
           }
         }
