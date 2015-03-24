@@ -123,12 +123,19 @@ namespace Transports
             return;
 
           inf("New reference position.");
+
+          // Check validity
+          if (std::abs(m_args.ref_lat) > 90)
+            throw DUNE::Exception("Unvalid reference latitude!");
+          if (std::abs(m_args.ref_lon) > 180)
+            throw DUNE::Exception("Unvalid reference longitude!");
+
           m_ref_lat = Angles::radians(m_args.ref_lat);
           m_ref_lon = Angles::radians(m_args.ref_lon);
           m_ref_hae = m_args.ref_hae;
           m_ref_valid = true;
-          inf("Reference LLH set: [Lat = %1.1f, Lon = %1.1f, Height = %1.1f]",
-              m_ref_lat, m_ref_lon, m_ref_hae);
+          inf("Reference LLH set: [Lat = %f, Lon = %f, Height = %.1f]",
+              Angles::degrees(m_ref_lat), Angles::degrees(m_ref_lon), m_ref_hae);
         }
       }
 
@@ -179,9 +186,13 @@ namespace Transports
             case IMC::RtkFix::RTK_FLOAT:
               break;
             case IMC::RtkFix::RTK_FIXED:
+              // Set time stamp
+              m_form_pos.ots = msg->getTimeStamp();
+              // Set position
               m_form_pos.x = msg->n;
               m_form_pos.y = msg->e;
               m_form_pos.z = msg->d;
+              // Set velocity
               m_form_pos.vx = msg->v_n;
               m_form_pos.vy = msg->v_e;
               m_form_pos.vz = msg->v_d;
@@ -208,10 +219,11 @@ namespace Transports
             m_ref_lon = msg->lon;
             m_ref_hae = msg->height;
             m_ref_valid = true;
-            inf("Reference LLH set: [Lat = %1.1f, Lon = %1.1f, Height = %1.1f]",
-                m_ref_lat, m_ref_lon, m_ref_hae);
+            inf("Reference LLH set: [Lat = %f, Lon = %f, Height = %.1f]",
+                Angles::degrees(m_ref_lat), Angles::degrees(m_ref_lon), m_ref_hae);
           }
-
+          // Set time stamp
+          m_form_pos.ots = msg->getTimeStamp();
           // Set displacement of agent reference from main reference LLH
           WGS84::displacement(m_ref_lat, m_ref_lon, m_ref_hae,
                               msg->lat, msg->lon, msg->height,
@@ -224,6 +236,9 @@ namespace Transports
           m_form_pos.vx = msg->vx;
           m_form_pos.vy = msg->vy;
           m_form_pos.vz = msg->vz;
+
+          spew("ES: Height = %1.1f, z = %1.1f",
+              msg->height, msg->z);
 
           dispatch(m_form_pos);
           spew("Sent Formation Position");

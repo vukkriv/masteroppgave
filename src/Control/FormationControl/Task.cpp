@@ -424,8 +424,7 @@ namespace Control
       {
         spew("Got Formation Position");
 
-        // TODO: stamp should be time of pos sent from source, not FormationPosition
-        double stamp = msg->getTimeStamp();
+        double stamp = msg->ots;
         bool id_found = false;
         for (unsigned int uav = 0; uav < m_N; uav++)
         {
