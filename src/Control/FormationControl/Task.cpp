@@ -68,6 +68,9 @@ namespace Control
 
       //! Memory factor when calculating average update rates
       double mem_factor;
+
+      //! Threshold for delay on positioning updates
+      double delay_threshold;
     };
 
     struct Task: public DUNE::Tasks::Periodic
@@ -196,6 +199,11 @@ namespace Control
         param("Memory Factor", m_args.mem_factor)
         .defaultValue("0.95")
         .description("Memory factor when calculating update rates.");
+
+        param("Delay Threshold", m_args.delay_threshold)
+        .defaultValue("100")
+        .units(Units::Millisecond)
+        .description("Threshold for issuing warnings on delay in position updates.");
 
 
 
@@ -433,7 +441,7 @@ namespace Control
             id_found = true;
 
             // Calculate update frequency and delay
-            double delay = (Clock::getSinceEpoch() - stamp)*1E3;
+            double delay_ms = (Clock::getSinceEpoch() - stamp)*1E3;
             double diff = stamp - m_last_pos_update(uav);
             if (diff > 0)
             {
@@ -444,15 +452,21 @@ namespace Control
             }
             else
             {
-              war("Received old FormPos! Diff = %f, Delay = %f",
-                  diff, delay);
+              war("Received old FormPos! Diff = %f s , Delay = %f ms",
+                  diff, delay_ms);
             }
             m_last_pos_update(uav) = stamp;
 
+            if (delay_ms > m_args.delay_threshold)
+            {
+              war("Positioning delay for vehicle '%s' above threshold: %f",
+                  resolveSystemId(msg->getSource()), delay_ms);
+            }
+
             if (!m_pos_update_delay(uav))
-              m_pos_update_delay(uav) = delay;
+              m_pos_update_delay(uav) = delay_ms;
             else
-              m_pos_update_delay(uav) = m_mf*m_pos_update_delay(uav) + (1-m_mf)*delay;
+              m_pos_update_delay(uav) = m_mf*m_pos_update_delay(uav) + (1-m_mf)*delay_ms;
 
             spew("Update frequency [Hz]:");
             printMatrix(m_pos_update_rate,DEBUG_LEVEL_SPEW);
