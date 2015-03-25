@@ -39,8 +39,6 @@ namespace Maneuver
       //! Formation coordination message
       IMC::FormCoord m_form_coord;
 
-      IMC::PlanControl m_plan_ctrl;
-
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
@@ -90,20 +88,6 @@ namespace Maneuver
       onResourceRelease(void)
       {
       }
-
-      void
-      consume(const IMC::PlanGeneration* msg)
-      {
-        trace("Got PlanGeneration \nfrom '%s' at '%s'",
-              resolveEntity(msg->getSourceEntity()).c_str(),
-              resolveSystemId(msg->getSource()));
-        msg->toText(std::cout);
-      }
-
-
-
-
-
 
       void
       consume(const IMC::PlanDB* msg)
@@ -219,30 +203,6 @@ namespace Maneuver
         }
       }
 
-
-
-
-
-
-      void
-      consume(const IMC::PlanManeuver* msg)
-      {
-        trace("Got PlanManeuver \nfrom '%s' at '%s'",
-              resolveEntity(msg->getSourceEntity()).c_str(),
-              resolveSystemId(msg->getSource()));
-        msg->toText(std::cout);
-      }
-
-      void
-      consume(const IMC::PlanTransition* msg)
-      {
-        trace("Got PlanTransition \nfrom '%s' at '%s'",
-              resolveEntity(msg->getSourceEntity()).c_str(),
-              resolveSystemId(msg->getSource()));
-        msg->toText(std::cout);
-      }
-
-
       void
       consume(const IMC::FormCoord* msg)
       {
@@ -253,19 +213,35 @@ namespace Maneuver
         switch (msg->flag)
         {
           case IMC::FormCoord::FC_START:
+          {
             debug("Received Formation Start");
-            //TODO: Load and execute plan where Formation Controller is activated
-            break;
-          case IMC::FormCoord::FC_ABORT:
-            war("Received Formation Abort");
+            // TODO: Load and execute plan where Formation Controller is activated
+            IMC::EntityParameter parm;
+            parm.name = "Active";
+            parm.value = "true";
 
-            m_plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
-            m_plan_ctrl.op = IMC::PlanControl::PC_STOP;
-            dispatch(m_plan_ctrl);
+            IMC::SetEntityParameters eparm;
+            eparm.name = "Formation Controller";
+            eparm.params.push_back(parm);
+
+            dispatch(eparm);
             break;
+          }
+          case IMC::FormCoord::FC_ABORT:
+          {
+            war("Received Formation Abort");
+            IMC::PlanControl plan_ctrl;
+            plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
+            plan_ctrl.op = IMC::PlanControl::PC_STOP;
+            dispatch(plan_ctrl);
+            break;
+          }
           case IMC::FormCoord::FC_FINISHED:
+          {
             debug("Received Formation Finished");
+            // TODO: Notify that plan finished
             break;
+          }
         }
       }
 
