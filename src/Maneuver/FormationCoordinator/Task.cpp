@@ -166,7 +166,7 @@ namespace Maneuver
         trace("Got PlanControl \nfrom '%s' at '%s'",
               resolveEntity(msg->getSourceEntity()).c_str(),
               resolveSystemId(msg->getSource()));
-        msg->toText(std::cout);
+        //msg->toText(std::cout);
 
         // Check if system was destination
         if (msg->getDestination() != this->getSystemId())
@@ -216,15 +216,17 @@ namespace Maneuver
           {
             debug("Received Formation Start");
             // TODO: Load and execute plan where Formation Controller is activated
+
+            // Temp hack where Formation Controller is simply activated
             IMC::EntityParameter parm;
             parm.name = "Active";
             parm.value = "true";
-
             IMC::SetEntityParameters eparm;
             eparm.name = "Formation Controller";
             eparm.params.push_back(parm);
-
             dispatch(eparm);
+            // Hack end
+
             break;
           }
           case IMC::FormCoord::FC_ABORT:
@@ -234,6 +236,17 @@ namespace Maneuver
             plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
             plan_ctrl.op = IMC::PlanControl::PC_STOP;
             dispatch(plan_ctrl);
+
+            // Temp hack where Formation Controller is simply deactivated
+            IMC::EntityParameter parm;
+            parm.name = "Active";
+            parm.value = "false";
+            IMC::SetEntityParameters eparm;
+            eparm.name = "Formation Controller";
+            eparm.params.push_back(parm);
+            dispatch(eparm);
+            // Hack end
+
             break;
           }
           case IMC::FormCoord::FC_FINISHED:

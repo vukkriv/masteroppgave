@@ -210,6 +210,7 @@ namespace Control
         // Bind incoming IMC messages
         bind<IMC::FormPos>(this);
         //bind<IMC::DesiredVelocity>(this);
+        bind<IMC::ControlLoops>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -515,11 +516,21 @@ namespace Control
       consume(const IMC::ControlLoops* msg)
       {
         IMC::ControlLoops cloops;
+        debug("Got ControlLoops from '%s' at '%s'",
+            resolveEntity(msg->getSourceEntity()).c_str(),
+            resolveSystemId(msg->getSource()));
+        if (msg->enable == IMC::ControlLoops::CL_DISABLE)
+        {
+          if (msg->mask & IMC::CL_SPEED)
+            debug("Got DISABLE SPEED");
+        }
+        /*
         cloops.enable = IMC::ControlLoops::CL_ENABLE;
         cloops.mask = IMC::CL_SPEED;
         cloops.scope_ref = msg->scope_ref;
         dispatch(cloops);
         debug("Sent ControlLoops");
+        */
       }
 
       //! Print matrix (for debuging)
