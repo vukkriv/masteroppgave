@@ -111,10 +111,12 @@ namespace Transports
         if (m_args.type == "EstimatedState")
         {
           m_type = ESTATE;
+          inf("Entered ESTATE mode");
         }
         else
         {
           m_type = RTK;
+          inf("Entered RTK mode");
         }
 
         if (paramChanged(m_args.ref_lat) || paramChanged(m_args.ref_lon) || paramChanged(m_args.ref_hae))

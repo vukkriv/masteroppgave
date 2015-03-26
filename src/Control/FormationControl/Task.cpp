@@ -147,53 +147,53 @@ namespace Control
         param("Vehicle List", m_args.formation_systems)
         .defaultValue("")
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        //.scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("System name list of the formation vehicles.");
 
         param("Desired Formation", m_args.desired_formation)
         .defaultValue("0.0, 0.0, 0.0")
         .units(Units::Meter)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        //.scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Desired formation positions matrix.");
 
         param("Incidence Matrix", m_args.incidence_matrix)
         .defaultValue("0")
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        //.scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Incidence matrix.");
 
         param("Link Gains", m_args.link_gains)
         .defaultValue("1.0")
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        //.scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Gains assigned to formation links.");
 
         param("Constant Mission Velocity", m_args.const_mission_velocity)
         .defaultValue("0.0, 0.0, 0.0")
         .units(Units::MeterPerSecond)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        //.scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Constant mission velocity.");
 
         param("Collision Avoidance Radius", m_args.collision_radius)
         .defaultValue("5.0")
         .units(Units::Meter)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        //.scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Radius for collision avoidance potential field.");
 
         param("Collision Avoidance Gain", m_args.collision_gain)
         .defaultValue("0.0")
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        //.scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Gain for collision avoidance potential field.");
 
         param("Maximum Speed", m_args.max_speed)
         .defaultValue("5.0")
         .units(Units::MeterPerSecond)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        //.scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Maximum speed, i.e. controller saturation.");
 
         param("Memory Factor", m_args.mem_factor)
@@ -522,7 +522,17 @@ namespace Control
         if (msg->enable == IMC::ControlLoops::CL_DISABLE)
         {
           if (msg->mask & IMC::CL_SPEED)
+          {
             debug("Got DISABLE SPEED");
+            if (isActive())
+            {
+              IMC::ControlLoops cloops;
+              cloops.enable = IMC::ControlLoops::CL_ENABLE;
+              cloops.mask = IMC::CL_SPEED;
+              dispatch(cloops);
+              inf("Sent ControlLoops enable SPEED");
+            }
+          }
         }
         /*
         cloops.enable = IMC::ControlLoops::CL_ENABLE;
