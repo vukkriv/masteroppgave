@@ -122,7 +122,8 @@ namespace Control
       double m_mf;
 
       //! Desired velocity
-      IMC::DesiredVelocity m_desired_velocity;
+      //IMC::DesiredVelocity m_desired_velocity;
+      IMC::TranslationalSetpoint m_desired_velocity;
 
 
       //! Constructor.
@@ -650,13 +651,14 @@ namespace Control
       sendDesiredVelocity(Matrix velocity)
       {
         m_desired_velocity.u = velocity(0);
-        m_desired_velocity.flags |= IMC::DesiredVelocity::FL_SURGE;
+        //m_desired_velocity.flags |= IMC::DesiredVelocity::FL_SURGE;
+        m_desired_velocity.flags |= IMC::TranslationalSetpoint::FL_SURGE;
 
         m_desired_velocity.v = velocity(1);
-        m_desired_velocity.flags |= IMC::DesiredVelocity::FL_SWAY;
+        m_desired_velocity.flags |= IMC::TranslationalSetpoint::FL_SWAY;
 
         m_desired_velocity.w = velocity(2);
-        m_desired_velocity.flags |= IMC::DesiredVelocity::FL_HEAVE;
+        m_desired_velocity.flags |= IMC::TranslationalSetpoint::FL_HEAVE;
 
         dispatch(m_desired_velocity);
         spew("v_d: [%1.1f, %1.1f, %1.1f]",
