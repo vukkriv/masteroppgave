@@ -210,7 +210,7 @@ namespace Control
 
         // Bind incoming IMC messages
         bind<IMC::FormPos>(this);
-        //bind<IMC::DesiredVelocity>(this);
+        bind<IMC::DesiredVelocity>(this);
         bind<IMC::ControlLoops>(this);
       }
 
@@ -502,15 +502,12 @@ namespace Control
       void
       consume(const IMC::DesiredVelocity* msg)
       {
-        if (msg->getSourceEntity() == resolveEntity("Formation Guidance"))
-        {
-          m_v_mission(0) = msg->u;
-          m_v_mission(1) = msg->v;
-          m_v_mission(2) = msg->w;
+        m_v_mission(0) = msg->u;
+        m_v_mission(1) = msg->v;
+        m_v_mission(2) = msg->w;
 
-          spew("Got Mission Velocity: [%1.1f, %1.1f, %1.1f]",
-              m_v_mission(0), m_v_mission(1), m_v_mission(2));
-        }
+        spew("Got Mission Velocity: [%1.1f, %1.1f, %1.1f]",
+            m_v_mission(0), m_v_mission(1), m_v_mission(2));
       }
 
       void

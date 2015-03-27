@@ -200,6 +200,7 @@ namespace Control
         {
           if (!m_args.use_controller)
           {
+            debug("Path activated, but not active: Requesting deactivation");
             requestDeactivation();
             return;
           }
@@ -245,7 +246,7 @@ namespace Control
             m_refmodel_x.put(3,0,vel);
           }
 
-          debug("Vel norm: %f", m_refmodel_x.get(3,5,0,0).norm_2());
+          spew("Vel norm: %f", m_refmodel_x.get(3,5,0,0).norm_2());
 
 
 
@@ -282,7 +283,7 @@ namespace Control
           m_velocity.flags = IMC::DesiredVelocity::FL_SURGE | IMC::DesiredVelocity::FL_SWAY | IMC::DesiredVelocity::FL_HEAVE;
 
           dispatch(m_velocity);
-          debug("Sent vel data.");
+          spew("Sent vel data.");
         }
       };
     }
