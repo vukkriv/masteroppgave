@@ -50,6 +50,7 @@ namespace Maneuver
         bind<IMC::PlanDB>(this);
         //bind<IMC::PlanManeuver>(this);
         //bind<IMC::PlanTransition>(this);
+        bind<IMC::Abort>(this);
         bind<IMC::FormCoord>(this);
       }
 
@@ -153,7 +154,8 @@ namespace Maneuver
 
             debug("Plan started with Formation Controller active!");
             // Notify vehicles in formation
-            m_form_coord.flag = IMC::FormCoord::FC_START;
+            m_form_coord.type = IMC::FormCoord::FCT_REQUEST;
+            m_form_coord.op = IMC::FormCoord::FCOP_START;
             dispatch(m_form_coord);
             debug("Sent Formation Start");
         }
@@ -186,7 +188,7 @@ namespace Maneuver
         if (msg->op == IMC::PlanControl::PC_START)
         {
           debug("PlanControl START, requesting plan from DB...");
-          // Request plan details from Plan Database
+          // Request plan details from Plan Database to check if Formation Control is activated
           IMC::PlanDB plan_db;
           plan_db.type = IMC::PlanDB::DBT_REQUEST;
           plan_db.op = IMC::PlanDB::DBOP_GET;
@@ -197,10 +199,22 @@ namespace Maneuver
         {
           debug("Plan stopped");
           // Notify vehicles in formation
-          m_form_coord.flag = IMC::FormCoord::FC_ABORT;
+          m_form_coord.type = IMC::FormCoord::FCT_REQUEST;
+          m_form_coord.op = IMC::FormCoord::FCOP_STOP;
           dispatch(m_form_coord);
-          debug("Sent Formation Abort");
+          debug("Sent Formation Stop");
         }
+      }
+
+      void
+      consume(const IMC::Abort* msg)
+      {
+        war("Received Abort!");
+        // Notify vehicles in formation
+        m_form_coord.type = IMC::FormCoord::FCT_REQUEST;
+        m_form_coord.op = IMC::FormCoord::FCOP_ABORT;
+        dispatch(m_form_coord);
+        debug("Sent Formation Abort");
       }
 
       void
@@ -210,118 +224,140 @@ namespace Maneuver
         if (msg->getSource() == getSystemId())
           return;
 
-        switch (msg->flag)
+        if (msg->type == IMC::FormCoord::FCT_REQUEST)
         {
-          case IMC::FormCoord::FC_START:
+          debug("Received Formation Request");
+
+          // Handle request
+          switch (msg->op)
           {
-            debug("Received Formation Start");
-            // TODO: Load and execute plan where Formation Controller is activated
+            case IMC::FormCoord::FCOP_ABORT:
+            {
+              war("Formation Abort!");
+              // Send abort
+              IMC::Abort plan_abort;
+              dispatch(plan_abort);
 
-            /*
-            // Temp hack where Formation Controller is simply activated
-            IMC::EntityParameter parm;
-            parm.name = "Active";
-            parm.value = "true";
-            IMC::SetEntityParameters eparm;
-            eparm.name = "Formation Controller";
-            eparm.params.push_back(parm);
-            dispatch(eparm);
-            // Hack end
-            */
+              break;
+            }
+            case IMC::FormCoord::FCOP_START:
+            {
+              debug("Formation Start");
 
-            // Create plan set request
-            IMC::PlanDB plan_db;
-            plan_db.type = IMC::PlanDB::DBT_REQUEST;
-            plan_db.op = IMC::PlanDB::DBOP_SET;
-            plan_db.plan_id = "formationPlan";
-            plan_db.request_id = 0;
+              /*
+              // Temp hack where Formation Controller is simply activated
+              IMC::EntityParameter parm;
+              parm.name = "Active";
+              parm.value = "true";
+              IMC::SetEntityParameters eparm;
+              eparm.name = "Formation Controller";
+              eparm.params.push_back(parm);
+              dispatch(eparm);
+              // Hack end
+              */
 
-              // Create plan specification
-              IMC::PlanSpecification plan_spec;
-              plan_spec.plan_id = plan_db.plan_id;
-              plan_spec.start_man_id = 1;
-              plan_spec.description = "Plan activating FormationController";
+              // Create plan set request
+              IMC::PlanDB plan_db;
+              plan_db.type = IMC::PlanDB::DBT_REQUEST;
+              plan_db.op = IMC::PlanDB::DBOP_SET;
+              plan_db.plan_id = "formationPlan";
+              plan_db.request_id = 0;
 
-                // Create plan maneuver
-                IMC::PlanManeuver man_spec;
-                man_spec.maneuver_id = 1;
-                  /*
-                  // Create custom maneuver (not supported?!)
-                  IMC::CustomManeuver c_man;
-                  c_man.name = "formationManeuver";
-                  */
+                // Create plan specification
+                IMC::PlanSpecification plan_spec;
+                plan_spec.plan_id = plan_db.plan_id;
+                plan_spec.start_man_id = 1;
+                plan_spec.description = "Plan activating FormationController";
 
-                  // Create some maneuver
-                  IMC::Goto c_man;
+                  // Create plan maneuver
+                  IMC::PlanManeuver man_spec;
+                  man_spec.maneuver_id = 1;
+                    /*
+                    // Create custom maneuver (not supported?!)
+                    IMC::CustomManeuver c_man;
+                    c_man.name = "formationManeuver";
+                    */
 
-                man_spec.data.set(c_man);
+                    // Create some maneuver
+                    IMC::Goto c_man;
 
-                  // Create start actions
-                  IMC::SetEntityParameters eparam_start;
-                  eparam_start.name = "Formation Controller";
-                    IMC::EntityParameter param_t;
-                    param_t.name = "Active";
-                    param_t.value = "true";
+                  man_spec.data.set(c_man);
 
-                  eparam_start.params.push_back(param_t);
+                    // Create start actions
+                    IMC::SetEntityParameters eparam_start;
+                    eparam_start.name = "Formation Controller";
+                      IMC::EntityParameter param_t;
+                      param_t.name = "Active";
+                      param_t.value = "true";
 
-                man_spec.start_actions.push_back(eparam_start);
+                    eparam_start.params.push_back(param_t);
 
-                  // Create end actions
-                  IMC::SetEntityParameters eparam_stop;
-                  eparam_start.name = "Formation Controller";
-                    IMC::EntityParameter param_f;
-                    param_f.name = "Active";
-                    param_f.value = "false";
+                  man_spec.start_actions.push_back(eparam_start);
 
-                  eparam_start.params.push_back(param_f);
+                    // Create end actions
+                    IMC::SetEntityParameters eparam_stop;
+                    eparam_start.name = "Formation Controller";
+                      IMC::EntityParameter param_f;
+                      param_f.name = "Active";
+                      param_f.value = "false";
 
-                man_spec.end_actions.push_back(eparam_stop);
+                    eparam_start.params.push_back(param_f);
 
-              plan_spec.maneuvers.push_back(man_spec);
+                  man_spec.end_actions.push_back(eparam_stop);
 
-            plan_db.arg.set(plan_spec);
+                plan_spec.maneuvers.push_back(man_spec);
 
-            // Send set plan request
-            dispatch(plan_db);
+              plan_db.arg.set(plan_spec);
 
-            // Create and send plan start request
-            IMC::PlanControl plan_ctrl;
-            plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
-            plan_ctrl.op = IMC::PlanControl::PC_START;
-            plan_ctrl.plan_id = plan_spec.plan_id;
-            plan_ctrl.request_id = 0;
-            plan_ctrl.arg.set(plan_spec);
-            dispatch(plan_ctrl);
+              // Send set plan request
+              dispatch(plan_db);
 
-            break;
+              // Create and send plan start request
+              IMC::PlanControl plan_ctrl;
+              plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
+              plan_ctrl.op = IMC::PlanControl::PC_START;
+              plan_ctrl.plan_id = plan_spec.plan_id;
+              plan_ctrl.request_id = 0;
+              plan_ctrl.arg.set(plan_spec);
+              dispatch(plan_ctrl);
+
+              break;
+            }
+            case IMC::FormCoord::FCOP_STOP:
+            {
+              debug("Received Formation Stop");
+              // Send request to stop plan
+              IMC::PlanControl plan_ctrl;
+              plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
+              plan_ctrl.op = IMC::PlanControl::PC_STOP;
+              dispatch(plan_ctrl);
+
+              /*
+              // Temp hack where Formation Controller is simply deactivated
+              IMC::EntityParameter parm;
+              parm.name = "Active";
+              parm.value = "false";
+              IMC::SetEntityParameters eparm;
+              eparm.name = "Formation Controller";
+              eparm.params.push_back(parm);
+              dispatch(eparm);
+              // Hack end
+              */
+
+              break;
+            }
+            case IMC::FormCoord::FCOP_FINISHED:
+            {
+              debug("Received Formation Finished");
+              // TODO: Notify that plan finished
+              break;
+            }
           }
-          case IMC::FormCoord::FC_ABORT:
-          {
-            war("Received Formation Abort");
-            IMC::PlanControl plan_ctrl;
-            plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
-            plan_ctrl.op = IMC::PlanControl::PC_STOP;
-            dispatch(plan_ctrl);
-
-            // Temp hack where Formation Controller is simply deactivated
-            IMC::EntityParameter parm;
-            parm.name = "Active";
-            parm.value = "false";
-            IMC::SetEntityParameters eparm;
-            eparm.name = "Formation Controller";
-            eparm.params.push_back(parm);
-            dispatch(eparm);
-            // Hack end
-
-            break;
-          }
-          case IMC::FormCoord::FC_FINISHED:
-          {
-            debug("Received Formation Finished");
-            // TODO: Notify that plan finished
-            break;
-          }
+        } // End handle request
+        else
+        {
+          debug("Received Formation Reply");
+          // TODO: Handle reply
         }
       }
 
