@@ -43,6 +43,7 @@ namespace Control
       {
         bool use_controller;
         double max_speed;
+        bool use_refmodel;
         double refmodel_max_speed;
         double refmodel_omega_n;
         double refmodel_xi;
@@ -75,12 +76,16 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .defaultValue("false")
-          .description("Enable Velocoty Controller");
+          .description("Enable Velocity Controller");
 
           param("Max Speed", m_args.max_speed)
             .defaultValue("5.0")
             .units(Units::MeterPerSecond)
             .description("Max speed of the vehicle");
+
+          param("Use Reference Model", m_args.use_refmodel)
+          .defaultValue("true")
+          .description("Enable Reference Model.");
 
           param("Reference Model - Max Speed", m_args.refmodel_max_speed)
           .defaultValue("3.0");
@@ -184,7 +189,7 @@ namespace Control
         onPathStartup(const IMC::EstimatedState& state, const TrackingState& ts)
         {
 
-          (void)ts;
+          //(void)ts;
 
 
           // Print end coordinates
@@ -220,66 +225,60 @@ namespace Control
           if (!m_args.use_controller)
             return;
 
+          // Get current position
+          Matrix x = Matrix(3, 1, 0.0);
+          x(0) = state.x;
+          x(1) = state.y;
+          x(2) = state.z;
+          trace("x:\t [%1.2f, %1.2f, %1.2f]",
+              state.x, state.y, state.z);
 
-          /*
-           *
-           * Calculates input (setpoint)
-           * NB: There is a serious bug in height calculation.
-           */
-          Matrix x_d = Matrix(3,1, 0.0);
+          // Get target position
+          Matrix x_d = Matrix(3, 1, 0.0);
           x_d(0) = ts.end.x;
           x_d(1) = ts.end.y;
           x_d(2) = -ts.end.z; // NEU?!
-
-          // Print current pos and desired pos
-          trace("x:\t [%1.2f, %1.2f, %1.2f]",
-              state.x, state.y, state.z);
           trace("x_d:\t [%1.2f, %1.2f, %1.2f]",
               x_d(0), x_d(1), x_d(2));
 
+          Matrix vel = Matrix(3,1, 0.0);
 
-          // Update reference
-          m_refmodel_x += ts.delta * (m_refmodel_A * m_refmodel_x + m_refmodel_B * x_d);
-
-          // Saturate velocity
-          Matrix vel = m_refmodel_x.get(3,5,0,0);
-
-
-          if( vel.norm_2() > m_args.refmodel_max_speed )
+          if (m_args.use_refmodel)
           {
-            vel = m_args.refmodel_max_speed * vel / vel.norm_2();
+            // Update reference
+            m_refmodel_x += ts.delta * (m_refmodel_A * m_refmodel_x + m_refmodel_B * x_d);
 
-            m_refmodel_x.put(3,0,vel);
+            // Saturate reference velocity
+            vel = m_refmodel_x.get(3,5,0,0);
+            if( vel.norm_2() > m_args.refmodel_max_speed )
+            {
+              vel = m_args.refmodel_max_speed * vel / vel.norm_2();
+              m_refmodel_x.put(3,0,vel);
+            }
+            spew("Vel norm: %f", m_refmodel_x.get(3,5,0,0).norm_2());
+
+            // Print reference pos and vel
+            trace("x_r:\t [%1.2f, %1.2f, %1.2f]",
+                m_refmodel_x(0), m_refmodel_x(1), m_refmodel_x(2));
+            trace("v_r:\t [%1.2f, %1.2f, %1.2f]",
+                m_refmodel_x(3), m_refmodel_x(4), m_refmodel_x(5));
+
+            // Head straight to reference
+            //vel(0) = m_refmodel_x(3) - m_args.Kp * (state.x - m_refmodel_x(0));
+            //vel(1) = m_refmodel_x(4) - m_args.Kp * (state.y - m_refmodel_x(1));
+            //vel(2) = m_refmodel_x(5) - m_args.Kp * (state.z - m_refmodel_x(2));
+            vel = m_refmodel_x.get(3,5,0,0) + m_args.Kp * (m_refmodel_x.get(0,2,0,0) - x);
+          }
+          else
+          {
+            // Head straight to target
+            //vel(0) = - m_args.Kp * (state.x - x_d(0));
+            //vel(1) = - m_args.Kp * (state.y - x_d(1));
+            //vel(2) = - m_args.Kp * (state.z - x_d(2));
+            vel = m_args.Kp * (x_d - x);
           }
 
-          spew("Vel norm: %f", m_refmodel_x.get(3,5,0,0).norm_2());
-
-          // Print reference pos and vel
-          trace("x_r:\t [%1.2f, %1.2f, %1.2f]",
-              m_refmodel_x(0), m_refmodel_x(1), m_refmodel_x(2));
-          trace("v_r:\t [%1.2f, %1.2f, %1.2f]",
-              m_refmodel_x(3), m_refmodel_x(4), m_refmodel_x(5));
-
-
-
-
-          // Move at a rate towards the target
-
-          // Head straight to target
-
-          vel(0) = m_refmodel_x(3) - m_args.Kp * (state.x - m_refmodel_x(0));
-          vel(1) = m_refmodel_x(4) - m_args.Kp * (state.y - m_refmodel_x(1));
-          vel(2) = m_refmodel_x(5) - m_args.Kp * (state.z - m_refmodel_x(2));
-
-
-          /*
-          vel = Matrix(3,1, 0.0);
-
-          vel(0) = - m_args.Kp * (state.x - ts.end.x);
-          vel(1) = - m_args.Kp * (state.y - ts.end.y);
-          vel(2) = - m_args.Kp * (state.z + ts.end.z);
-          */
-
+          // Saturate velocity
           if( vel.norm_2() > m_args.max_speed )
           {
             vel = m_args.max_speed * vel / vel.norm_2();
