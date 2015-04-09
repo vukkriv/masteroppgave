@@ -188,7 +188,7 @@ namespace Control
 
 
           // Print end coordinates
-          debug("End coordinates: %f, %f", ts.end.x, ts.end.y);
+          debug("End coordinates: [%f, %f, %f]", ts.end.x, ts.end.y, ts.end.z);
 
           // Restart ref model
           initRefmodel(state);
@@ -229,7 +229,13 @@ namespace Control
           Matrix x_d = Matrix(3,1, 0.0);
           x_d(0) = ts.end.x;
           x_d(1) = ts.end.y;
-          x_d(2) = ts.end.z;
+          x_d(2) = -ts.end.z; // NEU?!
+
+          // Print current pos and desired pos
+          trace("x:\t [%1.2f, %1.2f, %1.2f]",
+              state.x, state.y, state.z);
+          trace("x_d:\t [%1.2f, %1.2f, %1.2f]",
+              x_d(0), x_d(1), x_d(2));
 
 
           // Update reference
@@ -248,6 +254,12 @@ namespace Control
 
           spew("Vel norm: %f", m_refmodel_x.get(3,5,0,0).norm_2());
 
+          // Print reference pos and vel
+          trace("x_r:\t [%1.2f, %1.2f, %1.2f]",
+              m_refmodel_x(0), m_refmodel_x(1), m_refmodel_x(2));
+          trace("v_r:\t [%1.2f, %1.2f, %1.2f]",
+              m_refmodel_x(3), m_refmodel_x(4), m_refmodel_x(5));
+
 
 
 
@@ -261,11 +273,11 @@ namespace Control
 
 
           /*
-          Matrix vel = Matrix(3,1, 0.0);
+          vel = Matrix(3,1, 0.0);
 
           vel(0) = - m_args.Kp * (state.x - ts.end.x);
           vel(1) = - m_args.Kp * (state.y - ts.end.y);
-          vel(2) = - m_args.Kp * (state.z - ts.end.z);
+          vel(2) = - m_args.Kp * (state.z + ts.end.z);
           */
 
           if( vel.norm_2() > m_args.max_speed )
@@ -277,8 +289,12 @@ namespace Control
           m_velocity.v = vel(1);
           m_velocity.w = vel(2);
 
+          // Print desired velocity
+          trace("v_d:\t [%1.2f, %1.2f, %1.2f]",
+              m_velocity.u, m_velocity.v, m_velocity.w);
+
           // Todo: Add seperate altitude controller.
-          m_velocity.w = 0;
+          //m_velocity.w = 0;
 
           m_velocity.flags = IMC::DesiredVelocity::FL_SURGE | IMC::DesiredVelocity::FL_SWAY | IMC::DesiredVelocity::FL_HEAVE;
 
