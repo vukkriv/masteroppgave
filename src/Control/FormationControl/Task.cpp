@@ -71,6 +71,9 @@ namespace Control
 
       //! Threshold for delay on positioning updates
       double delay_threshold;
+
+      //! Hold current formation
+      bool hold_current_formation;
     };
 
     struct Task: public DUNE::Tasks::Periodic
@@ -88,8 +91,7 @@ namespace Control
       Matrix m_D;
 
       //! Number of agents and links
-      unsigned int m_N;
-      unsigned int m_L;
+      unsigned int m_N, m_L;
 
       //! Link gains
       Matrix m_delta;
@@ -206,10 +208,15 @@ namespace Control
         .units(Units::Millisecond)
         .description("Threshold for issuing warnings on delay in position updates.");
 
+        param("Hold Current Formation", m_args.hold_current_formation)
+        .defaultValue("false")
+        .description("Use current position of vehicles as desired formation");
+
 
 
         // Bind incoming IMC messages
         bind<IMC::FormPos>(this);
+        bind<IMC::FormCoord>(this);
         bind<IMC::DesiredVelocity>(this);
         bind<IMC::ControlLoops>(this);
       }
@@ -498,6 +505,29 @@ namespace Control
           war("Received FormPos from unknown vehicle '%s'", resolveSystemId(msg->getSource()));
       }
 
+      void
+      consume(const IMC::FormCoord* msg)
+      {
+        debug("Got FormCoord from system '%s' and entity '%s'.",
+              resolveSystemId(msg->getSource()),
+              resolveEntity(msg->getSourceEntity()).c_str());
+
+        // Ignore if not supposed to set desired formation from current vehicle positions
+        if (!m_args.hold_current_formation)
+          return;
+
+        // Check if request to start formation
+        if (msg->type == IMC::FormCoord::FCT_REQUEST && msg->op == IMC::FormCoord::FCOP_START)
+        {
+          inf("Using current vehicle positions as desired formation.");
+          // Set desired positions to current positions
+          m_x_c = m_x;
+          // Update desired difference variables matrix
+          calcDiffVariable(&m_z_d,m_D,m_x_c);
+          printMatrix(m_z_d);
+        }
+      }
+
       //! Consume Desired Velocity (mission velocity from FormationGuidance)
       void
       consume(const IMC::DesiredVelocity* msg)
@@ -513,7 +543,6 @@ namespace Control
       void
       consume(const IMC::ControlLoops* msg)
       {
-        IMC::ControlLoops cloops;
         debug("Got ControlLoops from '%s' at '%s'",
             resolveEntity(msg->getSourceEntity()).c_str(),
             resolveSystemId(msg->getSource()));
