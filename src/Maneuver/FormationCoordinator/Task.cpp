@@ -42,6 +42,9 @@ namespace Maneuver
       //! Last plan control state
       IMC::PlanControlState m_last_pcs;
 
+      //! Last estimated state
+      IMC::EstimatedState m_last_estate;
+
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
@@ -53,6 +56,7 @@ namespace Maneuver
         bind<IMC::Abort>(this);
         bind<IMC::PlanControlState>(this);
         bind<IMC::FormCoord>(this);
+        bind<IMC::EstimatedState>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -157,6 +161,9 @@ namespace Maneuver
             // Notify vehicles in formation
             m_form_coord.type = IMC::FormCoord::FCT_REQUEST;
             m_form_coord.op = IMC::FormCoord::FCOP_START;
+            m_form_coord.lat = m_last_estate.lat;
+            m_form_coord.lon = m_last_estate.lon;
+            m_form_coord.height = m_last_estate.height;
             dispatch(m_form_coord);
             debug("Sent Formation Start");
         }
@@ -247,8 +254,21 @@ namespace Maneuver
       }
 
       void
+      consume(const IMC::EstimatedState* estate)
+      {
+        spew("Saved EstimatedState \nfrom '%s' at '%s'",
+             resolveEntity(estate->getSourceEntity()).c_str(),
+             resolveSystemId(estate->getSource()));
+        // Save to send ref LLH if starting formation
+        m_last_estate = *estate;
+      }
+
+      void
       consume(const IMC::FormCoord* msg)
       {
+        debug("Got FormCoord \nfrom '%s' at '%s'",
+             resolveEntity(msg->getSourceEntity()).c_str(),
+             resolveSystemId(msg->getSource()));
         // Ignored if sent by self
         if (msg->getSource() == getSystemId())
           return;

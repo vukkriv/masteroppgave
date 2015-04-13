@@ -51,6 +51,8 @@ namespace Transports
       double ref_lon;
       //! Reference height (above elipsoid)
       double ref_hae;
+      //! Use leader LLH reference
+      bool use_leader_ref;
     };
 
     struct Task: public DUNE::Tasks::Task
@@ -98,9 +100,14 @@ namespace Transports
         .units(Units::Meter)
         .description("Reference Height (above elipsoid)");
 
+        param("Leader LLH Reference", m_args.use_leader_ref)
+        .defaultValue("false")
+        .description("Reference LLH is set from FormCoord from leader");
+
         // Bind to incoming IMC messages
         bind<IMC::RtkFix>(this);
         bind<IMC::EstimatedState>(this);
+        bind<IMC::FormCoord>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -136,7 +143,7 @@ namespace Transports
           m_ref_lon = Angles::radians(m_args.ref_lon);
           m_ref_hae = m_args.ref_hae;
           m_ref_valid = true;
-          inf("Reference LLH set: [Lat = %f, Lon = %f, Height = %.1f]",
+          inf("Ref. LLH set from ini: [Lat = %f, Lon = %f, Height = %.1f]",
               Angles::degrees(m_ref_lat), Angles::degrees(m_ref_lon), m_ref_hae);
         }
       }
@@ -209,20 +216,15 @@ namespace Transports
       consume(const IMC::EstimatedState* msg)
       {
         spew("Got Estimated State from system '%s' and entity '%s'.",
-                resolveSystemId(msg->getSource()),
-                resolveEntity(msg->getSourceEntity()).c_str());
+             resolveSystemId(msg->getSource()),
+             resolveEntity(msg->getSourceEntity()).c_str());
 
         if (m_type == ESTATE)
         {
           if (!m_ref_valid)
           {
-            // Set main reference LLH to reference from first state received
-            m_ref_lat = msg->lat;
-            m_ref_lon = msg->lon;
-            m_ref_hae = msg->height;
-            m_ref_valid = true;
-            inf("Reference LLH set: [Lat = %f, Lon = %f, Height = %.1f]",
-                Angles::degrees(m_ref_lat), Angles::degrees(m_ref_lon), m_ref_hae);
+            war("Ignored ESTATE; valid reference LLH not set!");
+            return;
           }
           // Set time stamp
           m_form_pos.ots = msg->getTimeStamp();
@@ -244,6 +246,30 @@ namespace Transports
 
           dispatch(m_form_pos);
           spew("Sent Formation Position");
+        }
+      }
+
+      void
+      consume(const IMC::FormCoord* msg)
+      {
+        debug("Got FormCoord from system '%s' and entity '%s'.",
+             resolveSystemId(msg->getSource()),
+             resolveEntity(msg->getSourceEntity()).c_str());
+
+        // Ignore if not supposed to set ref LLH from FormCoord
+        if (!m_args.use_leader_ref)
+          return;
+
+        // Check if request to start formation
+        if (msg->type == IMC::FormCoord::FCT_REQUEST && msg->op == IMC::FormCoord::FCOP_START)
+        {
+          // Set main reference LLH to reference from leader
+          m_ref_lat = msg->lat;
+          m_ref_lon = msg->lon;
+          m_ref_hae = msg->height;
+          m_ref_valid = true;
+          inf("Ref. LLH set from FormCoord: [Lat = %f, Lon = %f, Height = %.1f]",
+              Angles::degrees(m_ref_lat), Angles::degrees(m_ref_lon), m_ref_hae);
         }
       }
 
