@@ -37,6 +37,8 @@ namespace Control
     //! Vector for System Mapping.
     typedef std::vector<uint32_t> Systems;
 
+    const int UTC_SECS_2015 = 1420070400;
+
     struct Arguments
     {
       //! Use controller
@@ -126,6 +128,7 @@ namespace Control
       //! Desired velocity
       //IMC::DesiredVelocity m_desired_velocity;
       IMC::TranslationalSetpoint m_desired_velocity;
+
 
 
       //! Constructor.
@@ -443,6 +446,7 @@ namespace Control
 
         double stamp = msg->ots;
         bool id_found = false;
+        bool missing_utc_synch = Clock::getSinceEpoch() < UTC_SECS_2015 || stamp < UTC_SECS_2015;
         for (unsigned int uav = 0; uav < m_N; uav++)
         {
           if (m_uav_ID[uav] == msg->getSource())
@@ -466,16 +470,18 @@ namespace Control
             }
             m_last_pos_update(uav) = stamp;
 
-            if (delay_ms > m_args.delay_threshold)
-            {
-              war("Positioning delay for vehicle '%s' above threshold: %f",
-                  resolveSystemId(msg->getSource()), delay_ms);
-            }
-
             if (!m_pos_update_delay(uav))
               m_pos_update_delay(uav) = delay_ms;
             else
               m_pos_update_delay(uav) = m_mf*m_pos_update_delay(uav) + (1-m_mf)*delay_ms;
+
+            // If update from other vehicle, delay will only be calculated correctly if clock is synched.
+            // Hence, warning is only given if synched or update is local.
+            if ((!missing_utc_synch || uav == m_i) && delay_ms > m_args.delay_threshold)
+            {
+              war("Positioning delay for vehicle '%s' above threshold: %f",
+                  resolveSystemId(msg->getSource()), delay_ms);
+            }
 
             spew("Update frequency [Hz]:");
             printMatrix(m_pos_update_rate,DEBUG_LEVEL_SPEW);
