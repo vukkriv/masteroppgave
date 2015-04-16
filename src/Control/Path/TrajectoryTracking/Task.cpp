@@ -75,10 +75,10 @@ namespace Control
         {
 
           param("Velocity Controller", m_args.use_controller)
-                                                           .visibility(Tasks::Parameter::VISIBILITY_USER)
-                                                           .scope(Tasks::Parameter::SCOPE_MANEUVER)
-                                                           .defaultValue("false")
-                                                           .description("Enable Velocoty Controller");
+         .visibility(Tasks::Parameter::VISIBILITY_USER)
+         .scope(Tasks::Parameter::SCOPE_MANEUVER)
+         .defaultValue("false")
+         .description("Enable Velocoty Controller");
 
 
           param("Max Speed", m_args.max_speed)
@@ -93,6 +93,7 @@ namespace Control
           .defaultValue("-10.0");
 
           param("Delayed Feedback controller", m_args.delayed_feedback)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("False");
 
           param("Reference Model - Natural Frequency",m_args.refmodel_omega_n)
