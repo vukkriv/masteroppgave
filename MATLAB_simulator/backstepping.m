@@ -1,5 +1,4 @@
-function [eta,nu] = backstepping(r, dr, d2r,eta,nu,h)
-
+function [eta,nu,tau] = backstepping(r, dr, d2r,eta,nu,h,useOde45)
 
     %% VARIABLES
     pL = 0.7;
@@ -7,97 +6,119 @@ function [eta,nu] = backstepping(r, dr, d2r,eta,nu,h)
     pm_L = 2;
     pg = 9.81;
     pd = 0.01;
+    epsilon = 0.001;
 
-    k1 = 1;
-    k2 = 2;
-    K1 = diag([k1 k1 k1]);
-    K2 = diag([k2 k2 k2 k2 k2]);
-    alpha_45 = [0; 0];
 
     addpath('generated/');
-    M = @(eta)(f_5dof_MassMatrix(eta, pL, pm_c, pm_L));
-    C = @(eta, nu)(f_5dof_CoreolisMatrix(eta, nu, pL, pm_c, pm_L));
+%     M = @(eta)(f_5dof_MassMatrix(eta, pL, pm_c, pm_L));
+%     C = @(eta, nu)(f_5dof_CoreolisMatrix(eta, nu, pL, pm_c, pm_L));
     G = @(eta)(f_5dof_Gravity(eta, pL, pm_c, pm_L, pg));
     D = diag([0 0 0 pd pd]);
-    H = [1 0 0 0 0;
-         0 1 0 0 0;
-         0 0 1 0 0];
+
+    % Restate for singularity avoidance
+    M = @(eta)(f_5dof_MassMatrix_singularity_avoidance(eta, pL, pm_c, pm_L, epsilon));
+    C = @(eta, nu)(f_5dof_CoreolisMatrix_singularity_avoidance(eta, nu, pL, pm_c, pm_L, epsilon));
+
+
+
+
 
 
     %%
 
+   
     % Do some control
     tau = zeros(5,1); 
-    tau(3) = - pg*(pm_L + pm_c);
+    Kp = 1;
+    Kd = 10;
+
+    % pos error
+    e_pos = r - eta(1:3);
+    % vel error
+    e_vel = dr - nu(1:3);
 
 
+    tau(1:3) = Kp*e_pos + Kd*e_vel;
+    tau(3) = tau(3,1) - pg*(pm_L + pm_c);
 
-    % Define error variables
-    z1 = H*eta - r(:);
+%     if abs(tau(1)) > 10000
+%         tau(1) = 0;
+%         fprintf(' \n tau(1) too high! set to zero \n');
+%     elseif abs(tau(2)) > 10000
+%         tau(2) = 0;
+%         fprintf(' \n tau(2) too high! set to zero \n');
+%     elseif abs(tau(3)) > 10000
+%         tau(3) = 0;
+%         fprintf(' \n tau(3) too high! set to zero \n');
+%     end
+%     if tau(1) > 1000
+%         tau(1) = 1000;
+%     elseif tau(1) < -1000
+%         tau(1) = -1000;
+%     end
+%     
+%     if tau(2) > 1000
+%         tau(2) = 1000;
+%     elseif tau(2) < -1000
+%         tau(2) = -1000;
+%     end
+%     if tau(3) < -1500
+%         tau(3) = -1500;
+%     elseif tau(3) > -3500
+%         tau(3) = -3500;
+%     end
 
-    % Virtual control 1-2
-    alpha_13 = dr(:) - K1 * z1;
-    alpha = [alpha_13; alpha_45];
+ 
+  
+   if useOde45
 
-    z2 = nu - alpha;
-
-    dalpha_13 = d2r(:) - K1*H*z2 + K1*K1*z1;
-
-    % Shorthands
-    z45 = z2(4:5);
-    theta_L = eta(5);
-    phi_L = eta(4);
-
-    G45 = G(eta);
-    G45 = G45(4:5);
-
-    K45 = K2(4:5,4:5);
-
-    M4513 = M(eta);
-    M4513 = M4513(4:5,1:3);
-
-    Malpha = M(eta);
-    Malpha = Malpha(4:5, 4:5);
-
-    Calpha = C(eta, nu);
-    Calpha = Calpha(4:5, 4:5);
-
-    Dalpha = D(4:5, 4:5);
-
-    % Define residual
-    gamma = @(eta, pm_L)(-G45 + K45*z45 - M4513*dalpha_13);
-
-
-
-    dalpha_45 = @(alpha_45, ~)( Malpha\(-Dalpha*alpha_45 - Calpha*alpha_45 + gamma(alpha_45, pm_L)));
-
-
-    dalpha = [dalpha_13; dalpha_45(alpha_45, 0)];
-
-    % Main control part
-    tau = C(eta, nu)*alpha + D*alpha + G(eta) - H'*z1 + M(eta)*dalpha - K2*z2;
-
-    % For fun, print third value
-%     tau(3)
-
- % aand, set to zero
-   tau(4:5) = [0; 0];
+              % Integrate velocity
+       f = @(nu, tau)(M(eta)\(tau - C(eta, nu)*nu - G(eta) - D*diag(abs(nu))*nu));
+       dnu = f(nu, tau);
+%        interf = @(t,x) f(nu,tau);
+       interf = @(t,x) f(x, tau);
+       [~, temp] = ode45(interf, 0:0.001:h, nu);
+       nu_next = temp(end,:)';
+        clear temp;
+       
+       % Simulate position integration
+       f = @(eta, nu)(nu);
+%        interf = @(t,x) f(eta,nu);
+       interf = @(t,x) f(x, nu);
+       [~, temp] = ode45(interf, 0:0.001:h,eta);
+       eta_next = temp(end,:)';
+       clear temp;
    
 
-   
-   % Integrate to get alpha_3
-   alpha_45 = rk4(dalpha_45, alpha_45, 0, h);
-   
-   % Simulate position integration
-   f = @(eta, nu)(nu);
-   eta_next = rk4(f, eta, nu, h);
-   
-   % Integrate velocity
-   f = @(nu, tau)(M(eta)\(tau - C(eta, nu)*nu - G(eta) - D*diag(abs(nu))*nu));
-   dnu = f(nu, tau);
-   nu_next  = rk4(f, nu, tau, h);
-   
+   else
+       
+                % Simulate position integration
+       f = @(eta, nu)(nu);
+       eta_next = rk4(f, eta, nu, h);
+                % Integrate velocity
+       f = @(nu, tau)(M(eta)\(tau - C(eta, nu)*nu - G(eta) - D*diag(abs(nu))*nu));
+       dnu = f(nu, tau);
+       nu_next  = rk4(f, nu, tau, h);
+        
+
+       
+
+   end
+    
    % Update current state
    eta = eta_next;
-   nu  = nu_next;
+   nu  = nu_next; 
+   
+   if eta(4)>pi/2
+       eta(4) = pi/2;
+       fprintf(' \n eta(4) too high! set to 180 \n');
+   elseif eta(4) < -pi/2;
+       eta(4) = -pi/2;
+       fprintf(' \n eta(4) too high! set to -180 \n');
+   end
+    if eta(5)>pi/2
+       eta(5) = pi/2;
+   elseif eta(5) < -pi/2
+       eta(5) = -pi/2;
+   end
 end
