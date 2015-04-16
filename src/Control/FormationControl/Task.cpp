@@ -217,6 +217,7 @@ namespace Control
 
 
 
+
         // Bind incoming IMC messages
         bind<IMC::FormPos>(this);
         bind<IMC::FormCoord>(this);
@@ -648,6 +649,7 @@ namespace Control
         Matrix u_coll(3,1,0);
         static double u_coll_max = 0;
         static double d_ij_min = std::numeric_limits<double>::infinity();
+        static Matrix d_ij_prev(1, m_N, m_args.collision_radius);
 
         for (unsigned int uav = 0; uav < m_N; uav++)
         {
@@ -661,9 +663,19 @@ namespace Control
             {
               // Add repelling velocity
               u_coll -= (m_args.collision_radius - d_ij)*x_ij/d_ij;
+
+              // Warning if still closing
+              if (d_ij < d_ij_prev(uav))
+              {
+                war("Proximity warning with '%s': %1.2f m and closing!",
+                    resolveSystemId(m_uav_ID[uav]), d_ij);
+              }
+              d_ij_prev(uav) = d_ij;
             }
             // Save minimum distance
             d_ij_min = std::min(d_ij_min, d_ij);
+
+
           }
         }
         // Multiply total repelling velocity with gain
