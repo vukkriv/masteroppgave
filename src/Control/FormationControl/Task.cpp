@@ -41,9 +41,6 @@ namespace Control
 
     struct Arguments
     {
-      //! Use controller
-      bool use_controller;
-
       //! Vehicle list
       std::vector<std::string> formation_systems;
 
@@ -144,12 +141,6 @@ namespace Control
         paramActive(Tasks::Parameter::SCOPE_MANEUVER,
                     Tasks::Parameter::VISIBILITY_USER);
 
-        param("Formation Controller", m_args.use_controller)
-        .visibility(Tasks::Parameter::VISIBILITY_USER)
-        .scope(Tasks::Parameter::SCOPE_MANEUVER)
-        .defaultValue("false")
-        .description("Enable formation controller.");
-
         param("Vehicle List", m_args.formation_systems)
         .defaultValue("")
         .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -175,7 +166,6 @@ namespace Control
         .defaultValue("0.0, 0.0, 0.0")
         .units(Units::MeterPerSecond)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        //.scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Constant mission velocity.");
 
         param("Collision Avoidance Radius", m_args.collision_radius)
@@ -185,9 +175,8 @@ namespace Control
         .description("Radius for collision avoidance potential field.");
 
         param("Collision Avoidance Gain", m_args.collision_gain)
-        .defaultValue("0.0")
+        .defaultValue("5.0")
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        //.scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Gain for collision avoidance potential field.");
 
         param("Maximum Speed", m_args.max_speed)
@@ -199,7 +188,6 @@ namespace Control
 
         param("Memory Factor", m_args.mem_factor)
         .defaultValue("0.95")
-        .visibility(Tasks::Parameter::VISIBILITY_USER)
         .description("Memory factor when calculating update rates.");
 
         param("Delay Threshold", m_args.delay_threshold)
@@ -209,9 +197,8 @@ namespace Control
         .description("Threshold for issuing warnings on delay in position updates.");
 
         param("Hold Current Formation", m_args.hold_current_formation)
-        .defaultValue("false")
+        .defaultValue("true")
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Use current position of vehicles as desired formation");
 
 
@@ -229,6 +216,8 @@ namespace Control
       onUpdateParameters(void)
       {
         debug("Starting update of parametes.");
+
+        bool calc_desired_diff_var = false;
 
 
         if (paramChanged(m_args.formation_systems))
@@ -290,6 +279,8 @@ namespace Control
             debug("UAV %u: [%1.1f, %1.1f, %1.1f]", uav_id,
                 m_x_c(0, uav_id), m_x_c(1, uav_id), m_x_c(2, uav_id));
           }
+          // Desired difference variables will have to be calculated
+          calc_desired_diff_var = true;
         }
 
 
@@ -313,6 +304,8 @@ namespace Control
             for (unsigned int uav = 0; uav < m_N; uav++)
               m_D(uav, link) = m_args.incidence_matrix(uav + link*m_N);
           }
+          // Desired difference variables will have to be calculated
+          calc_desired_diff_var = true;
 
           printMatrix(m_D);
         }
@@ -339,17 +332,18 @@ namespace Control
         }
 
 
-        // TODO: Only update m_z and m_z_d when neccessary
-        inf("New desired difference variables.");
+        if (calc_desired_diff_var)
+        {
+          inf("New desired difference variables.");
 
-        // Resize and reset difference variables matrices to fit number of links
-        m_z.resizeAndFill(3, m_L, 0);
-        m_z_d.resizeAndFill(3, m_L, 0);
-        // Update desired difference variables matrix
-        calcDiffVariable(&m_z_d,m_D,m_x_c);
+          // Resize and reset difference variables matrices to fit number of links
+          m_z.resizeAndFill(3, m_L, 0);
+          m_z_d.resizeAndFill(3, m_L, 0);
+          // Update desired difference variables matrix
+          calcDiffVariable(&m_z_d,m_D,m_x_c);
 
-        printMatrix(m_z_d);
-
+          printMatrix(m_z_d);
+        }
 
         if (paramChanged(m_args.const_mission_velocity))
         {
@@ -518,19 +512,18 @@ namespace Control
               resolveSystemId(msg->getSource()),
               resolveEntity(msg->getSourceEntity()).c_str());
 
-        // Ignore if not supposed to set desired formation from current vehicle positions
-        if (!m_args.hold_current_formation)
-          return;
-
         // Check if request to start formation
         if (msg->type == IMC::FormCoord::FCT_REQUEST && msg->op == IMC::FormCoord::FCOP_START)
         {
-          inf("Using current vehicle positions as desired formation.");
-          // Set desired positions to current positions
-          m_x_c = m_x;
-          // Update desired difference variables matrix
-          calcDiffVariable(&m_z_d,m_D,m_x_c);
-          printMatrix(m_z_d);
+          if (m_args.hold_current_formation)
+          {
+            inf("Using current vehicle positions as desired formation.");
+            // Set desired formation to current positions
+            m_x_c = m_x;
+            // Update desired difference variables matrix
+            calcDiffVariable(&m_z_d,m_D,m_x_c);
+            printMatrix(m_z_d);
+          }
         }
       }
 
