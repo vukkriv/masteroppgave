@@ -153,26 +153,22 @@ namespace Control
         param("Vehicle List", m_args.formation_systems)
         .defaultValue("")
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        //.scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("System name list of the formation vehicles.");
 
         param("Desired Formation", m_args.desired_formation)
         .defaultValue("0.0, 0.0, 0.0")
         .units(Units::Meter)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        //.scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Desired formation positions matrix.");
 
         param("Incidence Matrix", m_args.incidence_matrix)
         .defaultValue("0")
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        //.scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Incidence matrix.");
 
         param("Link Gains", m_args.link_gains)
         .defaultValue("1.0")
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        //.scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Gains assigned to formation links.");
 
         param("Constant Mission Velocity", m_args.const_mission_velocity)
@@ -186,7 +182,6 @@ namespace Control
         .defaultValue("5.0")
         .units(Units::Meter)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        //.scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Radius for collision avoidance potential field.");
 
         param("Collision Avoidance Gain", m_args.collision_gain)
@@ -204,15 +199,19 @@ namespace Control
 
         param("Memory Factor", m_args.mem_factor)
         .defaultValue("0.95")
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
         .description("Memory factor when calculating update rates.");
 
         param("Delay Threshold", m_args.delay_threshold)
         .defaultValue("100")
         .units(Units::Millisecond)
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
         .description("Threshold for issuing warnings on delay in position updates.");
 
         param("Hold Current Formation", m_args.hold_current_formation)
         .defaultValue("false")
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Use current position of vehicles as desired formation");
 
 
