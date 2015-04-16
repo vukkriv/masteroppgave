@@ -65,8 +65,9 @@ namespace Control
         IMC::AutopilotMode m_autopilot_mode;
         Matrix m_R_bn;
         Matrix m_R_nb;
-        bool m_eulerangles;
-
+        bool m_new_eulerangles;
+        double eulerAngles[50][5];
+        int Counter;
 
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
@@ -74,10 +75,10 @@ namespace Control
         {
 
           param("Velocity Controller", m_args.use_controller)
-                                       .visibility(Tasks::Parameter::VISIBILITY_USER)
-                                       .scope(Tasks::Parameter::SCOPE_MANEUVER)
-                                       .defaultValue("false")
-                                       .description("Enable Velocoty Controller");
+                                                           .visibility(Tasks::Parameter::VISIBILITY_USER)
+                                                           .scope(Tasks::Parameter::SCOPE_MANEUVER)
+                                                           .defaultValue("false")
+                                                           .description("Enable Velocoty Controller");
 
 
           param("Max Speed", m_args.max_speed)
@@ -110,8 +111,9 @@ namespace Control
           .description("P-Gain of the velocity controller");
 
           bind<IMC::EulerAngles>(this);
-          m_eulerangles = false;
-
+          m_new_eulerangles = false;
+          //eulerAngles[10][5] = 0;
+          Counter = 0;
         }
 
         void
@@ -135,8 +137,31 @@ namespace Control
         void
         consume(const IMC::EulerAngles* eangles)
         {
-          m_eulerangles = true;
-          //eangles->
+          // Save last 50 samples = 1 sek
+          m_new_eulerangles = true;
+          if ((eulerAngles[49][0] == 0) && (Counter < 49))
+          {
+            eulerAngles[Counter][0] = eangles->getTimeStamp();
+            eulerAngles[Counter][1] = eangles->theta;
+            eulerAngles[Counter][2] = eangles->phi;
+            eulerAngles[Counter][3] = eangles->psi;          //thetadot
+            eulerAngles[Counter][4] = eangles->psi_magnetic; //phi dot
+            Counter = Counter + 1;
+          }else{
+            for (int i = 1; i<50; i++)
+            {
+              eulerAngles[i-1][0] = eulerAngles[i][0];
+              eulerAngles[i-1][1] = eulerAngles[i][1];
+              eulerAngles[i-1][2] = eulerAngles[i][2];
+              eulerAngles[i-1][3] = eulerAngles[i][3];
+              eulerAngles[i-1][4] = eulerAngles[i][4];
+            }
+            eulerAngles[Counter][0] = eangles->getTimeStamp();
+            eulerAngles[Counter][1] = eangles->theta;
+            eulerAngles[Counter][2] = eangles->phi;
+            eulerAngles[Counter][3] = eangles->psi;          //thetadot
+            eulerAngles[Counter][4] = eangles->psi_magnetic; //phi dot
+          }
 
         }
 
@@ -283,18 +308,6 @@ namespace Control
             vel = m_args.max_speed * vel / vel.norm_2();
           }
 
-          //
-          //
-          //
-          //          // Rotate from body to ned
-          //          m_R_bn = Rbn(state.phi, state.theta, state.psi);
-          //          //m_R_nb = transpose(m_R_bn);
-          //
-          //          Matrix temp;
-          //          temp = m_R_bn.multiply(m_vel);
-          //          m_refmodel_x(3) = temp(0);
-          //          m_refmodel_x(4) = temp(1);
-          //          m_refmodel_x(5) = temp(2);
 
 
           m_setpoint.x = m_refmodel_x(0);
@@ -305,9 +318,56 @@ namespace Control
           m_setpoint.w = vel(2);
 
 
-          if (m_args.delayed_feedback)
+          if ((m_args.delayed_feedback))// && (m_new_eulerangles))
           {
-            //m_setpoint.x += Gd*l;
+            double pL = 0.7;
+            double pd =  0.01;
+            double pm_L = 2;
+            double pg = 9.81;
+            float pi = 3.141592653;
+
+            double omega_n = sqrt(pg/pL);
+
+            double xi = pd/(2*omega_n*pm_L);
+            double omega_d = omega_n*sqrt(1 - pow(xi,2));
+
+            double Td = 2*pi/omega_d;
+            double tau_d = 0.325*Td;
+            double Gd    = 0.325;
+
+            double diffAngles[50];
+            double diff[50];
+            double small = 10;
+            int smallestElement = 0;
+
+            for (int i=49;i>=0;i--){
+              diffAngles[i] = eulerAngles[49][0] - eulerAngles[i][0];
+              diff[i] = std::abs( (diffAngles[i]) - tau_d );
+              if (diff[i] < small)
+              {
+                small = diff[i];
+                smallestElement = i;
+              }
+              //inf("%i : %f : %f : %f : %i ", i,diffAngles[i],diff[i],small, smallestElement );
+            }
+
+
+
+            m_setpoint.x = m_setpoint.x + Gd*pL*sin(eulerAngles[smallestElement][1]);   // theta
+            m_setpoint.y = m_setpoint.y - Gd*pL*sin(eulerAngles[smallestElement][2]);   // Psi
+
+            m_setpoint.u = m_setpoint.u + Gd*pL*cos(eulerAngles[smallestElement][1])*eulerAngles[smallestElement][3];
+            m_setpoint.v = m_setpoint.v - Gd*pL*cos(eulerAngles[smallestElement][2])*eulerAngles[smallestElement][4];
+
+            debug("i: %i, euler[i][1] : %f,  euler[i][2] : %f \n",smallestElement,eulerAngles[smallestElement][1],eulerAngles[smallestElement][2]);
+
+            //            for (int i = 1; i<10;i++){
+            //            inf(" \n time[%i]: %f \n diff: %f \n",
+            //                i-1,
+            //                eulerAngles[i-1][0],
+            //                eulerAngles[i][0] - eulerAngles[i-1][0]);
+            //            }
+            //            m_new_eulerangles = false;
           }
 
 
@@ -320,7 +380,7 @@ namespace Control
               IMC::TranslationalSetpoint::FL_X | IMC::TranslationalSetpoint::FL_Y | IMC::TranslationalSetpoint::FL_Z;
 
           dispatch(m_setpoint);
-       //   debug("dispatched m_setpoint -> TranslationalSetpoint \n.");
+          //   debug("dispatched m_setpoint -> TranslationalSetpoint \n.");
 
           debug("[x, y, z] = [%f, %f, %f] \n",m_setpoint.x,m_setpoint.y,m_setpoint.z);
           debug("[u, v, w] = [%f, %f, %f] \n",m_setpoint.u,m_setpoint.v,m_setpoint.w);
