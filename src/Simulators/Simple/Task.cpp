@@ -61,6 +61,8 @@ namespace Simulators
       //! Initial position (NED)
       Math::Matrix pos_ned;
 
+      //! Use TranslationalSetpoint instead of DesiredVelocity
+      bool trans_setpoint;
     };
 
     struct Task : public Tasks::Periodic
@@ -155,9 +157,14 @@ namespace Simulators
         .units(Units::Meter)
         .description("Initial NED position of the vehicle");
 
+        param("Use Translational Setpoint", m_args.trans_setpoint)
+        .defaultValue("false")
+        .description("Use TranslationalSetpoint instead of DesiredVelocity for velocity control.");
+
 
         bind<IMC::DesiredControl>(this);
         bind<IMC::DesiredVelocity>(this);
+        bind<TranslationalSetpoint>(this);
 
         // Set OK status
         setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
@@ -229,13 +236,25 @@ namespace Simulators
       void
       consume(const IMC::DesiredVelocity* msg)
       {
-        if (m_type == SINGLE)
+        if (m_type == SINGLE && !m_args.trans_setpoint)
         {
           m_desired_velocity(0) = msg->u;
           m_desired_velocity(1) = msg->v;
           m_desired_velocity(2) = msg->w;
         }
         spew("Received Desired Velocity [N,E,D]: [%f,%f,%f]", m_desired_velocity(0), m_desired_velocity(1), m_desired_velocity(2));
+      }
+
+      void
+      consume(const IMC::TranslationalSetpoint* msg)
+      {
+        if (m_type == SINGLE && m_args.trans_setpoint)
+        {
+          m_desired_velocity(0) = msg->u;
+          m_desired_velocity(1) = msg->v;
+          m_desired_velocity(2) = msg->w;
+        }
+        spew("Received Translational Setpoint [N,E,D]: [%f,%f,%f]", m_desired_velocity(0), m_desired_velocity(1), m_desired_velocity(2));
       }
 
       void

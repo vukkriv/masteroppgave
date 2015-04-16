@@ -43,6 +43,8 @@ namespace Control
       {
         bool use_controller;
         double max_speed;
+        bool use_refmodel;
+        double refmodel_max_speed;
         double refmodel_omega_n;
         double refmodel_xi;
         double Kp;
@@ -59,22 +61,36 @@ namespace Control
         Matrix m_refmodel_A;
         //! Reference model input matrix
         Matrix m_refmodel_B;
+        //! Desired speed profile
+        double m_desired_speed;
+        //! Current autopilot mode
+        IMC::AutopilotMode m_autopilot_mode;
 
 
         Task(const std::string& name, Tasks::Context& ctx):
-          DUNE::Control::PathController(name, ctx)
+          DUNE::Control::PathController(name, ctx),
+          m_desired_speed(0)
         {
 
           param("Velocity Controller", m_args.use_controller)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .defaultValue("false")
-          .description("Enable Velocoty Controller");
+          .description("Enable Velocity Controller");
 
           param("Max Speed", m_args.max_speed)
             .defaultValue("5.0")
             .units(Units::MeterPerSecond)
             .description("Max speed of the vehicle");
+
+          param("Use Reference Model", m_args.use_refmodel)
+          .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Enable Reference Model.");
+
+          param("Reference Model - Max Speed", m_args.refmodel_max_speed)
+          .defaultValue("3.0");
 
           param("Reference Model - Natural Frequency",m_args.refmodel_omega_n)
           .units(Units::RadianPerSecond)
@@ -96,8 +112,7 @@ namespace Control
 
 
 
-          // Initialize refmodel
-          initRefmodel();
+
 
         }
 
@@ -105,6 +120,10 @@ namespace Control
         onUpdateParameters(void)
         {
           PathController::onUpdateParameters();
+
+          // update desired speed to max speed
+          m_desired_speed = m_args.refmodel_max_speed;
+
         }
 
         void
@@ -113,8 +132,29 @@ namespace Control
           PathController::onEntityReservation();
         }
 
+
+        //! Consumer for DesiredSpeed message.
+        //! @param dspeed message to consume.
         void
-        initRefmodel(void)
+        consume(const IMC::DesiredSpeed* dspeed)
+        {
+          // overloaded.
+          // Update desired speed
+          if (dspeed->value < m_args.refmodel_max_speed)
+          {
+            m_desired_speed = dspeed->value;
+          }
+          else
+          {
+            m_desired_speed = m_args.refmodel_max_speed;
+            debug("Trying to set a speed above maximum speed. ");
+          }
+
+          PathController::consume(dspeed);
+        }
+
+        void
+        initRefmodel(const IMC::EstimatedState& state)
         {
           // Convencience matrix
           double ones[] = {1.0, 1.0, 1.0};
@@ -123,6 +163,13 @@ namespace Control
 
           // Restart refmodel
           m_refmodel_x = Matrix(6, 1, 0.0);
+          m_refmodel_x(0) = state.x;
+          m_refmodel_x(1) = state.y;
+          m_refmodel_x(2) = state.z;
+
+          m_refmodel_x(3) = state.u;
+          m_refmodel_x(4) = state.v;
+          m_refmodel_x(5) = state.w;
 
           // Set model
           Matrix A_12 = eye;
@@ -140,11 +187,30 @@ namespace Control
 
         }
 
-        void
+        virtual void
+        onPathStartup(const IMC::EstimatedState& state, const TrackingState& ts)
+        {
+
+          //(void)ts;
+
+
+          // Print end coordinates
+          debug("End coordinates: [%f, %f, %f]", ts.end.x, ts.end.y, ts.end.z);
+
+          // Restart ref model
+          initRefmodel(state);
+
+        }
+
+        virtual void
         onPathActivation(void)
         {
           if (!m_args.use_controller)
+          {
+            debug("Path activated, but not active: Requesting deactivation");
+            requestDeactivation();
             return;
+          }
           // Activate velocity controller.
           enableControlLoops(IMC::CL_SPEED);
 
@@ -152,8 +218,6 @@ namespace Control
           enableControlLoops(IMC::CL_ALTITUDE);
           inf("Vel-control activated.");
 
-          // Restart ref model
-          initRefmodel();
         }
 
         void
@@ -163,52 +227,60 @@ namespace Control
           if (!m_args.use_controller)
             return;
 
+          // Get current position
+          Matrix x = Matrix(3, 1, 0.0);
+          x(0) = state.x;
+          x(1) = state.y;
+          x(2) = state.z;
+          trace("x:\t [%1.2f, %1.2f, %1.2f]",
+              state.x, state.y, state.z);
 
-          /*
-           *
-           * Refmodel: Deactivated for now.
-           *
-          // NB: Refmodel position is relative to start coordinates
-          Matrix x_d = Matrix(3,1, 0.0);
-          x_d(0) = ts.end.x - ts.start.x;
-          x_d(1) = ts.end.y - ts.start.y;
-          x_d(2) = state.height - ts.end.z - ts.start.z;
-
-          // Update reference
-          m_refmodel_x += ts.delta * (m_refmodel_A * m_refmodel_x + m_refmodel_B * x_d);
-
-          // Saturate velocity
-          Matrix vel = m_refmodel_x.get(3,5,0,0);
-
-
-          if( vel.norm_2() > m_args.max_speed )
-          {
-            vel = m_args.max_speed * vel / vel.norm_2();
-
-            m_refmodel_x.put(3,0,vel);
-          }
-
-          debug("Vel norm: %f", m_refmodel_x.get(3,5,0,0).norm_2());
-
-
-
-
-          // Move at a rate towards the target
-
-          // Head straight to target
-
-          vel(0) = m_refmodel_x(3) - m_args.Kp * (state.x - m_refmodel_x(0));
-          vel(1) = m_refmodel_x(4) - m_args.Kp * (state.y - m_refmodel_x(1));
-          vel(2) = m_refmodel_x(5) - m_args.Kp * (state.z - m_refmodel_x(2));
-
-          */
+          // Get target position
+          Matrix x_d = Matrix(3, 1, 0.0);
+          x_d(0) = ts.end.x;
+          x_d(1) = ts.end.y;
+          x_d(2) = -ts.end.z; // NEU?!
+          trace("x_d:\t [%1.2f, %1.2f, %1.2f]",
+              x_d(0), x_d(1), x_d(2));
 
           Matrix vel = Matrix(3,1, 0.0);
 
-          vel(0) = - m_args.Kp * (state.x - ts.end.x);
-          vel(1) = - m_args.Kp * (state.y - ts.end.y);
-          vel(2) = - m_args.Kp * (state.z - ts.end.z);
+          if (m_args.use_refmodel)
+          {
+            // Update reference
+            m_refmodel_x += ts.delta * (m_refmodel_A * m_refmodel_x + m_refmodel_B * x_d);
 
+            // Saturate reference velocity
+            vel = m_refmodel_x.get(3,5,0,0);
+            if( vel.norm_2() > m_args.refmodel_max_speed )
+            {
+              vel = m_args.refmodel_max_speed * vel / vel.norm_2();
+              m_refmodel_x.put(3,0,vel);
+            }
+            spew("Vel norm: %f", m_refmodel_x.get(3,5,0,0).norm_2());
+
+            // Print reference pos and vel
+            trace("x_r:\t [%1.2f, %1.2f, %1.2f]",
+                m_refmodel_x(0), m_refmodel_x(1), m_refmodel_x(2));
+            trace("v_r:\t [%1.2f, %1.2f, %1.2f]",
+                m_refmodel_x(3), m_refmodel_x(4), m_refmodel_x(5));
+
+            // Head straight to reference
+            //vel(0) = m_refmodel_x(3) - m_args.Kp * (state.x - m_refmodel_x(0));
+            //vel(1) = m_refmodel_x(4) - m_args.Kp * (state.y - m_refmodel_x(1));
+            //vel(2) = m_refmodel_x(5) - m_args.Kp * (state.z - m_refmodel_x(2));
+            vel = m_refmodel_x.get(3,5,0,0) + m_args.Kp * (m_refmodel_x.get(0,2,0,0) - x);
+          }
+          else
+          {
+            // Head straight to target
+            //vel(0) = - m_args.Kp * (state.x - x_d(0));
+            //vel(1) = - m_args.Kp * (state.y - x_d(1));
+            //vel(2) = - m_args.Kp * (state.z - x_d(2));
+            vel = m_args.Kp * (x_d - x);
+          }
+
+          // Saturate velocity
           if( vel.norm_2() > m_args.max_speed )
           {
             vel = m_args.max_speed * vel / vel.norm_2();
@@ -218,13 +290,17 @@ namespace Control
           m_velocity.v = vel(1);
           m_velocity.w = vel(2);
 
+          // Print desired velocity
+          trace("v_d:\t [%1.2f, %1.2f, %1.2f]",
+              m_velocity.u, m_velocity.v, m_velocity.w);
+
           // Todo: Add seperate altitude controller.
-          m_velocity.w = 0;
+          //m_velocity.w = 0;
 
           m_velocity.flags = IMC::DesiredVelocity::FL_SURGE | IMC::DesiredVelocity::FL_SWAY | IMC::DesiredVelocity::FL_HEAVE;
 
           dispatch(m_velocity);
-          debug("Sent vel data.");
+          spew("Sent vel data.");
         }
       };
     }
