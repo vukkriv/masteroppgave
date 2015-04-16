@@ -58,7 +58,7 @@ namespace EKF
   struct Task: public DUNE::Tasks::Task
   {
     Math::Matrix m_R, m_Q,m_X,m_P,m_F,m_B,dX,gXi,m_H,m_S,m_K,m_meas;
-    double N,E,D, meas[6];
+    double N,E,D, meas[6],R_init[6],R_excite[6];
     Arguments m_args;
     bool init_done;
 
@@ -177,7 +177,11 @@ namespace EKF
 	initKalman(double r, double q,double p, double n_init, double e_init, double d_init,std::vector<double> B1,std::vector<double> B2,std::vector<double> B3
 	    ,std::vector<double> B4,std::vector<double> B5,std::vector<double> B6)
 	{
-	  double R_init[] = {r,r,r,r,r,r};
+	  int excite = 10;
+	  for (int i=0;i<6;i++){
+	    R_init[i] = r;
+	    R_excite[i] = r*excite;
+	  }
 	  m_R = Matrix(R_init,6);
 	  double Q_init[] = {q,q,q};
 	  m_Q = Matrix(Q_init,3);
@@ -278,6 +282,12 @@ namespace EKF
 
       m_X = m_X + m_K * (m_meas - gXi);
       m_P = m_P - (m_P * transpose(m_H) * inverse(m_S) * m_H) * m_P;
+
+      m_R = Matrix(R_init,6);
+      if ( (m_meas - gXi).norm_2() > 20000.0 )
+      {
+        m_R = Matrix(R_excite,6);
+      }
 
       if (m_X.element(0) != m_X.element(0) || m_X.element(1) != m_X.element(1) || m_X.element(2) != m_X.element(2))
       {
