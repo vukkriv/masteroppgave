@@ -85,6 +85,8 @@ namespace Control
 
           param("Use Reference Model", m_args.use_refmodel)
           .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Enable Reference Model.");
 
           param("Reference Model - Max Speed", m_args.refmodel_max_speed)
