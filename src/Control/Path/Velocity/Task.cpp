@@ -48,6 +48,7 @@ namespace Control
         double refmodel_omega_n;
         double refmodel_xi;
         double Kp;
+        bool use_altitude;
       };
 
       struct Task: public DUNE::Control::PathController
@@ -106,6 +107,10 @@ namespace Control
           .units(Units::None)
           .defaultValue("0.1")
           .description("P-Gain of the velocity controller");
+
+          param("Use Altitude", m_args.use_altitude)
+          .defaultValue("false")
+          .description("Choose whether altitude is controlled or not (set to 0 if not).");
 
 
 
@@ -252,6 +257,13 @@ namespace Control
 
             // Saturate reference velocity
             vel = m_refmodel_x.get(3,5,0,0);
+
+            // Set heave to 0 if not controlling altitude
+            if (!m_args.use_altitude)
+            {
+              vel(2) = 0;
+            }
+
             if( vel.norm_2() > m_args.refmodel_max_speed )
             {
               vel = m_args.refmodel_max_speed * vel / vel.norm_2();
@@ -278,6 +290,12 @@ namespace Control
             //vel(1) = - m_args.Kp * (state.y - x_d(1));
             //vel(2) = - m_args.Kp * (state.z - x_d(2));
             vel = m_args.Kp * (x_d - x);
+          }
+
+          // Set heave to 0 if not controlling altitude
+          if (!m_args.use_altitude)
+          {
+            vel(2) = 0;
           }
 
           // Saturate velocity
