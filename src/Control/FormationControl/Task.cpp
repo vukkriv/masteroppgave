@@ -59,6 +59,9 @@ namespace Control
       //! Collision avoidance radius
       double collision_radius;
 
+      //! Minimum difference used in collision avoidance
+      double collision_saturation;
+
       //! Collision avoidance gain
       double collision_gain;
 
@@ -116,7 +119,7 @@ namespace Control
       //! Last time position was updated for each vehicle
       Matrix m_last_pos_update;
 
-      //! Rate [Hz] and delay [ms] of position update for each vehicle
+      //! Rate [Hz] and delay [ms] of position update for each vehicle. Both zero for vehicles we have yet to receive positions from.
       Matrix m_pos_update_rate, m_pos_update_delay;
 
       //! Memory factor when calculating average update rates
@@ -173,6 +176,11 @@ namespace Control
         .units(Units::Meter)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
         .description("Radius for collision avoidance potential field.");
+
+        param("Collision Avoidance Saturation", m_args.collision_saturation)
+        .defaultValue("2.0")
+        .units(Units::Meter)
+        .description("Maximum difference used in collision avoidance.");
 
         param("Collision Avoidance Gain", m_args.collision_gain)
         .defaultValue("5.0")
@@ -645,17 +653,23 @@ namespace Control
 
         for (unsigned int uav = 0; uav < m_N; uav++)
         {
-          if (uav != m_i)
+          // Only calc for other vehicles that we have received positions for
+          if (uav != m_i && m_pos_update_rate(uav) > 0)
           {
             // Get vector and distance to neighbour
             Matrix x_ij = m_x.column(uav) - m_x.column(m_i);
             double d_ij = x_ij.norm_2();
+            // Check if distance is zero (to avoid div by zero)
+            if (d_ij == 0)
+            {
+              war("Distance to '%s' is zero!",
+                  resolveSystemId(m_uav_ID[uav]));
+              continue;
+            }
+
             // Check if inside potential field
             if (d_ij < m_args.collision_radius)
             {
-              // Add repelling velocity
-              u_coll -= (m_args.collision_radius - d_ij)*x_ij/d_ij;
-
               // Warning if still closing
               if (d_ij < d_ij_prev(uav))
               {
@@ -663,10 +677,12 @@ namespace Control
                     resolveSystemId(m_uav_ID[uav]), d_ij);
               }
               d_ij_prev(uav) = d_ij;
+
+              // Add repelling velocity
+              u_coll -= std::min(m_args.collision_saturation, m_args.collision_radius - d_ij)*x_ij/d_ij;
             }
             // Save minimum distance
             d_ij_min = std::min(d_ij_min, d_ij);
-
 
           }
         }
