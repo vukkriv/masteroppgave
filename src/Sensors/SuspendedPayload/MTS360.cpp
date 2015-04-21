@@ -77,7 +77,7 @@ namespace Sensors
       uint16_t aMax = 0xFFFF - 0.1* 0xFFFF;
       uint16_t aMin = 0.1 * 0xFFFF;
 
-      printf("Got: %x%x - %x%x", m_rx_buf[2], m_rx_buf[3], m_rx_buf[4], m_rx_buf[5]);
+      //printf("Got: %x%x - %x%x", m_rx_buf[2], m_rx_buf[3], m_rx_buf[4], m_rx_buf[5]);
 
 
       angle = (float)((m_rx_buf[2] << 8) | m_rx_buf[3]);
