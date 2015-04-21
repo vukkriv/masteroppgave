@@ -728,6 +728,25 @@ namespace Control
         return u_coll;
       }
 
+      //! Calculate mission velocity
+      Matrix
+      missionVelocity(void)
+      {
+        Matrix u_mission(3,1,0);
+        if (m_args.disable_mission_velocity)
+          return u_mission;
+
+        // Use constant mission velocity if set non-zero
+        if (m_args.const_mission_velocity.norm_2() > 0)
+          u_mission = m_args.const_mission_velocity;
+        else
+          u_mission = m_v_mission;
+
+        spew("u_mission: [%1.1f, %1.1f, %1.1f]",
+            u_mission(0), u_mission(1), u_mission(2));
+        return u_mission;
+      }
+
       //! Dispatch desired velocity
       void
       sendDesiredVelocity(Matrix velocity)
@@ -758,9 +777,7 @@ namespace Control
         Matrix u = formationVelocity() + collAvoidVelocity();
 
         // Calculate internal feedback, tau
-        Matrix tau = u;
-        if (!m_args.disable_mission_velocity)
-          tau += m_v_mission;
+        Matrix tau = u + missionVelocity();
 
         // Saturate and dispatch control output
         tau = saturate(tau,m_args.max_speed);
