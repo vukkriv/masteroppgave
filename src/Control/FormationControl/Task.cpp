@@ -53,8 +53,17 @@ namespace Control
       //! Link gains
       Matrix link_gains;
 
+      //! Disable formation velocity
+      bool disable_formation_velocity;
+
+      //! Disable mission velocity
+      bool disable_mission_velocity;
+
       //! (optional) Constant mission velocity
       Matrix const_mission_velocity;
+
+      //! Disable collision velocity
+      bool disable_collision_velocity;
 
       //! Collision avoidance radius
       double collision_radius;
@@ -165,11 +174,26 @@ namespace Control
         .visibility(Tasks::Parameter::VISIBILITY_USER)
         .description("Gains assigned to formation links.");
 
+        param("Disable Formation Velocity", m_args.disable_formation_velocity)
+        .defaultValue("false")
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .description("Disable formation velocity.");
+
+        param("Disable Mission Velocity", m_args.disable_mission_velocity)
+        .defaultValue("false")
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .description("Disable mission velocity.");
+
         param("Constant Mission Velocity", m_args.const_mission_velocity)
         .defaultValue("0.0, 0.0, 0.0")
         .units(Units::MeterPerSecond)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
         .description("Constant mission velocity.");
+
+        param("Disable Collision Velocity", m_args.disable_collision_velocity)
+        .defaultValue("false")
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .description("Disable collision velocity.");
 
         param("Collision Avoidance Radius", m_args.collision_radius)
         .defaultValue("5.0")
@@ -178,7 +202,7 @@ namespace Control
         .description("Radius for collision avoidance potential field.");
 
         param("Collision Avoidance Saturation", m_args.collision_saturation)
-        .defaultValue("2.0")
+        .defaultValue("3.0")
         .units(Units::Meter)
         .description("Maximum difference used in collision avoidance.");
 
@@ -626,12 +650,15 @@ namespace Control
       Matrix
       formationVelocity(void)
       {
+        Matrix u_form(3,1,0);
+        if (m_args.disable_formation_velocity)
+          return u_form;
+
         // Calculate z_tilde
         calcDiffVariable(&m_z, m_D, m_x);
         Matrix z_tilde = m_z - m_z_d;
 
         // Calculate formation velocity component
-        Matrix u_form(3,1,0);
         for (unsigned int link = 0; link < m_L; link++)
         {
           u_form -= m_D(m_i,link)*m_delta(link)*z_tilde.column(link);
@@ -647,6 +674,9 @@ namespace Control
       collAvoidVelocity(void)
       {
         Matrix u_coll(3,1,0);
+        if (m_args.disable_collision_velocity)
+          return u_coll;
+
         static double u_coll_max = 0;
         static double d_ij_min = std::numeric_limits<double>::infinity();
         static Matrix d_ij_prev(1, m_N, m_args.collision_radius);
@@ -728,7 +758,11 @@ namespace Control
         Matrix u = formationVelocity() + collAvoidVelocity();
 
         // Calculate internal feedback, tau
-        Matrix tau = u + m_v_mission;
+        Matrix tau = u;
+        if (!m_args.disable_mission_velocity)
+          tau += m_v_mission;
+
+        // Saturate and dispatch control output
         tau = saturate(tau,m_args.max_speed);
         sendDesiredVelocity(tau);
       }
