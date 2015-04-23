@@ -82,6 +82,11 @@ namespace Sensors
       //! Observations timeout
       uint8_t observations_timeout;
 
+      //! Apply low-pass smoothing to GPS data
+      bool apply_gps_smoothing;
+      //! Time constants for low-pass smoothing of GPS data
+      double gps_smoothing_T;
+
     };
 
     struct Task: public DUNE::Tasks::Task
@@ -183,6 +188,7 @@ namespace Sensors
 
         param("Dispatch GpsFix", m_args.dispatch_gpsfix)
         .defaultValue("True")
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
         .description("Dispatch GpsFix or not.");
 
         param("Baseline Timeout", m_args.baseline_timeout)
@@ -194,6 +200,17 @@ namespace Sensors
         .defaultValue("1")
         .units(Units::Second)
         .description("Timeout for base observations received.");
+
+        param("Use GPS Smoothing", m_args.apply_gps_smoothing)
+        .defaultValue("true")
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .description("Apply low-pass smoothing to GPS data (pos and vel)");
+
+        param("GPS Smoothing Time Constant", m_args.gps_smoothing_T)
+        .defaultValue("2.0")
+        .units(Units::Second)
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .description("Time constant used in low-pass smoothing of GPS data");
 
         // Bind to incoming IMC messages
         bind<IMC::RemoteActions>(this);
@@ -499,6 +516,42 @@ namespace Sensors
         return 0;
       }
 
+      Matrix
+      lowPassSmoothing(Matrix output, Matrix input, double dt, double RC)
+      {
+        if (output.isZeroSized())
+          return input;
+
+        // Check valid inputs
+        assert(input.size() == output.size());
+        assert(dt > 0);
+        assert(RC > 0);
+
+        // Calculate alpha
+        double alpha = dt/(RC + dt);
+
+        // Apply smoothing to all data
+        for (int i = 0; i < input.size(); i++)
+        {
+          output(i) += alpha*(input(i) - output(i));
+        }
+        return output;
+      }
+
+      double
+      lowPassSmoothing(double output, double input, double dt, double RC)
+      {
+        // Check valid inputs
+        assert(dt > 0);
+        assert(RC > 0);
+
+        // Calculate alpha
+        double alpha = dt/(RC + dt);
+
+        // Apply smoothing
+        return output += alpha*(input - output);
+      }
+
       //! Main loop.
       void
       onMain(void)
@@ -748,14 +801,26 @@ namespace Sensors
           // Check that GPS week has been set by a dops message
           if (m_gps_week > 0)
           {
+            float prev_fix_utc_time = m_gps_fix.utc_time;
             // Convert from GPS week and TOW to UTC
             gps_to_ymdt(m_gps_week, msg.tow, &m_gps_fix.utc_year, &m_gps_fix.utc_month, &m_gps_fix.utc_day, &m_gps_fix.utc_time);
             m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_DATE;
             m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_TIME;
 
-            m_gps_fix.lat = Angles::radians(msg.lat);
-            m_gps_fix.lon = Angles::radians(msg.lon);
-            m_gps_fix.height = (fp32_t)msg.height;
+            if (m_args.apply_gps_smoothing && (m_gps_fix.validity & IMC::GpsFix::GFV_VALID_POS))
+            {
+              float dt = m_gps_fix.utc_time - prev_fix_utc_time;
+
+              m_gps_fix.lat = lowPassSmoothing(m_gps_fix.lat, Angles::radians(msg.lat), dt, m_args.gps_smoothing_T);
+              m_gps_fix.lon = lowPassSmoothing(m_gps_fix.lon, Angles::radians(msg.lon), dt, m_args.gps_smoothing_T);
+              m_gps_fix.height = lowPassSmoothing(m_gps_fix.height, (fp32_t)msg.height, dt, m_args.gps_smoothing_T);
+            }
+            else
+            {
+              m_gps_fix.lat = Angles::radians(msg.lat);
+              m_gps_fix.lon = Angles::radians(msg.lon);
+              m_gps_fix.height = (fp32_t)msg.height;
+            }
             m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_POS;
 
             m_gps_fix.hacc = m_pos_scale*(fp32_t)msg.h_accuracy;
@@ -813,6 +878,7 @@ namespace Sensors
       handleVelNed(sbp_vel_ned_t& msg)
       {
         trace("Got vel ned");
+        static u32 prev_vel_ned;
 
         m_rtk_fix.v_n = m_vel_scale*(fp32_t)msg.n;
         m_rtk_fix.v_e = m_vel_scale*(fp32_t)msg.e;
@@ -820,14 +886,23 @@ namespace Sensors
 
         if (m_dispatch_gpsfix)
         {
-          m_gps_fix.sog = m_vel_scale*(fp32_t)(Math::norm(msg.n,msg.e));
-          m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_SOG;
-
-          m_gps_fix.cog = std::atan2(msg.e,msg.n);
+          if (m_args.apply_gps_smoothing && (m_gps_fix.validity & IMC::GpsFix::GFV_VALID_SOG))
+          {
+            double dt = msg.tow - prev_vel_ned;
+            m_gps_fix.sog = lowPassSmoothing(m_gps_fix.sog, m_vel_scale*(fp32_t)(Math::norm(msg.n,msg.e)), dt, m_args.gps_smoothing_T);
+            m_gps_fix.cog = std::atan2(msg.e,msg.n);
+          }
+          else
+          {
+            m_gps_fix.sog = m_vel_scale*(fp32_t)(Math::norm(msg.n,msg.e));
+            m_gps_fix.cog = std::atan2(msg.e,msg.n);
+          }
           m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_COG;
+          m_gps_fix.validity |= IMC::GpsFix::GFV_VALID_SOG;
 
           // GpsFix is only dispatched by handlePosllh
         }
+        prev_vel_ned = msg.tow;
 
         // RtkFix is only dispatched by handleBaselineNed
       }
