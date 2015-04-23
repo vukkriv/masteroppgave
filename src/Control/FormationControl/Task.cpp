@@ -80,6 +80,9 @@ namespace Control
       //! Memory factor when calculating average update rates
       double mem_factor;
 
+      //! Time constant for low-pass smoothing of meta-data
+      double meta_smoothing_T;
+
       //! Threshold for delay on positioning updates
       double delay_threshold;
 
@@ -221,6 +224,11 @@ namespace Control
         param("Memory Factor", m_args.mem_factor)
         .defaultValue("0.95")
         .description("Memory factor when calculating update rates.");
+
+        param("Meta Smoothing Time Constant", m_args.meta_smoothing_T)
+        .defaultValue("2.0")
+        .units(Units::Second)
+        .description("Time constant used in low-pass smoothing of meta-data");
 
         param("Delay Threshold", m_args.delay_threshold)
         .defaultValue("100")
@@ -468,67 +476,74 @@ namespace Control
       void
       consume(const IMC::FormPos* msg)
       {
-        spew("Got Formation Position");
+        spew("Got FormPos from '%s'", resolveSystemId(msg->getSource()));
 
-        double stamp = msg->ots;
         bool id_found = false;
-        bool missing_utc_synch = Clock::getSinceEpoch() < UTC_SECS_2015 || stamp < UTC_SECS_2015;
         for (unsigned int uav = 0; uav < m_N; uav++)
         {
           if (m_uav_ID[uav] == msg->getSource())
           {
             id_found = true;
 
-            // Calculate update frequency and delay
-            double delay_ms = (Clock::getSinceEpoch() - stamp)*1E3;
+            // Get current time and time of transmission
+            double stamp = msg->ots;
+            double now = Clock::getSinceEpoch();
+
+            // Calculate update frequency
             double diff = stamp - m_last_pos_update(uav);
             if (diff > 0)
             {
+              double rate = 1/diff;
+              // Unless first data: Apply smoothing
               if (!m_pos_update_rate(uav))
-                m_pos_update_rate(uav) = 1/diff;
+                m_pos_update_rate(uav) = rate;
               else
-                m_pos_update_rate(uav) = m_mf*m_pos_update_rate(uav) + (1-m_mf)/diff;
+                m_pos_update_rate(uav) = lowPassSmoothing(m_pos_update_rate(uav), rate, diff, m_args.meta_smoothing_T);
             }
             else
             {
-              war("Received old FormPos! Diff = %f s , Delay = %f ms",
-                  diff, delay_ms);
+              war("Received old FormPos! Diff = %f seconds",
+                  diff);
             }
-            m_last_pos_update(uav) = stamp;
 
+            // Calculate update delay
+            double delay_ms = (now - stamp)*1E3;
+            // Unless first data: Apply smoothing
             if (!m_pos_update_delay(uav))
               m_pos_update_delay(uav) = delay_ms;
             else
-              m_pos_update_delay(uav) = m_mf*m_pos_update_delay(uav) + (1-m_mf)*delay_ms;
+              m_pos_update_delay(uav) = lowPassSmoothing(m_pos_update_delay(uav), delay_ms, diff, m_args.meta_smoothing_T);
 
             // If update from other vehicle, delay will only be calculated correctly if clock is synched.
             // Hence, warning is only given if synched or update is local.
+            bool missing_utc_synch = now < UTC_SECS_2015 || stamp < UTC_SECS_2015;
             if ((!missing_utc_synch || uav == m_i) && delay_ms > m_args.delay_threshold)
             {
               war("Positioning delay for vehicle '%s' above threshold: %f",
                   resolveSystemId(msg->getSource()), delay_ms);
             }
 
-            spew("Update frequency [Hz]:");
-            printMatrix(m_pos_update_rate,DEBUG_LEVEL_SPEW);
-            spew("Update delay [ms]:");
-            printMatrix(m_pos_update_delay,DEBUG_LEVEL_SPEW);
-
             // Update position
             m_x(0,uav) = msg->x;
             m_x(1,uav) = msg->y;
             m_x(2,uav) = msg->z;
-            spew("Updated position of vehicle '%s'",
-                resolveSystemId(msg->getSource()));
-            printMatrix(m_x,DEBUG_LEVEL_SPEW);
 
             // Update velocity (only really needed from local vehicle)
             m_v(0,uav) = msg->vx;
             m_v(1,uav) = msg->vy;
             m_v(2,uav) = msg->vz;
-            /*spew("Updated velocity of vehicle '%s'",
-                resolveSystemId(msg->getSource()));
-            printMatrix(m_v,DEBUG_LEVEL_SPEW);*/
+
+            m_last_pos_update(uav) = stamp;
+
+            // Print stuff for debugging
+            spew("Update frequency [Hz]:");
+            printMatrix(m_pos_update_rate,DEBUG_LEVEL_SPEW);
+            spew("Update delay [ms]:");
+            printMatrix(m_pos_update_delay,DEBUG_LEVEL_SPEW);
+            spew("Positions [m]:");
+            printMatrix(m_x,DEBUG_LEVEL_SPEW);
+            spew("Velocities [m/s]:");
+            printMatrix(m_v,DEBUG_LEVEL_SPEW);
 
             break;
           }
@@ -623,6 +638,42 @@ namespace Control
         if (vect.norm_2() > sat)
           vect *= sat/vect.norm_2();
         return vect;
+      }
+
+      Matrix
+      lowPassSmoothing(Matrix output, Matrix input, double dt, double RC)
+      {
+        if (output.isZeroSized())
+          return input;
+
+        // Check valid inputs
+        assert(input.size() == output.size());
+        assert(dt > 0);
+        assert(RC > 0);
+
+        // Calculate alpha
+        double alpha = dt/(RC + dt);
+
+        // Apply smoothing to all data
+        for (int i = 0; i < input.size(); i++)
+        {
+          output(i) += alpha*(input(i) - output(i));
+        }
+        return output;
+      }
+
+      double
+      lowPassSmoothing(double output, double input, double dt, double RC)
+      {
+        // Check valid inputs
+        assert(dt > 0);
+        assert(RC > 0);
+
+        // Calculate alpha
+        double alpha = dt/(RC + dt);
+
+        // Apply smoothing
+        return output += alpha*(input - output);
       }
 
       //! Calculate difference variables
