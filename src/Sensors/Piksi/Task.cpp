@@ -239,7 +239,7 @@ namespace Sensors
         sbp_register_callback(&m_sbp_state, SBP_VEL_NED,      sbp_vel_ned_callback, (void*)this, &m_nodemap[SBP_VEL_NED]);
         sbp_register_callback(&m_sbp_state, SBP_DOPS,         sbp_dops_callback, (void*)this, &m_nodemap[SBP_DOPS]);
         sbp_register_callback(&m_sbp_state, SBP_GPS_TIME,     sbp_gps_time_callback, (void*)this, &m_nodemap[SBP_GPS_TIME]);
-        sbp_register_callback(&m_sbp_state, PIKSI_MSG_IAR_STATE,     sbp_gps_time_callback, (void*)this, &m_nodemap[PIKSI_MSG_IAR_STATE]);
+        sbp_register_callback(&m_sbp_state, PIKSI_MSG_IAR_STATE,     sbp_iar_state_callback, (void*)this, &m_nodemap[PIKSI_MSG_IAR_STATE]);
 
 
       }
@@ -954,6 +954,8 @@ namespace Sensors
       handleIARState(uint32_t& iar)
       {
         trace("Got IAR-state: %u", iar);
+
+        m_rtk_fix.iar_hyp = iar;
       }
 
 
