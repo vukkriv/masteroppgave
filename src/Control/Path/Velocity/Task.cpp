@@ -80,9 +80,10 @@ namespace Control
           .description("Enable Velocity Controller");
 
           param("Max Speed", m_args.max_speed)
-            .defaultValue("5.0")
-            .units(Units::MeterPerSecond)
-            .description("Max speed of the vehicle");
+          .defaultValue("5.0")
+          .units(Units::MeterPerSecond)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Max speed of the vehicle");
 
           param("Use Reference Model", m_args.use_refmodel)
           .defaultValue("true")
@@ -91,7 +92,9 @@ namespace Control
           .description("Enable Reference Model.");
 
           param("Reference Model - Max Speed", m_args.refmodel_max_speed)
-          .defaultValue("3.0");
+          .defaultValue("3.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Max speed of the reference model.");
 
           param("Reference Model - Natural Frequency",m_args.refmodel_omega_n)
           .units(Units::RadianPerSecond)
@@ -101,7 +104,7 @@ namespace Control
           param("Reference Model - Relative Damping", m_args.refmodel_xi)
           .units(Units::None)
           .defaultValue("0.9")
-          .description("Relative Damping Factorof the speed reference model");
+          .description("Relative Damping Factor of the speed reference model");
 
           param("Velocity Controller - Kp", m_args.Kp)
           .units(Units::None)
@@ -110,13 +113,8 @@ namespace Control
 
           param("Use Altitude", m_args.use_altitude)
           .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Choose whether altitude is controlled or not (set to 0 if not).");
-
-
-
-
-
-
 
 
         }
@@ -313,7 +311,6 @@ namespace Control
               m_velocity.u, m_velocity.v, m_velocity.w);
 
           // Todo: Add seperate altitude controller.
-          //m_velocity.w = 0;
 
           m_velocity.flags = IMC::DesiredVelocity::FL_SURGE | IMC::DesiredVelocity::FL_SWAY | IMC::DesiredVelocity::FL_HEAVE;
 
