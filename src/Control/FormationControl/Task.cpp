@@ -28,19 +28,31 @@
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 
+// Local headers.
+#include "PeriodicUAVAutopilot.hpp"
+
 namespace Control
 {
   namespace FormationControl
   {
     using DUNE_NAMESPACES;
 
+    //! Controllable loops.
+    static const uint32_t c_controllable = IMC::CL_PATH;
+    //! Required loops.
+    static const uint32_t c_required = IMC::CL_SPEED;
+
     //! Vector for System Mapping.
     typedef std::vector<uint32_t> Systems;
 
+    //! UTC seconds for 2015-01-01 to check for clock synch
     const int UTC_SECS_2015 = 1420070400;
 
     struct Arguments
     {
+      //! Use Formation Controller
+      bool use_controller;
+
       //! Vehicle list
       std::vector<std::string> formation_systems;
 
@@ -90,7 +102,7 @@ namespace Control
       bool hold_current_formation;
     };
 
-    struct Task: public DUNE::Tasks::Periodic
+    struct Task: public PeriodicUAVAutopilot
     {
       //! Task arguments
       Arguments m_args;
@@ -147,14 +159,18 @@ namespace Control
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Periodic(name, ctx),
+        PeriodicUAVAutopilot(name, ctx, c_controllable, c_required),
+        //Periodic(name, ctx),
         m_i(0),
         m_N(0),
         m_L(0),
         m_mf(0)
       {
-        paramActive(Tasks::Parameter::SCOPE_MANEUVER,
-                    Tasks::Parameter::VISIBILITY_USER);
+        param("Formation Controller", m_args.use_controller)
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        .defaultValue("false")
+        .description("Enable Formation Controller.");
 
         param("Vehicle List", m_args.formation_systems)
         .defaultValue("")
@@ -242,13 +258,10 @@ namespace Control
         .description("Use current position of vehicles as desired formation");
 
 
-
-
         // Bind incoming IMC messages
         bind<IMC::FormPos>(this);
         bind<IMC::FormCoord>(this);
         bind<IMC::DesiredVelocity>(this);
-        bind<IMC::ControlLoops>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -437,6 +450,8 @@ namespace Control
       void
       onResourceInitialization(void)
       {
+        PeriodicUAVAutopilot::onResourceInitialization();
+
         // Initialize matrices
         m_last_pos_update = Matrix(1, m_N, Clock::get());
         m_pos_update_rate = Matrix(1, m_N, 0);
@@ -452,24 +467,11 @@ namespace Control
       void
       onActivation(void)
       {
-        IMC::ControlLoops cloops;
-        cloops.enable = IMC::ControlLoops::CL_ENABLE;
-        cloops.mask = IMC::CL_SPEED;
-        dispatch(cloops);
-        inf("Sent ControlLoops enable SPEED");
       }
 
       void
       onDeactivation(void)
       {
-        Matrix zero_vel(3,1,0.0);
-        sendDesiredVelocity(zero_vel);
-
-        IMC::ControlLoops cloops;
-        cloops.enable = IMC::ControlLoops::CL_DISABLE;
-        cloops.mask = IMC::CL_SPEED;
-        dispatch(cloops);
-        inf("Sent ControlLoops disable SPEED");
       }
 
       //! Consume Formation Position
@@ -586,35 +588,6 @@ namespace Control
             m_v_mission(0), m_v_mission(1), m_v_mission(2));
       }
 
-      void
-      consume(const IMC::ControlLoops* msg)
-      {
-        debug("Got ControlLoops from '%s' at '%s'",
-            resolveEntity(msg->getSourceEntity()).c_str(),
-            resolveSystemId(msg->getSource()));
-        if (msg->enable == IMC::ControlLoops::CL_DISABLE)
-        {
-          if (msg->mask & IMC::CL_SPEED)
-          {
-            debug("Got DISABLE SPEED");
-            if (isActive())
-            {
-              IMC::ControlLoops cloops;
-              cloops.enable = IMC::ControlLoops::CL_ENABLE;
-              cloops.mask = IMC::CL_SPEED;
-              dispatch(cloops);
-              inf("Sent ControlLoops enable SPEED");
-            }
-          }
-        }
-        /*
-        cloops.enable = IMC::ControlLoops::CL_ENABLE;
-        cloops.mask = IMC::CL_SPEED;
-        cloops.scope_ref = msg->scope_ref;
-        dispatch(cloops);
-        debug("Sent ControlLoops");
-        */
-      }
 
       //! Print matrix (for debuging)
       void
@@ -817,11 +790,12 @@ namespace Control
             m_desired_velocity.u, m_desired_velocity.v, m_desired_velocity.w);
       }
 
+
       //! Main loop.
       void
       task(void)
       {
-        if(!isActive())
+        if(!m_args.use_controller || !isActive())
           return;
 
         // Calculate external feedback, u

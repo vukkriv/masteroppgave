@@ -131,7 +131,7 @@ namespace Maneuver
                     IMC::MessageList<IMC::EntityParameter>::const_iterator it_ep = t_sep->params.begin();
                     for (; it_ep != t_sep->params.end(); it_ep++ )
                     {
-                      if ((*it_ep)->name.compare("Active") == 0 &&
+                      if ((*it_ep)->name.compare("Formation Controller") == 0 &&
                           (*it_ep)->value.compare("true") == 0)
                       {
                         is_formation_control = true;
@@ -362,7 +362,7 @@ namespace Maneuver
               IMC::SetEntityParameters eparam_start;
               eparam_start.name = "Formation Controller";
                 IMC::EntityParameter param_t;
-                param_t.name = "Active";
+                param_t.name = "Formation Controller";
                 param_t.value = "true";
 
               eparam_start.params.push_back(param_t);
@@ -373,7 +373,7 @@ namespace Maneuver
               IMC::SetEntityParameters eparam_stop;
               eparam_start.name = "Formation Controller";
                 IMC::EntityParameter param_f;
-                param_f.name = "Active";
+                param_f.name = "Formation Controller";
                 param_f.value = "false";
 
               eparam_start.params.push_back(param_f);
