@@ -89,9 +89,6 @@ namespace Control
       //! Maximum speed
       double max_speed;
 
-      //! Memory factor when calculating average update rates
-      double mem_factor;
-
       //! Time constant for low-pass smoothing of meta-data
       double meta_smoothing_T;
 
@@ -146,9 +143,6 @@ namespace Control
       //! Rate [Hz] and delay [ms] of position update for each vehicle. Both zero for vehicles we have yet to receive positions from.
       Matrix m_pos_update_rate, m_pos_update_delay;
 
-      //! Memory factor when calculating average update rates
-      double m_mf;
-
       //! Desired velocity
       //IMC::DesiredVelocity m_desired_velocity;
       IMC::TranslationalSetpoint m_desired_velocity;
@@ -163,8 +157,7 @@ namespace Control
         //Periodic(name, ctx),
         m_i(0),
         m_N(0),
-        m_L(0),
-        m_mf(0)
+        m_L(0)
       {
         param("Formation Controller", m_args.use_controller)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -236,10 +229,6 @@ namespace Control
         .visibility(Tasks::Parameter::VISIBILITY_USER)
         //.scope(Tasks::Parameter::SCOPE_MANEUVER)
         .description("Maximum speed, i.e. controller saturation.");
-
-        param("Memory Factor", m_args.mem_factor)
-        .defaultValue("0.95")
-        .description("Memory factor when calculating update rates.");
 
         param("Meta Smoothing Time Constant", m_args.meta_smoothing_T)
         .defaultValue("2.0")
@@ -410,21 +399,6 @@ namespace Control
           m_v_mission = m_args.const_mission_velocity;
           debug("Mission Velocity: [%1.1f, %1.1f, %1.1f]",
               m_v_mission(0), m_v_mission(1), m_v_mission(2));
-        }
-
-
-        if (paramChanged(m_args.mem_factor))
-        {
-          inf("New memory factor.");
-
-          if (m_args.mem_factor >= 1 || m_args.mem_factor < 0)
-          {
-            war("Invalid memory factor %1.1f; using default value 0.95.",
-                m_args.mem_factor);
-            m_mf = 0.95;
-          }
-          else
-            m_mf = m_args.mem_factor;
         }
       }
 
