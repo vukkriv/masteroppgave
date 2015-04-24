@@ -53,6 +53,7 @@ namespace Sensors
 
     const int PIKSI_MSG_INIT_BASELINE = 0x23;
     const int PIKSI_MSG_RESET_FILTERS = 0x22;
+    const int PIKSI_MSG_IAR_STATE     = 0x0019;
 
     //! %Task arguments.
     struct Arguments
@@ -227,6 +228,7 @@ namespace Sensors
         m_nodemap[SBP_BASELINE_NED] = tmp;
         m_nodemap[SBP_VEL_NED]   = tmp;
         m_nodemap[SBP_DOPS]     = tmp;
+        m_nodemap[PIKSI_MSG_IAR_STATE] = tmp;
 
         // Register task as context
         sbp_state_set_io_context(&m_sbp_state, (void*) this);
@@ -237,6 +239,8 @@ namespace Sensors
         sbp_register_callback(&m_sbp_state, SBP_VEL_NED,      sbp_vel_ned_callback, (void*)this, &m_nodemap[SBP_VEL_NED]);
         sbp_register_callback(&m_sbp_state, SBP_DOPS,         sbp_dops_callback, (void*)this, &m_nodemap[SBP_DOPS]);
         sbp_register_callback(&m_sbp_state, SBP_GPS_TIME,     sbp_gps_time_callback, (void*)this, &m_nodemap[SBP_GPS_TIME]);
+        sbp_register_callback(&m_sbp_state, PIKSI_MSG_IAR_STATE,     sbp_gps_time_callback, (void*)this, &m_nodemap[PIKSI_MSG_IAR_STATE]);
+
 
       }
 
@@ -946,6 +950,12 @@ namespace Sensors
         }
       }
 
+      void
+      handleIARState(uint32_t& iar)
+      {
+        trace("Got IAR-state: %u", iar);
+      }
+
 
       /* Callback-methods for Piksi interface */
       static void
@@ -1001,6 +1011,17 @@ namespace Sensors
         (void) sender_id;
         (void) len;
         task->handleGpsTime(gps_time);
+      }
+
+      static void
+      sbp_iar_state_callback(u16 sender_id, u8 len, u8 msg[], void *context)
+      {
+        uint32_t *iar = (uint32_t *)msg;
+        Sensors::Piksi::Task* task = (Sensors::Piksi::Task*)(context);
+
+        (void) sender_id;
+        (void) len;
+        task->handleIARState(*iar);
       }
 
     };
