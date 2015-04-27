@@ -446,6 +446,8 @@ namespace Control
       void
       onDeactivation(void)
       {
+        Matrix zero_vel(3,1,0);
+        sendDesiredVelocity(zero_vel);
       }
 
       //! Consume Formation Position
