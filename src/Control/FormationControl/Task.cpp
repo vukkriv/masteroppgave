@@ -97,6 +97,9 @@ namespace Control
 
       //! Hold current formation
       bool hold_current_formation;
+
+      //! Threshold for sending aborts
+      double abort_resend_threshold;
     };
 
     struct Task: public PeriodicUAVAutopilot
@@ -245,6 +248,11 @@ namespace Control
         .defaultValue("true")
         .visibility(Tasks::Parameter::VISIBILITY_USER)
         .description("Use current position of vehicles as desired formation");
+
+        param("Resend Abort Threshold", m_args.abort_resend_threshold)
+        .defaultValue("200")
+        .units(Units::Millisecond)
+        .description("Time allowed to pass before resending an abort.");
 
 
         // Bind incoming IMC messages
@@ -468,7 +476,7 @@ namespace Control
             double now = Clock::getSinceEpoch();
 
             // Calculate update frequency
-            double diff = stamp - m_last_pos_update(uav);
+            double diff = now - m_last_pos_update(uav);
             if (diff > 0)
             {
               double rate = 1/diff;
@@ -511,7 +519,7 @@ namespace Control
             m_v(1,uav) = msg->vy;
             m_v(2,uav) = msg->vz;
 
-            m_last_pos_update(uav) = stamp;
+            m_last_pos_update(uav) = now;
 
             // Print stuff for debugging
             spew("Update frequency [Hz]:");
@@ -533,7 +541,7 @@ namespace Control
       void
       consume(const IMC::FormCoord* msg)
       {
-        debug("Got FormCoord from system '%s' and entity '%s'.",
+        trace("Got FormCoord from system '%s' and entity '%s'.",
               resolveSystemId(msg->getSource()),
               resolveEntity(msg->getSourceEntity()).c_str());
 
@@ -643,6 +651,35 @@ namespace Control
             z_k += D(uav,link)*x.column(uav);
           }
           z->put(0,link,z_k);
+        }
+      }
+
+      //! Check if any reason to abort formation (e.g. pos.data timeout/missing)
+      void
+      checkFormation(void)
+      {
+        static double last_abort_sent;
+
+        // Check that pos.data from all vehicles is within threshold
+        double now = Clock::getSinceEpoch();
+        for (unsigned int uav = 0; uav < m_N; uav++)
+        {
+          double pos_update_age = (now - m_last_pos_update(uav))*1E3;
+          if (pos_update_age > m_args.delay_threshold)
+          {
+            war("Age of pos.data for '%s' above threshold (%1.1f): %1.1f ms",
+                resolveSystemId(m_uav_ID[uav]), m_args.delay_threshold, pos_update_age);
+
+            // Issue abort if more than set time since last abort (to avoid spam)
+            if ((now - last_abort_sent)*1E3 > m_args.abort_resend_threshold)
+            {
+              IMC::Abort abort_msg;
+              abort_msg.setDestination(getSystemId());
+              dispatch(abort_msg);
+              debug("Abort sent.");
+              last_abort_sent = now;
+            }
+          }
         }
       }
 
@@ -773,6 +810,9 @@ namespace Control
       {
         if(!m_args.use_controller || !isActive())
           return;
+
+        // Check if we should abort
+        checkFormation();
 
         // Calculate external feedback, u
         Matrix u = formationVelocity() + collAvoidVelocity();
