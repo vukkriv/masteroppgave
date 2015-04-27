@@ -217,7 +217,9 @@ namespace Maneuver
       void
       consume(const IMC::Abort* msg)
       {
-        (void)msg;
+        // Ignore if this vehichle not the destination (inline with handling in Vehicles.Supervisor)
+        if (msg->getDestination() != getSystemId())
+          return;
         war("Received Abort!");
         // Notify vehicles in formation
         m_form_coord.type = IMC::FormCoord::FCT_REQUEST;
@@ -285,6 +287,8 @@ namespace Maneuver
               war("Formation Abort!");
               // Send abort
               IMC::Abort plan_abort;
+              // Have to set destination, as Vehicle.Supervisor ignores if this destination is not this vehicle
+              plan_abort.setDestination(this->getSystemId());
               dispatch(plan_abort);
 
               break;
