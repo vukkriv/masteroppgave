@@ -100,6 +100,9 @@ namespace Control
 
       //! Threshold for sending aborts
       double abort_resend_threshold;
+
+      //! Frequency of pos.data prints
+      float print_frequency;
     };
 
     struct Task: public PeriodicUAVAutopilot
@@ -254,6 +257,10 @@ namespace Control
         .units(Units::Millisecond)
         .description("Time allowed to pass before resending an abort.");
 
+        param("Print Frequency", m_args.print_frequency)
+        .defaultValue("0.0")
+        .units(Units::Second)
+        .description("Frequency of pos.data prints. Zero => Print on every update.");
 
         // Bind incoming IMC messages
         bind<IMC::FormPos>(this);
@@ -464,6 +471,8 @@ namespace Control
       {
         spew("Got FormPos from '%s'", resolveSystemId(msg->getSource()));
 
+        static double last_print;
+
         bool id_found = false;
         for (unsigned int uav = 0; uav < m_N; uav++)
         {
@@ -521,15 +530,21 @@ namespace Control
 
             m_last_pos_update(uav) = now;
 
-            // Print stuff for debugging
-            spew("Update frequency [Hz]:");
-            printMatrix(m_pos_update_rate,DEBUG_LEVEL_SPEW);
-            spew("Update delay [ms]:");
-            printMatrix(m_pos_update_delay,DEBUG_LEVEL_SPEW);
-            spew("Positions [m]:");
-            printMatrix(m_x,DEBUG_LEVEL_SPEW);
-            spew("Velocities [m/s]:");
-            printMatrix(m_v,DEBUG_LEVEL_SPEW);
+
+            if (!m_args.print_frequency || !last_print || (now - last_print) > 1.0/m_args.print_frequency)
+            {
+              // Print stuff for debugging
+              trace("Update frequency [Hz]:");
+              printMatrix(m_pos_update_rate,DEBUG_LEVEL_TRACE);
+              trace("Update delay [ms]:");
+              printMatrix(m_pos_update_delay,DEBUG_LEVEL_TRACE);
+              trace("Positions [m]:");
+              printMatrix(m_x,DEBUG_LEVEL_TRACE);
+              trace("Velocities [m/s]:");
+              printMatrix(m_v,DEBUG_LEVEL_TRACE);
+
+              last_print = now;
+            }
 
             break;
           }
