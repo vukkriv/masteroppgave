@@ -134,15 +134,15 @@ namespace Sensors
       doRead(void)
       {
 
-        float a1 = m_sensor_1->read();
-        float a2 = m_sensor_2->read();
+        float a1 = m_sensor_1->read() - 180.0;
+        float a2 = m_sensor_2->read() - 180.0;
 
         debug("Angle: %f, %f \n", a1, a2);
 
         IMC::EulerAngles angles;
 
-        angles.phi = a1;
-        angles.theta = a2;
+        angles.phi = (a1 * Math::c_pi) / 180.0;
+        angles.theta = (a2 * Math::c_pi) / 180.0 ;
 
         dispatch(angles);
 
