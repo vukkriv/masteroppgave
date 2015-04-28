@@ -49,6 +49,7 @@ namespace Control
         double refmodel_xi;
         double Kp;
         bool use_altitude;
+        bool disable_heave;
       };
 
       struct Task: public DUNE::Control::PathController
@@ -116,6 +117,10 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Choose whether altitude is controlled or not (set to 0 if not).");
 
+          param("Disable Heave flag", m_args.disable_heave)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Choose whether to disable heave flag. In turn, this will utilize new rate controller on some targets");
 
         }
 
@@ -312,7 +317,24 @@ namespace Control
 
           // Todo: Add seperate altitude controller.
 
+
           m_velocity.flags = IMC::DesiredVelocity::FL_SURGE | IMC::DesiredVelocity::FL_SWAY | IMC::DesiredVelocity::FL_HEAVE;
+
+          if(m_args.disable_heave)
+            m_velocity.flags = IMC::DesiredVelocity::FL_SURGE | IMC::DesiredVelocity::FL_SWAY;
+
+
+          // Kristian Test: Dispatch linear setpoint for logging
+          /*
+          IMC::TranslationalSetpoint setpoint;
+          setpoint.x = m_refmodel_x(0);
+          setpoint.y = m_refmodel_x(1);
+          setpoint.z = m_refmodel_x(2);
+          setpoint.u = m_refmodel_x(3);
+          setpoint.v = m_refmodel_x(4);
+          setpoint.w = m_refmodel_x(5);
+          dispatch(setpoint);
+          */
 
           dispatch(m_velocity);
           spew("Sent vel data.");
