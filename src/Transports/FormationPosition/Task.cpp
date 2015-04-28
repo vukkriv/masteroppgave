@@ -86,6 +86,7 @@ namespace Transports
         param("Input Type", m_args.type)
         .defaultValue("RTK")
         .values("RTK,EstimatedState")
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
         .description("Input Type - RTK or EstimatedState");
 
         param("Latitude", m_args.ref_lat)
@@ -104,12 +105,14 @@ namespace Transports
         .description("Reference Height (above elipsoid)");
 
         param("Leader LLH Reference", m_args.use_leader_ref)
-        .defaultValue("false")
+        .defaultValue("true")
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
         .description("Reference LLH is set from FormCoord from leader");
 
         param("RTK Jump Threshold", m_args.rtk_jump_threshold)
-        .defaultValue("2.0")
-        .units(Units::Meter)
+        .defaultValue("5.0")
+        .units(Units::MeterPerSecond)
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
         .description("Threshold for distance between two consecutive RTK Fixes");
 
         // Bind to incoming IMC messages
@@ -210,20 +213,29 @@ namespace Transports
                 diff_ned(0) = msg->n - m_prev_RtkFix.n;
                 diff_ned(1) = msg->e - m_prev_RtkFix.e;
                 diff_ned(2) = msg->d - m_prev_RtkFix.d;
-                double dist = diff_ned.norm_2();
-                if (dist > m_args.rtk_jump_threshold)
+                double diff_dist = diff_ned.norm_2();
+                double diff_time = (msg->tow - m_prev_RtkFix.tow)/1E3;
+                if (diff_time < 0)
                 {
-                  war("Jump in RTK Fix above threshold (%1.1f): %1.1f m",
-                      m_args.rtk_jump_threshold, dist);
+                  war("Received old RtkFix! Diff = %1.1f s",
+                      diff_time);
+                  return;
+                }
+
+                double change = diff_dist/diff_time;
+                if (change > m_args.rtk_jump_threshold)
+                {
+                  err("Jump in RTK Fix above threshold (%1.1f): %1.1f m/s \nJumped %1.1f m in %1.1f s",
+                      m_args.rtk_jump_threshold, change, diff_dist, diff_time);
                   IMC::Abort abort_msg;
                   abort_msg.setDestination(this->getSystemId());
                   dispatch(abort_msg);
                   debug("Abort sent.");
                 }
-                else if (dist > m_args.rtk_jump_threshold*0.75)
+                else if (change > m_args.rtk_jump_threshold*0.75)
                 {
-                  war("Jump in RTK Fix close to threshold (%1.1f): %1.1f m",
-                      m_args.rtk_jump_threshold, dist);
+                  war("Jump in RTK Fix close to threshold (%1.1f): %1.1f m/s",
+                      m_args.rtk_jump_threshold, change);
                 }
               }
 
