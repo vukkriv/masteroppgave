@@ -309,6 +309,7 @@ namespace Sensors
         if (m_X.element(0) != m_X.element(0) || m_X.element(1) != m_X.element(1) || m_X.element(2) != m_X.element(2))
         {
           initKalman(m_args.r,m_args.q,m_args.p,m_args.n_init,m_args.e_init,m_args.d_init,m_args.B1,m_args.B2,m_args.B3,m_args.B4,m_args.B5,m_args.B6);
+          trace("EKF DIVERGING!!!!");
         }
 
         //      IMC::RtkFix pos;
