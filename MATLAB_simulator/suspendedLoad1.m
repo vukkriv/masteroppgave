@@ -103,12 +103,12 @@ while whileloop
     if nextEuler_time > 1/EulerAngles_freq
          if  ~isempty(EulerAngles)
              if (EulerAngles.getTimestamp() - timestamp_L_minus) ~= 0 % if new measurement
-                phi_L = -(EulerAngles.getPhi() - 180);     % about y axis
-                theta_L = (EulerAngles.getTheta() - 180); % about x axis
+                phi_L = (EulerAngles.getPhi());% - 180);     % about y axis
+                theta_L = (EulerAngles.getTheta());% - 180); % about x axis
                 timestamp_L = EulerAngles.getTimestamp();
                 fprintf('EulerAngle freq: %f \n imctime: %f \n \n', 1/nextEuler_time, EulerAngles.getTimestamp() - timestamp_L_minus);
                 nextEuler_time = 0;
-                euler_logg(:,Euler_loop) = [phi_L;theta_L];
+                euler_logg(:,Euler_loop) = [phi_L*r2d;theta_L*r2d];
                 Euler_time(Euler_loop) = total_time;
                 Euler_loop = Euler_loop + 1;
                 new_euler = true;
@@ -138,7 +138,7 @@ while whileloop
         %Rbn = Rx(phi)*Ry(theta)*Rz(psi);
         
         %Rlb = Rzyx(phi_L*d2r,theta_L*d2r,0);
-        Rlb = Rx(phi_L*d2r)*Ry(theta_L*d2r);
+        Rlb = Rx(phi_L)*Ry(theta_L);
         
         wire_length = 1;
         load_pos = Rbn*Rlb * [0; 0; wire_length;];
@@ -146,9 +146,11 @@ while whileloop
         norm(load_pos)
         load_leng = norm(load_pos);
         %theta_Ln = atan(load_pos(1)/load_pos(2) );
-        theta_Ln = acos( load_pos(1) / sqrt(load_pos(1)^2 + load_pos(2)^2) );
-        phi_Ln = 0;%asin(load_pos(2) / load_leng);
-        Ang_logg(:,angloop) = [theta_Ln*r2d; phi_Ln*r2d];
+        %theta_Ln = acos( load_pos(1) / sqrt(load_pos(1)^2 + load_pos(2)^2) );
+        %phi_Ln = 0;%asin(load_pos(2) / load_leng);
+        phi_Ln = atan(load_pos(2)/load_pos(3));
+        theta_Ln = atan(load_pos(1)/load_pos(3));
+        Ang_logg(:,angloop) = [phi_Ln*r2d; theta_Ln*r2d];
         
        
         new_euler = false;
@@ -163,7 +165,7 @@ while whileloop
                  delete(oldPlots)
                 delete(oldPlots2);
             end
-            figure(1); 
+            figure(1); cla;
             N_angloop = 1:angloop-1;
             oldPlots(1) = plot(ang_time(N_angloop),Ang_logg(1,N_angloop),'b');
             oldPlots(2) = plot(ang_time(N_angloop),Ang_logg(2,N_angloop),'r');
