@@ -40,17 +40,19 @@ namespace Control
       {
         bool use_controller;
         double max_speed;
+        bool use_refmodel;
         double refmodel_max_speed;
         double refmodel_omega_n;
         double refmodel_xi;
-        double ref_down;
-        bool delayed_feedback;
         double Kp;
+        bool use_altitude;
+        bool use_delayed_feedback;
+        double pL;
       };
 
       struct Task: public DUNE::Control::PathController
       {
-        IMC::TranslationalSetpoint m_setpoint;
+        IMC::TranslationalSetpoint m_translational_setpoint;
         //! Task arguments.
         Arguments m_args;
         //! Reference model state
@@ -63,11 +65,11 @@ namespace Control
         double m_desired_speed;
         //! Current autopilot mode
         IMC::AutopilotMode m_autopilot_mode;
-        Matrix m_R_bn;
-        Matrix m_R_nb;
         bool m_new_eulerangles;
-        double eulerAngles[50][5];
+        double m_eulerAngles[50][3];
         int Counter;
+
+
 
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
@@ -75,26 +77,27 @@ namespace Control
         {
 
           param("Velocity Controller", m_args.use_controller)
-         .visibility(Tasks::Parameter::VISIBILITY_USER)
-         .scope(Tasks::Parameter::SCOPE_MANEUVER)
-         .defaultValue("false")
-         .description("Enable Velocoty Controller");
-
+                                                                                        .visibility(Tasks::Parameter::VISIBILITY_USER)
+                                                                                        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+                                                                                        .defaultValue("false")
+                                                                                        .description("Enable Velocity Controller");
 
           param("Max Speed", m_args.max_speed)
           .defaultValue("5.0")
           .units(Units::MeterPerSecond)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Max speed of the vehicle");
 
-          param("Reference Model - Max Speed", m_args.refmodel_max_speed)
-          .defaultValue("3.0");
-
-          param("Down reference - height", m_args.ref_down)
-          .defaultValue("-10.0");
-
-          param("Delayed Feedback controller", m_args.delayed_feedback)
+          param("Use Reference Model", m_args.use_refmodel)
+          .defaultValue("true")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .defaultValue("False");
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Enable Reference Model.");
+
+          param("Reference Model - Max Speed", m_args.refmodel_max_speed)
+          .defaultValue("3.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Max speed of the reference model.");
 
           param("Reference Model - Natural Frequency",m_args.refmodel_omega_n)
           .units(Units::RadianPerSecond)
@@ -104,17 +107,35 @@ namespace Control
           param("Reference Model - Relative Damping", m_args.refmodel_xi)
           .units(Units::None)
           .defaultValue("0.9")
-          .description("Relative Damping Factorof the speed reference model");
+          .description("Relative Damping Factor of the speed reference model");
 
           param("Velocity Controller - Kp", m_args.Kp)
           .units(Units::None)
           .defaultValue("0.1")
           .description("P-Gain of the velocity controller");
 
+          param("Use Altitude", m_args.use_altitude)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Choose whether altitude is controlled or not (set to 0 if not).");
+
+          param("Use Delayed Feedback", m_args.use_delayed_feedback)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Choose whether delayed feedback control is on (set to 0 if not).");
+
+          param("Suspended wire length", m_args.pL)
+          .defaultValue("0.7")
+          .units(Units::Meter)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Suspended wire length");
+
+
           bind<IMC::EulerAngles>(this);
           m_new_eulerangles = false;
           //eulerAngles[10][5] = 0;
           Counter = 0;
+
         }
 
         void
@@ -133,38 +154,6 @@ namespace Control
           PathController::onEntityReservation();
         }
 
-
-        //! Consumer for EulerAngles message
-        void
-        consume(const IMC::EulerAngles* eangles)
-        {
-          // Save last 50 samples = 1 sek
-          m_new_eulerangles = true;
-          if ((eulerAngles[49][0] == 0) && (Counter < 49))
-          {
-            eulerAngles[Counter][0] = eangles->getTimeStamp();
-            eulerAngles[Counter][1] = eangles->theta;
-            eulerAngles[Counter][2] = eangles->phi;
-            eulerAngles[Counter][3] = eangles->psi;          //thetadot
-            eulerAngles[Counter][4] = eangles->psi_magnetic; //phi dot
-            Counter = Counter + 1;
-          }else{
-            for (int i = 1; i<50; i++)
-            {
-              eulerAngles[i-1][0] = eulerAngles[i][0];
-              eulerAngles[i-1][1] = eulerAngles[i][1];
-              eulerAngles[i-1][2] = eulerAngles[i][2];
-              eulerAngles[i-1][3] = eulerAngles[i][3];
-              eulerAngles[i-1][4] = eulerAngles[i][4];
-            }
-            eulerAngles[Counter][0] = eangles->getTimeStamp();
-            eulerAngles[Counter][1] = eangles->theta;
-            eulerAngles[Counter][2] = eangles->phi;
-            eulerAngles[Counter][3] = eangles->psi;          //thetadot
-            eulerAngles[Counter][4] = eangles->psi_magnetic; //phi dot
-          }
-
-        }
 
         //! Consumer for DesiredSpeed message.
         //! @param dspeed message to consume.
@@ -186,6 +175,33 @@ namespace Control
           PathController::consume(dspeed);
         }
 
+        //! Consumer for m_eulerAngles message
+        void
+        consume(const IMC::EulerAngles* eangles)
+        {
+          // Save last 50 samples = 1 sek
+          m_new_eulerangles = true;
+          if ((m_eulerAngles[49][0] == 0) && (Counter < 49))
+          {
+            m_eulerAngles[Counter][0] = eangles->getTimeStamp();
+            m_eulerAngles[Counter][1] = eangles->theta;
+            m_eulerAngles[Counter][2] = eangles->phi;
+            Counter = Counter + 1;
+          }else{
+            for (int i = 1; i<50; i++)
+            {
+              m_eulerAngles[i-1][0] = m_eulerAngles[i][0];
+              m_eulerAngles[i-1][1] = m_eulerAngles[i][1];
+              m_eulerAngles[i-1][2] = m_eulerAngles[i][2];
+            }
+            m_eulerAngles[Counter][0] = eangles->getTimeStamp();
+            m_eulerAngles[Counter][1] = eangles->theta;
+            m_eulerAngles[Counter][2] = eangles->phi;
+          }
+
+        }
+
+
         void
         initRefmodel(const IMC::EstimatedState& state)
         {
@@ -203,14 +219,6 @@ namespace Control
           m_refmodel_x(3) = state.u;
           m_refmodel_x(4) = state.v;
           m_refmodel_x(5) = state.w;
-
-
-          //          m_vel = Matrix(2,1, 0.0);
-          //          m_vel(0) = m_refmodel_x(3);
-          //          m_vel(1) = m_refmodel_x(4);
-          //          m_vel(2) = m_refmodel_x(5);
-
-
 
           // Set model
           Matrix A_12 = eye;
@@ -232,11 +240,11 @@ namespace Control
         onPathStartup(const IMC::EstimatedState& state, const TrackingState& ts)
         {
 
-          (void)ts;
+          //(void)ts;
 
 
           // Print end coordinates
-          debug("End coordinates: %f, %f", ts.end.x, ts.end.y);
+          debug("End coordinates: [%f, %f, %f]", ts.end.x, ts.end.y, ts.end.z);
 
           // Restart ref model
           initRefmodel(state);
@@ -248,6 +256,7 @@ namespace Control
         {
           if (!m_args.use_controller)
           {
+            debug("Path activated, but not active: Requesting deactivation");
             requestDeactivation();
             return;
           }
@@ -267,150 +276,184 @@ namespace Control
           if (!m_args.use_controller)
             return;
 
+          // Get current position
+          Matrix x = Matrix(3, 1, 0.0);
+          x(0) = state.x;
+          x(1) = state.y;
+          x(2) = state.z;
+          trace("x:\t [%1.2f, %1.2f, %1.2f]",
+              state.x, state.y, state.z);
 
-          /*
-           *
-           * Calculates input (setpoint)
-           * NB: There is a serious bug in height calculation.
-           */
-          Matrix x_d = Matrix(3,1, 0.0);
+          // Get target position
+          Matrix x_d = Matrix(3, 1, 0.0);
           x_d(0) = ts.end.x;
           x_d(1) = ts.end.y;
-          x_d(2) = -ts.end.z;
+          x_d(2) = -ts.end.z; // NEU?!
+          trace("x_d:\t [%1.2f, %1.2f, %1.2f]",
+              x_d(0), x_d(1), x_d(2));
 
+          Matrix vel = Matrix(3,1, 0.0);
 
-          // Update reference
-          m_refmodel_x += ts.delta * (m_refmodel_A * m_refmodel_x + m_refmodel_B * x_d);
-
-
-          // Saturate velocity
-          Matrix vel = m_refmodel_x.get(3,5,0,0);
-
-
-          if( vel.norm_2() > m_args.refmodel_max_speed )
+          if (m_args.use_refmodel)
           {
-            vel = m_args.refmodel_max_speed * vel / vel.norm_2();
+            // Update reference
+            m_refmodel_x += ts.delta * (m_refmodel_A * m_refmodel_x + m_refmodel_B * x_d);
 
-            m_refmodel_x.put(3,0,vel);
+            // Saturate reference velocity
+            vel = m_refmodel_x.get(3,5,0,0);
+
+            // Set heave to 0 if not controlling altitude
+            if (!m_args.use_altitude)
+            {
+              vel(2) = 0;
+            }
+
+            if( vel.norm_2() > m_args.refmodel_max_speed )
+            {
+              vel = m_args.refmodel_max_speed * vel / vel.norm_2();
+              m_refmodel_x.put(3,0,vel);
+            }
+            spew("Vel norm: %f", m_refmodel_x.get(3,5,0,0).norm_2());
+
+            // Print reference pos and vel
+            trace("x_r:\t [%1.2f, %1.2f, %1.2f]",
+                m_refmodel_x(0), m_refmodel_x(1), m_refmodel_x(2));
+            trace("v_r:\t [%1.2f, %1.2f, %1.2f]",
+                m_refmodel_x(3), m_refmodel_x(4), m_refmodel_x(5));
+
+            // Head straight to reference
+            //vel(0) = m_refmodel_x(3) - m_args.Kp * (state.x - m_refmodel_x(0));
+            //vel(1) = m_refmodel_x(4) - m_args.Kp * (state.y - m_refmodel_x(1));
+            //vel(2) = m_refmodel_x(5) - m_args.Kp * (state.z - m_refmodel_x(2));
+            vel = m_refmodel_x.get(3,5,0,0) + m_args.Kp * (m_refmodel_x.get(0,2,0,0) - x);
+          }
+          else
+          {
+            // Head straight to target
+            //vel(0) = - m_args.Kp * (state.x - x_d(0));
+            //vel(1) = - m_args.Kp * (state.y - x_d(1));
+            //vel(2) = - m_args.Kp * (state.z - x_d(2));
+            vel = m_args.Kp * (x_d - x);
           }
 
-          debug("Vel norm: %f", m_refmodel_x.get(3,5,0,0).norm_2());
+          // Set heave to 0 if not controlling altitude
+          if (!m_args.use_altitude)
+          {
+            vel(2) = 0;
+          }
 
-          // Move at a rate towards the target
-
-          // Head straight to target
-
-          vel(0) = m_refmodel_x(3) - m_args.Kp * (state.x - m_refmodel_x(0));
-          vel(1) = m_refmodel_x(4) - m_args.Kp * (state.y - m_refmodel_x(1));
-          vel(2) = m_refmodel_x(5) - m_args.Kp * (state.z - m_refmodel_x(2));
-
+          // Saturate velocity
           if( vel.norm_2() > m_args.max_speed )
           {
             vel = m_args.max_speed * vel / vel.norm_2();
           }
 
-
-
-          m_setpoint.x = m_refmodel_x(0);
-          m_setpoint.y = m_refmodel_x(1);
-          m_setpoint.z = m_refmodel_x(2);
-          m_setpoint.u = vel(0);
-          m_setpoint.v = vel(1);
-          m_setpoint.w = vel(2);
-
-
-          if ((m_args.delayed_feedback))// && (m_new_eulerangles))
+          if (m_args.use_delayed_feedback )
           {
-            double pL = 0.7;
-            double pd =  0.01;
+
+            // Suspended load controller parameters
             double pm_L = 2;
+            double pd =  0.01;
             double pg = 9.81;
-            float pi = 3.141592653;
 
-            double omega_n = sqrt(pg/pL);
-
+            double omega_n = sqrt(pg/m_args.pL);
             double xi = pd/(2*omega_n*pm_L);
             double omega_d = omega_n*sqrt(1 - pow(xi,2));
 
-            double Td = 2*pi/omega_d;
+            double Td = 2*Math::c_pi/omega_d;
+
             double tau_d = 0.325*Td;
             double Gd    = 0.325;
 
+            // Find nearest euler to oscillation period
             double diffAngles[50];
             double diff[50];
             double small = 10;
             int smallestElement = 0;
 
             for (int i=49;i>=0;i--){
-              diffAngles[i] = eulerAngles[49][0] - eulerAngles[i][0];
+              diffAngles[i] = m_eulerAngles[49][0] - m_eulerAngles[i][0];
               diff[i] = std::abs( (diffAngles[i]) - tau_d );
               if (diff[i] < small)
               {
                 small = diff[i];
                 smallestElement = i;
               }
-              //inf("%i : %f : %f : %f : %i ", i,diffAngles[i],diff[i],small, smallestElement );
             }
 
 
+            double theta = m_eulerAngles[smallestElement][1];
+            double phi = m_eulerAngles[smallestElement][2];
+            double theta_minus = m_eulerAngles[smallestElement-1][1];
+            double phi_minus = m_eulerAngles[smallestElement-1][2];
+            double timediff = m_eulerAngles[smallestElement-1][0]-m_eulerAngles[smallestElement][0];
 
-            m_setpoint.x = m_setpoint.x + Gd*pL*sin(eulerAngles[smallestElement][1]);   // theta
-            m_setpoint.y = m_setpoint.y - Gd*pL*sin(eulerAngles[smallestElement][2]);   // Psi
 
-            m_setpoint.u = m_setpoint.u + Gd*pL*cos(eulerAngles[smallestElement][1])*eulerAngles[smallestElement][3];
-            m_setpoint.v = m_setpoint.v - Gd*pL*cos(eulerAngles[smallestElement][2])*eulerAngles[smallestElement][4];
 
-            debug("i: %i, euler[i][1] : %f,  euler[i][2] : %f \n",smallestElement,eulerAngles[smallestElement][1],eulerAngles[smallestElement][2]);
+            Matrix Rbn = Rzyx(state.phi,state.theta,state.psi);
+            Matrix Rlb = Rx(phi)*Ry(theta);
+            Matrix Rlb_minus = Rx(phi_minus)*Ry(theta_minus);
 
-            //            for (int i = 1; i<10;i++){
-            //            inf(" \n time[%i]: %f \n diff: %f \n",
-            //                i-1,
-            //                eulerAngles[i-1][0],
-            //                eulerAngles[i][0] - eulerAngles[i-1][0]);
-            //            }
-            //            m_new_eulerangles = false;
+            double load_elements[] = {0,0,m_args.pL};
+            Matrix load_vect = Matrix(load_elements,3,1);
+
+
+            Matrix load_pos = Rbn*Rlb *load_vect;
+            Matrix load_pos_minus = Rbn*Rlb_minus *load_vect;
+
+            double phi_Ln = atan(load_pos(1)/load_pos(2));
+            double theta_Ln = atan(load_pos(0)/load_pos(2));
+            double phi_Ln_minus = atan(load_pos_minus(1)/load_pos_minus(2));
+            double theta_Ln_minus = atan(load_pos_minus(0)/load_pos_minus(2));
+
+            double phi_dot = (phi_Ln - phi_Ln_minus) / timediff;
+            double theta_dot = (theta_Ln - theta_Ln_minus) /timediff;
+
+            trace("\n phi: %f, \n theta: %f, \n phi_d = %f, \n theta_d: %f \n\n ",phi_Ln,theta_Ln,phi_dot,theta_dot);
+
+            vel(0) = Gd*m_args.pL*cos(phi_Ln)*phi_dot;
+            vel(1) = - Gd*m_args.pL*cos(theta_Ln)*theta_dot;
+
+            m_translational_setpoint.u = vel(0);// + Gd*m_args.pL*cos(phi_Ln)*phi_dot;
+            m_translational_setpoint.v = vel(1);// - Gd*m_args.pL*cos(theta_Ln)*theta_dot;
+            m_translational_setpoint.w = vel(2);
+
+          }else
+          {
+            m_translational_setpoint.u = vel(0);
+            m_translational_setpoint.v = vel(1);
+            m_translational_setpoint.w = vel(2);
           }
 
 
 
+          // Print desired velocity
+          trace("v_d:\t [%1.2f, %1.2f, %1.2f]",
+              m_translational_setpoint.u, m_translational_setpoint.v, m_translational_setpoint.w);
+
           // Todo: Add seperate altitude controller.
-          ///m_setpoint.w = 0;
-          //m_setpoint.z = m_args.ref_down;
 
-          m_setpoint.flags = IMC::TranslationalSetpoint::FL_SURGE | IMC::TranslationalSetpoint::FL_SWAY | IMC::TranslationalSetpoint::FL_HEAVE |
-              IMC::TranslationalSetpoint::FL_X | IMC::TranslationalSetpoint::FL_Y | IMC::TranslationalSetpoint::FL_Z;
+          m_translational_setpoint.flags = IMC::DesiredVelocity::FL_SURGE | IMC::DesiredVelocity::FL_SWAY | IMC::DesiredVelocity::FL_HEAVE;
 
-          dispatch(m_setpoint);
-          //   debug("dispatched m_setpoint -> TranslationalSetpoint \n.");
-
-          debug("[x, y, z] = [%f, %f, %f] \n",m_setpoint.x,m_setpoint.y,m_setpoint.z);
-          debug("[u, v, w] = [%f, %f, %f] \n",m_setpoint.u,m_setpoint.v,m_setpoint.w);
-
-
+          dispatch(m_translational_setpoint);
+          spew("Sent vel data.");
         }
-
-        //!  Rotation matrix from Body to NED
-
         //! @return  Rotation matrix.
-        Matrix Rbn(double phi, double theta, double psi) const
+        Matrix Rzyx(double phi, double theta, double psi) const
         {
           double R_en_elements[] = {cos(psi)*cos(theta), (-sin(psi)*cos(phi))+(cos(psi)*sin(theta)*sin(psi)), (sin(psi)*sin(phi))+(cos(psi)*cos(phi)*sin(theta)) ,
               sin(psi)*cos(theta), (cos(psi)*cos(phi))+(sin(phi)*sin(theta)*sin(psi)), (-cos(psi)*sin(phi))+(sin(theta)*sin(psi)*cos(phi)),
               -sin(theta), cos(theta)*sin(phi), cos(theta)*cos(phi)};
           return Matrix(R_en_elements,3,3);
         }
-        //! Print matrix (for debuging)
-        void
-        prntMatrix(Matrix m){
-
-          for(int i = 0; i<m.rows(); i++ ){
-            for(int j = 0; j<m.columns();j++){
-              printf("%1.15f ", m.element(i,j));
-            }
-            printf("\n");
-          }
+        Matrix Rx(double phi) const{
+          double Rx_elements[] = {1.0, 0.0, 0.0, 0.0, cos(phi), -sin(phi), 0.0, sin(phi), cos(phi)};
+          return Matrix(Rx_elements,3,3);
         }
-
+        Matrix Ry(double theta) const{
+          double Ry_elements[] = {cos(theta), 0.0, sin(theta), 0.0, 1.0, 0.0, -sin(theta), 0.0, cos(theta)};
+          return Matrix(Ry_elements,3,3);
+        }
       };
     }
   }
