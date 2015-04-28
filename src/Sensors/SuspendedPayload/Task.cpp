@@ -141,7 +141,7 @@ namespace Sensors
 
         IMC::EulerAngles angles;
 
-        angles.phi = (a1 * Math::c_pi) / 180.0;
+        angles.phi = -(a1 * Math::c_pi) / 180.0;
         angles.theta = (a2 * Math::c_pi) / 180.0 ;
 
         dispatch(angles);
