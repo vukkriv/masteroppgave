@@ -53,6 +53,8 @@ namespace Transports
       double ref_hae;
       //! Use leader LLH reference
       bool use_leader_ref;
+      //! RtkFix Jump Threshold
+      double rtk_jump_threshold;
     };
 
     struct Task: public DUNE::Tasks::Task
@@ -67,7 +69,8 @@ namespace Transports
       fp64_t m_ref_lat, m_ref_lon;
       fp32_t m_ref_hae;
       bool m_ref_valid;
-
+      //! Previous RtkFix received
+      IMC::RtkFix m_prev_RtkFix;
 
       //! Constructor.
       //! @param[in] name task name.
@@ -103,6 +106,11 @@ namespace Transports
         param("Leader LLH Reference", m_args.use_leader_ref)
         .defaultValue("false")
         .description("Reference LLH is set from FormCoord from leader");
+
+        param("RTK Jump Threshold", m_args.rtk_jump_threshold)
+        .defaultValue("2.0")
+        .units(Units::Meter)
+        .description("Threshold for distance between two consecutive RTK Fixes");
 
         // Bind to incoming IMC messages
         bind<IMC::RtkFix>(this);
@@ -195,6 +203,30 @@ namespace Transports
             case IMC::RtkFix::RTK_FLOAT:
               break;
             case IMC::RtkFix::RTK_FIXED:
+              // Check for jump in fix
+              if (m_prev_RtkFix.type == IMC::RtkFix::RTK_FIXED)
+              {
+                Matrix diff_ned(3,1,0);
+                diff_ned(0) = msg->n - m_prev_RtkFix.n;
+                diff_ned(1) = msg->e - m_prev_RtkFix.e;
+                diff_ned(2) = msg->d - m_prev_RtkFix.d;
+                double dist = diff_ned.norm_2();
+                if (dist > m_args.rtk_jump_threshold)
+                {
+                  war("Jump in RTK Fix above threshold (%1.1f): %1.1f m",
+                      m_args.rtk_jump_threshold, dist);
+                  IMC::Abort abort_msg;
+                  abort_msg.setDestination(this->getSystemId());
+                  dispatch(abort_msg);
+                  debug("Abort sent.");
+                }
+                else if (dist > m_args.rtk_jump_threshold*0.75)
+                {
+                  war("Jump in RTK Fix close to threshold (%1.1f): %1.1f m",
+                      m_args.rtk_jump_threshold, dist);
+                }
+              }
+
               // Set time stamp
               m_form_pos.ots = msg->getTimeStamp();
               // Set position
@@ -209,6 +241,8 @@ namespace Transports
               dispatch(m_form_pos);
               spew("Sent Formation Position");
           }
+
+          m_prev_RtkFix = *msg;
         }
       }
 

@@ -660,7 +660,7 @@ namespace Control
       {
         static double last_abort_sent;
 
-        // Check that pos.data from all vehicles is within threshold
+        // Check that age of pos.data from all vehicles is within threshold
         double now = Clock::getSinceEpoch();
         for (unsigned int uav = 0; uav < m_N; uav++)
         {
