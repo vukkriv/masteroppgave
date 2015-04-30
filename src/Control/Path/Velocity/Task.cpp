@@ -100,16 +100,19 @@ namespace Control
           param("Reference Model - Natural Frequency",m_args.refmodel_omega_n)
           .units(Units::RadianPerSecond)
           .defaultValue("0.1")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Natural frequency for the speed reference model");
 
           param("Reference Model - Relative Damping", m_args.refmodel_xi)
           .units(Units::None)
           .defaultValue("0.9")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Relative Damping Factor of the speed reference model");
 
           param("Velocity Controller - Kp", m_args.Kp)
           .units(Units::None)
           .defaultValue("0.1")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("P-Gain of the velocity controller");
 
           param("Use Altitude", m_args.use_altitude)
@@ -175,9 +178,9 @@ namespace Control
           m_refmodel_x(1) = state.y;
           m_refmodel_x(2) = state.z;
 
-          m_refmodel_x(3) = state.u;
-          m_refmodel_x(4) = state.v;
-          m_refmodel_x(5) = state.w;
+          m_refmodel_x(3) = state.vx;
+          m_refmodel_x(4) = state.vy;
+          m_refmodel_x(5) = state.vz;
 
           // Set model
           Matrix A_12 = eye;
