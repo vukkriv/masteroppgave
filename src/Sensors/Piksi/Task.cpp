@@ -317,6 +317,7 @@ namespace Sensors
         {
           m_local_TCP_sock = new TCPSocket;
           m_local_TCP_sock->connect(m_local_TCP_addr, m_local_TCP_port);
+          m_local_TCP_sock->setNoDelay(true);
           inf(DTR("Local Piksi interface initialized"));
         }
         catch (...)
