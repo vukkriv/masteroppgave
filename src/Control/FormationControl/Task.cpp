@@ -811,7 +811,7 @@ namespace Control
         m_desired_velocity.flags |= IMC::TranslationalSetpoint::FL_SWAY;
 
         m_desired_velocity.w = velocity(2);
-        m_desired_velocity.flags |= IMC::TranslationalSetpoint::FL_HEAVE;
+        //m_desired_velocity.flags |= IMC::TranslationalSetpoint::FL_HEAVE;
 
         dispatch(m_desired_velocity);
         spew("v_d: [%1.1f, %1.1f, %1.1f]",
@@ -834,6 +834,8 @@ namespace Control
 
         // Calculate internal feedback, tau
         Matrix tau = u + missionVelocity();
+
+        tau(2) = 0; //Hack to disable height
 
         // Saturate and dispatch control output
         tau = saturate(tau,m_args.max_speed);
