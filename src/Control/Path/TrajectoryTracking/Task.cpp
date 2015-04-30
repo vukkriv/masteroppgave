@@ -54,7 +54,7 @@ struct Arguments
 
 struct Task: public DUNE::Control::PathController
 {
-	//IMC::TranslationalSetpoint m_translational_setpoint;
+	IMC::TranslationalSetpoint m_translational_setpoint;
 	IMC::DesiredVelocity m_velocity;
 	//! Task arguments.
 	Arguments m_args;
@@ -442,6 +442,16 @@ struct Task: public DUNE::Control::PathController
 
 
 				vel = (ref_vel) + m_args.Kp * (ref_pos - x);
+
+
+				m_translational_setpoint.x = ref_pos(0);
+				m_translational_setpoint.y = ref_pos(1);
+				m_translational_setpoint.z = ref_pos(2);
+				m_translational_setpoint.u = ref_vel(0);
+				m_translational_setpoint.v = ref_vel(1);
+				m_translational_setpoint.w = ref_vel(2);
+
+						dispatch(m_translational_setpoint);
 
 
 			}
