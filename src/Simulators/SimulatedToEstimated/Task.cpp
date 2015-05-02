@@ -117,7 +117,7 @@ namespace Simulators
         m_eulerAngles.psi_magnetic = simState->q;
 
 
-        dispatch(m_estate);
+        //dispatch(m_estate);
         dispatch(m_eulerAngles);
         debug("Dispatched m_estate - Estimated states \n");
       }
