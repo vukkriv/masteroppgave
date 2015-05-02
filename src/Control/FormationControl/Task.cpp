@@ -103,6 +103,12 @@ namespace Control
 
       //! Frequency of pos.data prints
       float print_frequency;
+
+      //! Whether or not to control altitude
+      bool use_altitude;
+
+      //! Disable heave flag,this will utilize new rate controller on some targets
+      bool disable_heave;
     };
 
     struct Task: public PeriodicUAVAutopilot
@@ -261,6 +267,16 @@ namespace Control
         .defaultValue("0.0")
         .units(Units::Second)
         .description("Frequency of pos.data prints. Zero => Print on every update.");
+
+        param("Use Altitude", m_args.use_altitude)
+        .defaultValue("false")
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .description("Choose whether altitude is controlled or not (set to 0 if not).");
+
+        param("Disable Heave flag", m_args.disable_heave)
+        .defaultValue("false")
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .description("Choose whether to disable heave flag. In turn, this will utilize new rate controller on some targets");
 
         // Bind incoming IMC messages
         bind<IMC::FormPos>(this);
@@ -804,14 +820,15 @@ namespace Control
       sendDesiredVelocity(Matrix velocity)
       {
         m_desired_velocity.u = velocity(0);
-        //m_desired_velocity.flags |= IMC::DesiredVelocity::FL_SURGE;
         m_desired_velocity.flags |= IMC::TranslationalSetpoint::FL_SURGE;
 
         m_desired_velocity.v = velocity(1);
         m_desired_velocity.flags |= IMC::TranslationalSetpoint::FL_SWAY;
 
         m_desired_velocity.w = velocity(2);
-        //m_desired_velocity.flags |= IMC::TranslationalSetpoint::FL_HEAVE;
+        if (!m_args.disable_heave)
+          m_desired_velocity.flags |= IMC::TranslationalSetpoint::FL_HEAVE;
+
 
         dispatch(m_desired_velocity);
         spew("v_d: [%1.1f, %1.1f, %1.1f]",
@@ -835,7 +852,9 @@ namespace Control
         // Calculate internal feedback, tau
         Matrix tau = u + missionVelocity();
 
-        tau(2) = 0; //Hack to disable height
+        // Set heave to zero if not controlling altitude
+        if (!m_args.use_altitude)
+          tau(2) = 0;
 
         // Saturate and dispatch control output
         tau = saturate(tau,m_args.max_speed);
