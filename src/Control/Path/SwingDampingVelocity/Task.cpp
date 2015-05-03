@@ -55,6 +55,7 @@ namespace Control
         bool static_delayed_feedback;
         int EulerAngle_samplesize;
         int offset;
+        bool use_inputshaper_zv;
 
       };
 
@@ -81,7 +82,24 @@ namespace Control
         int m_nearest_element;
         double m_Td;
         double m_tau_d;
+        double m_input_A1;
+        double m_input_A2;
+        double m_input_t2;
+        Matrix m_last_refmodel_pos_t2;
+        Matrix m_last_refmodel_vel_t2;
+        double m_timetracker;
+        double m_last_time;
+        Matrix m_input_pos;
+        Matrix m_input_vel;
 
+        std::vector<double> m_last_refmodel_t2_x;
+        std::vector<double> m_last_refmodel_t2_y;
+        std::vector<double> m_last_refmodel_t2_z;
+        std::vector<double> m_last_refmodel_t2_u;
+        std::vector<double> m_last_refmodel_t2_v;
+        std::vector<double> m_last_refmodel_t2_w;
+
+        std::vector<double> m_timetracker_t2;
 
 
         IMC::DesiredVelocity m_velocity;
@@ -103,10 +121,10 @@ namespace Control
           m_desired_speed(0)
         {
           param("Velocity Controller", m_args.use_controller)
-                  .visibility(Tasks::Parameter::VISIBILITY_USER)
-                  .scope(Tasks::Parameter::SCOPE_MANEUVER)
-                  .defaultValue("false")
-                  .description("Enable Velocity Controller");
+                                          .visibility(Tasks::Parameter::VISIBILITY_USER)
+                                          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+                                          .defaultValue("false")
+                                          .description("Enable Velocity Controller");
 
           param("Max Speed", m_args.max_speed)
           .defaultValue("5.0")
@@ -185,15 +203,20 @@ namespace Control
 
           param("EulerAngle_samplesize", m_args.EulerAngle_samplesize)
           .defaultValue("50")
-          .units(Units::Meter)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Size of the remembered last samples of Euler Angles.");
 
-          param("Offset - delayed tau", m_args.offset)
+          param("Offset - Delayed tau", m_args.offset)
           .defaultValue("0")
           .units(Units::Millisecond)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Offsett for delayed tau");
+
+          param("Input Shaper - ZV", m_args.use_inputshaper_zv)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Choose whether input shaper is on(set to 0 if not).");
 
 
           bind<IMC::EulerAngles>(this);
@@ -217,6 +240,13 @@ namespace Control
           double xi = pd/(2*omega_n*pm_L);
           double omega_d = omega_n*sqrt(1 - pow(xi,2));
           m_Td = 2*Math::c_pi/omega_d;
+
+
+          //iput shaper values
+          double input_K = exp(-(xi*Math::c_pi)/sqrt(1-pow(xi,2)));
+          m_input_A1 = 1/(1 + input_K);
+          m_input_A2 = input_K/(1 + input_K);
+          m_input_t2 = m_Td/2;
 
         }
 
@@ -316,6 +346,17 @@ namespace Control
           m_delayed_vel = Matrix(3, 1, 0.0);
         }
 
+        void
+        initInputShaperZV()
+        {
+          m_input_pos =  Matrix(3,1,0.0);
+          m_input_vel =  Matrix(3,1,0.0);
+          m_last_refmodel_pos_t2 = Matrix(3,1,0.0);
+          m_last_refmodel_vel_t2 =Matrix(3,1,0.0);
+          m_timetracker = 0.0;
+          m_last_time = 0.0;
+        }
+
         virtual void
         onPathStartup(const IMC::EstimatedState& state, const TrackingState& ts)
         {
@@ -331,6 +372,9 @@ namespace Control
 
           // Restart delayed feedback parameter
           initDelayedFeedback();
+
+          // Restart input shaper parameters
+          initInputShaperZV();
 
 
         }
@@ -388,6 +432,9 @@ namespace Control
             // Update reference
             m_refmodel_x += ts.delta * (m_refmodel_A * m_refmodel_x + m_refmodel_B * x_d);
 
+
+
+
             // Saturate reference velocity
             vel = m_refmodel_x.get(3,5,0,0);
 
@@ -415,15 +462,101 @@ namespace Control
             //vel(1) = m_refmodel_x(4) - m_args.Kp * (state.y - m_refmodel_x(1));
             //vel(2) = m_refmodel_x(5) - m_args.Kp * (state.z - m_refmodel_x(2));
 
+            // input shaping controller - convolution hack!
+            if (m_args.use_inputshaper_zv)
+            {
+              m_timetracker += (state.getTimeStamp() - m_last_time);
+              m_last_time = state.getTimeStamp();
+
+              m_input_pos =  Matrix(3,1,0.0);
+              m_input_vel =  Matrix(3,1,0.0);
+
+              m_input_pos =  m_refmodel_x.get(0,2,0,0) * m_input_A1;
+              m_input_vel = m_refmodel_x.get(3,5,0,0) * m_input_A1;
+
+
+              /*  if (m_timetracker >= m_input_t2)
+                          {
+                            m_input_pos += m_last_refmodel_pos_t2 * m_input_A2;
+                            m_input_vel += m_last_refmodel_vel_t2 * m_input_A2;
+
+                            m_last_refmodel_pos_t2 = m_refmodel_x.get(0,2,0,0); // save last ref model value for t2 sec ago
+                            m_last_refmodel_vel_t2 = m_refmodel_x.get(3,5,0,0); // save last ref model value for t2 sec ago
+
+                            spew("time input error: %f \n",m_timetracker-m_input_t2);
+                           // m_timetracker = 0;
+                          }
+
+               */
+
+              /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+              // Remember last 100 samples
+              // Insert new element at the end
+              m_last_refmodel_t2_x.push_back (m_refmodel_x(0));
+              m_last_refmodel_t2_y.push_back (m_refmodel_x(1));
+              m_last_refmodel_t2_z.push_back (m_refmodel_x(2));
+              m_last_refmodel_t2_u.push_back (m_refmodel_x(3));
+              m_last_refmodel_t2_v.push_back (m_refmodel_x(4));
+              m_last_refmodel_t2_w.push_back (m_refmodel_x(5));
+              m_timetracker_t2.push_back(state.getTimeStamp());
+
+              // Delete the oldest element in vector (first one), after reaching 100 samples (about 2 seconds)
+              if (int (m_last_refmodel_t2_x.size()) > 100) //
+              {
+
+                m_last_refmodel_t2_x.erase(m_last_refmodel_t2_x.begin());
+                m_last_refmodel_t2_y.erase(m_last_refmodel_t2_y.begin());
+                m_last_refmodel_t2_z.erase(m_last_refmodel_t2_z.begin());
+                m_last_refmodel_t2_u.erase(m_last_refmodel_t2_u.begin());
+                m_last_refmodel_t2_v.erase(m_last_refmodel_t2_v.begin());
+                m_last_refmodel_t2_w.erase(m_last_refmodel_t2_w.begin());
+                m_timetracker_t2.erase(m_timetracker_t2.begin());
+
+                m_nearest_tau = 10.0;
+                m_nearest_element = -1;
+                // Find the closest reference model point to t - t2
+                for (int i = 0; i < 100 ; i++)
+                {
+                  // Find the nearest to delayed tau_d on the nearest "NOW TIME" side.
+                  if (m_nearest_tau < 0)
+                  {
+                    // Save the element
+                    m_last_refmodel_pos_t2(0) = m_last_refmodel_t2_x[m_nearest_element];
+                    m_last_refmodel_pos_t2(1) = m_last_refmodel_t2_y[m_nearest_element];
+                    m_last_refmodel_pos_t2(2) = m_last_refmodel_t2_z[m_nearest_element];
+                    m_last_refmodel_vel_t2(0) = m_last_refmodel_t2_u[m_nearest_element];
+                    m_last_refmodel_vel_t2(1) = m_last_refmodel_t2_v[m_nearest_element];
+                    m_last_refmodel_vel_t2(2) = m_last_refmodel_t2_z[m_nearest_element];
+                    break;
+                  }
+                  // save nearest tau, also add the offsett
+                  m_nearest_tau = ((m_timetracker_t2.back() - m_timetracker_t2[i])) - (m_input_t2);     // Add any offsett?
+                  m_nearest_element = i;
+                }
+                spew("m_nearest_element: %i",m_nearest_element);
+                spew("m_nearest_tau: %f",m_nearest_tau);
+
+                m_input_pos += m_last_refmodel_pos_t2 * m_input_A2;
+                m_input_vel += m_last_refmodel_vel_t2 * m_input_A2;
+              }
+
+              //////////////////////////////////////////////////////////////////////////////////////////
+
+
+              m_refmodel_x.put(0,0,m_input_pos);
+              m_refmodel_x.put(3,0,m_input_vel);
+
+              spew("m_input_A1: %f \n", m_input_A1);
+              spew("m_input_A2: %f \n", m_input_A2);
+              spew("m_input_t2: %f \n", m_input_t2);
+
+
+            }
 
             vel = m_refmodel_x.get(3,5,0,0) + m_args.Kp * (m_refmodel_x.get(0,2,0,0) - x);
 
             if (m_args.use_delayed_feedback)
             {
-
-
-
-
 
               m_tau_d = m_args.tau_n * m_Td;
               m_nearest_tau = 1.0;
@@ -441,8 +574,8 @@ namespace Control
                     // Save the element
                     m_phi_LN = m_phi[m_nearest_element];
                     m_theta_LN = m_theta[m_nearest_element];
-                    trace("nearest_element = %i \n",m_nearest_element);
-                    trace("m_phi_LN: %f, \n m_theta_LN: %f, \n",m_phi_LN,m_theta_LN);
+                    spew("nearest_element = %i \n",m_nearest_element);
+                    spew("m_phi_LN: %f, \n m_theta_LN: %f, \n",m_phi_LN,m_theta_LN);
                     break;
                   }
                   // save nearest tau, also add the offsett
@@ -466,10 +599,10 @@ namespace Control
                   m_theta_LN_dot = 10.0;
 
                 m_delayed_pos(0) = m_args.Gd*m_args.pL*sin(m_theta_LN);
-                m_delayed_pos(1) = - m_args.Gd*m_args.pL*sin(m_phi_LN);
+                m_delayed_pos(1) = m_args.Gd*m_args.pL*sin(m_phi_LN);
 
                 m_delayed_vel(0) = m_args.Gd*m_args.pL*cos(m_theta_LN)*m_theta_LN_dot;
-                m_delayed_vel(1) = - m_args.Gd*m_args.pL*cos(m_phi_LN)*m_phi_LN_dot;
+                m_delayed_vel(1) = m_args.Gd*m_args.pL*cos(m_phi_LN)*m_phi_LN_dot;
 
                 // delayed feedback control
                 vel = (m_refmodel_x.get(3,5,0,0) + m_delayed_vel) + m_args.Kp * ((m_refmodel_x.get(0,2,0,0) + m_delayed_pos) - x);
@@ -484,11 +617,11 @@ namespace Control
                   vel = m_delayed_vel + m_args.Kp * (m_delayed_pos - x);
                 }
               }
-              trace("m_tau_d: %f, \n ",m_tau_d);
-              trace("m_phi_LN: %f, \n m_theta_LN: %f, \n",m_phi_LN,m_theta_LN);
-              trace("m_phi_LN_dot: %f, \n m_theta_LN_fot: %f, \n",m_phi_LN_dot,m_theta_LN_dot);
-              trace("m_delayed_pos(0): %f, m_delayed_pos(1): %f, \n",m_delayed_pos(0),m_delayed_pos(1));
-              trace("m_delayed_vel(0): %f, m_delayed_vel(1): %f, \n",m_delayed_vel(0),m_delayed_vel(1));
+              spew("m_tau_d: %f, \n ",m_tau_d);
+              spew("m_phi_LN: %f, \n m_theta_LN: %f, \n",m_phi_LN,m_theta_LN);
+              spew("m_phi_LN_dot: %f, \n m_theta_LN_fot: %f, \n",m_phi_LN_dot,m_theta_LN_dot);
+              spew("m_delayed_pos(0): %f, m_delayed_pos(1): %f, \n",m_delayed_pos(0),m_delayed_pos(1));
+              spew("m_delayed_vel(0): %f, m_delayed_vel(1): %f, \n",m_delayed_vel(0),m_delayed_vel(1));
             }
           }
           else
@@ -541,7 +674,7 @@ namespace Control
            */
 
           // Dispatch refmodel with translational setpoint / mainly for logg for matlab simulation
-         m_translational_setpoint.x = m_refmodel_x(0);
+          m_translational_setpoint.x = m_refmodel_x(0);
           m_translational_setpoint.y = m_refmodel_x(1);
           m_translational_setpoint.z = m_refmodel_x(2);
           m_translational_setpoint.u = m_refmodel_x(3);
