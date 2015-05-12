@@ -56,7 +56,7 @@ namespace Control
         int EulerAngle_samplesize;
         int offset;
         bool use_inputshaper_zv;
-
+        int inputZV_time_offset;
       };
 
       struct Task: public DUNE::Control::PathController
@@ -73,13 +73,13 @@ namespace Control
         Matrix m_load_z_vect;
         Matrix m_delayed_pos;
         Matrix m_delayed_vel;
-        double temp;
-        double m_phi_LN; // phi on load, given in NED
-        double m_theta_LN; //theta on load, given in NED
-        double m_phi_LN_dot;
-        double m_theta_LN_dot;
-        double m_nearest_tau;
-        int m_nearest_element;
+        Matrix m_static_ref;
+        double m_delayed_phi_LN; // phi on load, given in NED
+        double m_delayed_theta_LN; //theta on load, given in NED
+        double m_delayed_timestamp_LN;
+        double m_delayed_phi_LN_dot;
+        double m_delayed_theta_LN_dot;
+        bool m_delayed_euler_data;
         double m_Td;
         double m_tau_d;
         double m_input_A1;
@@ -87,21 +87,17 @@ namespace Control
         double m_input_t2;
         Matrix m_last_refmodel_pos_t2;
         Matrix m_last_refmodel_vel_t2;
-        double m_timetracker;
-        double m_last_time;
         Matrix m_input_pos;
         Matrix m_input_vel;
-
+        Matrix m_temp_pos;
+        Matrix m_temp_vel;
         std::vector<double> m_last_refmodel_t2_x;
         std::vector<double> m_last_refmodel_t2_y;
         std::vector<double> m_last_refmodel_t2_z;
         std::vector<double> m_last_refmodel_t2_u;
         std::vector<double> m_last_refmodel_t2_v;
         std::vector<double> m_last_refmodel_t2_w;
-
         std::vector<double> m_timetracker_t2;
-
-
         IMC::DesiredVelocity m_velocity;
         //! Task arguments.
         Arguments m_args;
@@ -115,16 +111,15 @@ namespace Control
         double m_desired_speed;
         //! Current autopilot mode
         IMC::AutopilotMode m_autopilot_mode;
-
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
           m_desired_speed(0)
         {
           param("Velocity Controller", m_args.use_controller)
-                                          .visibility(Tasks::Parameter::VISIBILITY_USER)
-                                          .scope(Tasks::Parameter::SCOPE_MANEUVER)
-                                          .defaultValue("false")
-                                          .description("Enable Velocity Controller");
+                              .visibility(Tasks::Parameter::VISIBILITY_USER)
+                              .scope(Tasks::Parameter::SCOPE_MANEUVER)
+                              .defaultValue("false")
+                              .description("Enable Velocity Controller");
 
           param("Max Speed", m_args.max_speed)
           .defaultValue("5.0")
@@ -218,6 +213,11 @@ namespace Control
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Choose whether input shaper is on(set to 0 if not).");
 
+          param("InputZV - Offset", m_args.inputZV_time_offset)
+          .defaultValue("0")
+          .units(Units::Millisecond)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Offsett for inputshaper time impulse");
 
           bind<IMC::EulerAngles>(this);
         }
@@ -277,10 +277,11 @@ namespace Control
           PathController::consume(dspeed);
         }
 
-        //! Consume EulerAngles
+        //! Consume EulerAngles and save the rotated and delayed angles for vel controller
         void
         consume(const IMC::EulerAngles* eangles)
         {
+          trace("Euler angle consume started.../n");
           // Load position in NED frame.
           m_load_pos_ned = Rzyx(m_last_estate_phi,m_last_estate_theta,m_last_estate_psi) *
               Rx(eangles->phi)*Ry(eangles->theta) * m_load_z_vect;
@@ -290,14 +291,56 @@ namespace Control
           m_theta.push_back (atan(m_load_pos_ned(0)/m_load_pos_ned(2)));
           m_timestamp.push_back (eangles->getTimeStamp());
 
+          // Delayed time
+          m_tau_d = m_args.tau_n * m_Td;
 
-
-          // Delete the oldest element in vector (first one), after reaching 50 samples (about 2 seconds)
-          if (int (m_phi.size()) > m_args.EulerAngle_samplesize) // || m_theta.size() > 50 || m_timestamp.size() > 50)
+          // Delete oldest element in vector (first one), after reaching m_tau_d seconds + some offsett
+          if ( (m_timestamp.back() - m_timestamp.front()) >= (m_tau_d + (m_args.offset / 1000.0)) )
           {
+            m_delayed_euler_data =  true;
+            // most likely the closest
+            m_delayed_phi_LN = m_phi.front();
+            m_delayed_theta_LN = m_theta.front();
+            m_delayed_timestamp_LN = m_timestamp.front();
+
+
+
             m_phi.erase(m_phi.begin());
             m_theta.erase(m_theta.begin());
             m_timestamp.erase(m_timestamp.begin());
+
+            /*            // Check if the sample before was better
+            if ( abs((m_timestamp.back() - m_timestamp.front()) - (m_tau_d + (m_args.offset / 1000.0))) < abs(m_delayed_timestamp_LN - (m_tau_d + (m_args.offset / 1000.0))))
+            {
+              m_delayed_phi_LN = m_phi.front();
+              m_delayed_theta_LN = m_theta.front();
+              m_delayed_timestamp_LN = m_timestamp.front();
+
+              m_phi.erase(m_phi.begin());
+              m_theta.erase(m_theta.begin());
+              m_timestamp.erase(m_timestamp.begin());
+            }*/
+
+            // save the derivative
+            m_delayed_phi_LN_dot = (m_phi.at(1)-m_delayed_phi_LN) / (m_timestamp.at(1)-m_delayed_timestamp_LN);
+            m_delayed_theta_LN_dot = (m_theta.at(1)-m_delayed_theta_LN) / (m_timestamp.at(1)-m_delayed_timestamp_LN);
+
+            // sanity check on derivative
+            if (m_delayed_phi_LN_dot > 10.0)
+              m_delayed_phi_LN_dot = 10.0;
+            if (m_delayed_theta_LN_dot > 10.0)
+              m_delayed_theta_LN_dot = 10.0;
+
+            trace("Euler angle consume finished whitout error.../n");
+          }
+
+          // If no new angles consumed for a long time and restarts, reset the vectors
+          if (m_timestamp.back() - m_timestamp.front() > 2.0)
+          {
+            inf("No new Euler Angles");
+            m_phi.resize(0);
+            m_theta.resize(0);
+            m_timestamp.resize(0);
           }
 
         }
@@ -344,6 +387,8 @@ namespace Control
           m_delayed_pos = Matrix(3, 1, 0.0);
           // Restart vel model
           m_delayed_vel = Matrix(3, 1, 0.0);
+          m_static_ref = Matrix(3,1,0.0);
+          m_delayed_euler_data =  false;
         }
 
         void
@@ -353,8 +398,6 @@ namespace Control
           m_input_vel =  Matrix(3,1,0.0);
           m_last_refmodel_pos_t2 = Matrix(3,1,0.0);
           m_last_refmodel_vel_t2 =Matrix(3,1,0.0);
-          m_timetracker = 0.0;
-          m_last_time = 0.0;
         }
 
         virtual void
@@ -465,45 +508,53 @@ namespace Control
             // input shaping controller - convolution hack!
             if (m_args.use_inputshaper_zv)
             {
-              m_timetracker += (state.getTimeStamp() - m_last_time);
-              m_last_time = state.getTimeStamp();
-
               m_input_pos =  Matrix(3,1,0.0);
               m_input_vel =  Matrix(3,1,0.0);
+              m_last_refmodel_pos_t2 = Matrix(3,1,0.0);
+              m_last_refmodel_vel_t2 = Matrix(3,1,0.0);
 
-              m_input_pos =  m_refmodel_x.get(0,2,0,0) * m_input_A1;
-              m_input_vel = m_refmodel_x.get(3,5,0,0) * m_input_A1;
+              // Dont do anything on the Z reference
+              m_input_pos(0) =  m_refmodel_x(0) * m_input_A1;
+              m_input_pos(1) =  m_refmodel_x(1) * m_input_A1;
+              m_input_vel(0) = m_refmodel_x(3) * m_input_A1;
+              m_input_vel(1) = m_refmodel_x(4) * m_input_A1;
 
 
-              /*  if (m_timetracker >= m_input_t2)
-                          {
-                            m_input_pos += m_last_refmodel_pos_t2 * m_input_A2;
-                            m_input_vel += m_last_refmodel_vel_t2 * m_input_A2;
-
-                            m_last_refmodel_pos_t2 = m_refmodel_x.get(0,2,0,0); // save last ref model value for t2 sec ago
-                            m_last_refmodel_vel_t2 = m_refmodel_x.get(3,5,0,0); // save last ref model value for t2 sec ago
-
-                            spew("time input error: %f \n",m_timetracker-m_input_t2);
-                           // m_timetracker = 0;
-                          }
-
-               */
-
-              /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-              // Remember last 100 samples
-              // Insert new element at the end
-              m_last_refmodel_t2_x.push_back (m_refmodel_x(0));
-              m_last_refmodel_t2_y.push_back (m_refmodel_x(1));
-              m_last_refmodel_t2_z.push_back (m_refmodel_x(2));
-              m_last_refmodel_t2_u.push_back (m_refmodel_x(3));
-              m_last_refmodel_t2_v.push_back (m_refmodel_x(4));
-              m_last_refmodel_t2_w.push_back (m_refmodel_x(5));
+              // Save the lastest reference model values
+              m_last_refmodel_t2_x.push_back (m_input_pos(0));
+              m_last_refmodel_t2_y.push_back (m_input_pos(1));
+              m_last_refmodel_t2_z.push_back (m_input_pos(2));
+              m_last_refmodel_t2_u.push_back (m_input_vel(0));
+              m_last_refmodel_t2_v.push_back (m_input_vel(1));
+              m_last_refmodel_t2_w.push_back (m_input_vel(2));
               m_timetracker_t2.push_back(state.getTimeStamp());
 
-              // Delete the oldest element in vector (first one), after reaching 100 samples (about 2 seconds)
-              if (int (m_last_refmodel_t2_x.size()) > 100) //
-              {
 
+              // Save the new ref mdoel values ones until t2
+              if (m_timetracker_t2.back() - m_timetracker_t2.front() >= m_input_t2 + (m_args.inputZV_time_offset/1000.0))
+              {
+                // The closest value of refmodel for t2 seconds ago
+                m_last_refmodel_pos_t2(0) = m_last_refmodel_t2_x.front();
+                m_last_refmodel_pos_t2(1) = m_last_refmodel_t2_y.front();
+                m_last_refmodel_pos_t2(2) = m_last_refmodel_t2_z.front();
+                m_last_refmodel_vel_t2(0) = m_last_refmodel_t2_u.front();
+                m_last_refmodel_vel_t2(1) = m_last_refmodel_t2_v.front();
+                m_last_refmodel_vel_t2(2) = m_last_refmodel_t2_w.front();
+
+
+                // Add A2 to convulution using the ref model values at t2 -> now-t2
+                //m_input_pos = m_input_pos + (m_last_refmodel_pos_t2 * m_input_A2);
+                // m_input_vel = m_input_vel + (m_last_refmodel_vel_t2 * m_input_A2);
+
+                inf("m_timetracker_t2.back() - m_timetracker_t2.front() %f \n",m_timetracker_t2.back() - m_timetracker_t2.front());
+                m_input_pos(0) = m_input_pos(0) + m_last_refmodel_pos_t2(0) * m_input_A2;
+                m_input_pos(1) = m_input_pos(1) + m_last_refmodel_pos_t2(1) * m_input_A2;
+
+                m_input_vel(0) = m_input_vel(0) + m_last_refmodel_vel_t2(0) * m_input_A2;
+                m_input_vel(1) = m_input_vel(1) + m_last_refmodel_vel_t2(1) * m_input_A2;
+
+
+                // Delete the oldest parameter
                 m_last_refmodel_t2_x.erase(m_last_refmodel_t2_x.begin());
                 m_last_refmodel_t2_y.erase(m_last_refmodel_t2_y.begin());
                 m_last_refmodel_t2_z.erase(m_last_refmodel_t2_z.begin());
@@ -511,115 +562,69 @@ namespace Control
                 m_last_refmodel_t2_v.erase(m_last_refmodel_t2_v.begin());
                 m_last_refmodel_t2_w.erase(m_last_refmodel_t2_w.begin());
                 m_timetracker_t2.erase(m_timetracker_t2.begin());
-
-                m_nearest_tau = 10.0;
-                m_nearest_element = -1;
-                // Find the closest reference model point to t - t2
-                for (int i = 0; i < 100 ; i++)
-                {
-                  // Find the nearest to delayed tau_d on the nearest "NOW TIME" side.
-                  if (m_nearest_tau < 0)
-                  {
-                    // Save the element
-                    m_last_refmodel_pos_t2(0) = m_last_refmodel_t2_x[m_nearest_element];
-                    m_last_refmodel_pos_t2(1) = m_last_refmodel_t2_y[m_nearest_element];
-                    m_last_refmodel_pos_t2(2) = m_last_refmodel_t2_z[m_nearest_element];
-                    m_last_refmodel_vel_t2(0) = m_last_refmodel_t2_u[m_nearest_element];
-                    m_last_refmodel_vel_t2(1) = m_last_refmodel_t2_v[m_nearest_element];
-                    m_last_refmodel_vel_t2(2) = m_last_refmodel_t2_z[m_nearest_element];
-                    break;
-                  }
-                  // save nearest tau, also add the offsett
-                  m_nearest_tau = ((m_timetracker_t2.back() - m_timetracker_t2[i])) - (m_input_t2);     // Add any offsett?
-                  m_nearest_element = i;
-                }
-                spew("m_nearest_element: %i",m_nearest_element);
-                spew("m_nearest_tau: %f",m_nearest_tau);
-
-                m_input_pos += m_last_refmodel_pos_t2 * m_input_A2;
-                m_input_vel += m_last_refmodel_vel_t2 * m_input_A2;
               }
 
-              //////////////////////////////////////////////////////////////////////////////////////////
+              m_input_pos(2) = m_refmodel_x(2);
+              m_input_vel(2) = m_refmodel_x(5);
 
 
-              m_refmodel_x.put(0,0,m_input_pos);
-              m_refmodel_x.put(3,0,m_input_vel);
+
+              // m_refmodel_x.put(0,0,m_input_pos);
+              // m_refmodel_x.put(3,0,m_input_vel);
 
               spew("m_input_A1: %f \n", m_input_A1);
               spew("m_input_A2: %f \n", m_input_A2);
               spew("m_input_t2: %f \n", m_input_t2);
 
-
             }
 
+
+
+
             vel = m_refmodel_x.get(3,5,0,0) + m_args.Kp * (m_refmodel_x.get(0,2,0,0) - x);
+
+            if (m_args.use_inputshaper_zv)
+            {
+              m_temp_pos = Matrix(3,1,0.0);
+              m_temp_pos = m_input_pos.get(0,2,0,0);
+              m_temp_vel = Matrix(3,1,0.0);
+              m_temp_vel = m_input_vel.get(0,2,0,0);
+              vel = m_temp_vel + m_args.Kp * (m_temp_pos - x);
+            }
+
 
             if (m_args.use_delayed_feedback)
             {
 
               m_tau_d = m_args.tau_n * m_Td;
-              m_nearest_tau = 1.0;
-              m_nearest_element = -1;
+
 
               // If last EulerAngle_samplesize of Euler Angles are stored
-              if (int(m_timestamp.size()) >= m_args.EulerAngle_samplesize)
+              if (m_delayed_euler_data)
               {
-                // Find the closest EulerAngles to the tau_d - delayed time
-                for (int i = 0; i < m_args.EulerAngle_samplesize; i++)
-                {
-                  // Find the nearest to delayed tau_d on the nearest "NOW TIME" side.
-                  if (m_nearest_tau < 0)
-                  {
-                    // Save the element
-                    m_phi_LN = m_phi[m_nearest_element];
-                    m_theta_LN = m_theta[m_nearest_element];
-                    spew("nearest_element = %i \n",m_nearest_element);
-                    spew("m_phi_LN: %f, \n m_theta_LN: %f, \n",m_phi_LN,m_theta_LN);
-                    break;
-                  }
-                  // save nearest tau, also add the offsett
-                  m_nearest_tau = ((m_timestamp.back() - m_timestamp[i])) - (m_tau_d + (m_args.offset / 1000.0));
-                  m_nearest_element = i;
-                }
 
-                // calculate the derivative using the 3 closest measurements
-                if (m_nearest_element > 0 && m_nearest_element < m_args.EulerAngle_samplesize)
-                {
-                  m_phi_LN_dot = (m_phi[m_nearest_element-1] + m_phi[m_nearest_element] + m_phi[m_nearest_element+1]) / (m_timestamp[m_nearest_element+1] - m_timestamp[m_nearest_element-1]);
-                  m_theta_LN_dot = (m_theta[m_nearest_element-1] + m_theta[m_nearest_element] + m_theta[m_nearest_element+1]) / (m_timestamp[m_nearest_element+1] - m_timestamp[m_nearest_element-1]);
-                }else{
-                  m_phi_LN_dot = 0.0;
-                  m_theta_LN_dot = 0.0;
-                }
-                // check if the derivative is too high, then set to a semi-reasonable value.
-                if (m_phi_LN_dot > 10.0)
-                  m_phi_LN_dot = 10.0;
-                if (m_theta_LN_dot > 10.0)
-                  m_theta_LN_dot = 10.0;
+                m_delayed_pos(0) = m_args.Gd*m_args.pL*sin(m_delayed_theta_LN);
+                m_delayed_pos(1) = m_args.Gd*m_args.pL*sin(m_delayed_phi_LN);
 
-                m_delayed_pos(0) = m_args.Gd*m_args.pL*sin(m_theta_LN);
-                m_delayed_pos(1) = m_args.Gd*m_args.pL*sin(m_phi_LN);
-
-                m_delayed_vel(0) = m_args.Gd*m_args.pL*cos(m_theta_LN)*m_theta_LN_dot;
-                m_delayed_vel(1) = m_args.Gd*m_args.pL*cos(m_phi_LN)*m_phi_LN_dot;
+                m_delayed_vel(0) = m_args.Gd*m_args.pL*cos(m_delayed_theta_LN)*m_delayed_theta_LN_dot;
+                m_delayed_vel(1) = m_args.Gd*m_args.pL*cos(m_delayed_phi_LN)*m_delayed_phi_LN_dot;
 
                 // delayed feedback control
                 vel = (m_refmodel_x.get(3,5,0,0) + m_delayed_vel) + m_args.Kp * ((m_refmodel_x.get(0,2,0,0) + m_delayed_pos) - x);
 
 
-
-
-
                 // If vehicle is standing still
                 if (m_args.static_delayed_feedback)
                 {
-                  vel = m_delayed_vel + m_args.Kp * (m_delayed_pos - x);
+                  m_static_ref(0) = ts.start.x;
+                  m_static_ref(1) = ts.start.y;
+                  m_static_ref(2) = ts.start.z;
+                  vel = m_delayed_vel + m_args.Kp * ((m_static_ref + m_delayed_pos) - x);
                 }
               }
               spew("m_tau_d: %f, \n ",m_tau_d);
-              spew("m_phi_LN: %f, \n m_theta_LN: %f, \n",m_phi_LN,m_theta_LN);
-              spew("m_phi_LN_dot: %f, \n m_theta_LN_fot: %f, \n",m_phi_LN_dot,m_theta_LN_dot);
+              spew("m_phi_LN: %f, \n m_theta_LN: %f, \n",m_delayed_phi_LN,m_delayed_theta_LN);
+              spew("m_phi_LN_dot: %f, \n m_theta_LN_fot: %f, \n",m_delayed_phi_LN_dot,m_delayed_theta_LN_dot);
               spew("m_delayed_pos(0): %f, m_delayed_pos(1): %f, \n",m_delayed_pos(0),m_delayed_pos(1));
               spew("m_delayed_vel(0): %f, m_delayed_vel(1): %f, \n",m_delayed_vel(0),m_delayed_vel(1));
             }
@@ -672,16 +677,6 @@ namespace Control
                       setpoint.w = m_refmodel_x(5);
                       dispatch(setpoint);
            */
-
-          // Dispatch refmodel with translational setpoint / mainly for logg for matlab simulation
-          m_translational_setpoint.x = m_refmodel_x(0);
-          m_translational_setpoint.y = m_refmodel_x(1);
-          m_translational_setpoint.z = m_refmodel_x(2);
-          m_translational_setpoint.u = m_refmodel_x(3);
-          m_translational_setpoint.v = m_refmodel_x(4);
-          m_translational_setpoint.w = m_refmodel_x(5);
-          dispatch(m_translational_setpoint);
-
 
           dispatch(m_velocity);
           spew("Sent vel data.");
