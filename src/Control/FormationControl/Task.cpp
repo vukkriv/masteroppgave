@@ -820,14 +820,14 @@ namespace Control
       sendDesiredVelocity(Matrix velocity)
       {
         m_desired_velocity.u = velocity(0);
-        m_desired_velocity.flags |= IMC::TranslationalSetpoint::FL_SURGE;
-
         m_desired_velocity.v = velocity(1);
-        m_desired_velocity.flags |= IMC::TranslationalSetpoint::FL_SWAY;
-
         m_desired_velocity.w = velocity(2);
-        if (!m_args.disable_heave)
-          m_desired_velocity.flags |= IMC::TranslationalSetpoint::FL_HEAVE;
+
+        if (m_args.disable_heave)
+          m_desired_velocity.flags = IMC::TranslationalSetpoint::FL_SURGE | IMC::TranslationalSetpoint::FL_SWAY;
+        else
+          m_desired_velocity.flags = IMC::TranslationalSetpoint::FL_SURGE | IMC::TranslationalSetpoint::FL_SWAY | IMC::TranslationalSetpoint::FL_HEAVE;
+
 
 
         dispatch(m_desired_velocity);
