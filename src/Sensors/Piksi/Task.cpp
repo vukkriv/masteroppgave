@@ -31,8 +31,14 @@
 // Library headers
 extern "C"
 {
-  #include <libswiftnav/sbp.h>
-  #include <libswiftnav/sbp_messages.h>
+  //#include <libswiftnav/sbp.h>
+  //#include <libswiftnav/sbp_messages.h>
+
+  #include <sbp/sbp.h>
+  #include <sbp/navigation.h> // Includes baseline messages
+  #include <sbp/piksi.h>      // Includes piksi interface, such as resetting filters and IAR state
+
+
 }
 
 
@@ -50,10 +56,6 @@ namespace Sensors
       STANDALONE, // Only broadcasts LLH
       BASE        // Only broadcasts observations
     };
-
-    const int PIKSI_MSG_INIT_BASELINE = 0x23;
-    const int PIKSI_MSG_RESET_FILTERS = 0x22;
-    const int PIKSI_MSG_IAR_STATE     = 0x0019;
 
     //! %Task arguments.
     struct Arguments
@@ -223,23 +225,23 @@ namespace Sensors
         // Populate callback nodes.
         // values are copied to the map.
         sbp_msg_callbacks_node_t tmp;
-        m_nodemap[SBP_GPS_TIME] = tmp;
-        m_nodemap[SBP_POS_LLH]  = tmp;
-        m_nodemap[SBP_BASELINE_NED] = tmp;
-        m_nodemap[SBP_VEL_NED]   = tmp;
-        m_nodemap[SBP_DOPS]     = tmp;
-        m_nodemap[PIKSI_MSG_IAR_STATE] = tmp;
+        m_nodemap[SBP_MSG_GPS_TIME] = tmp;
+        m_nodemap[SBP_MSG_POS_LLH]  = tmp;
+        m_nodemap[SBP_MSG_BASELINE_NED] = tmp;
+        m_nodemap[SBP_MSG_VEL_NED]   = tmp;
+        m_nodemap[SBP_MSG_DOPS]     = tmp;
+        m_nodemap[SBP_MSG_IAR_STATE] = tmp;
 
         // Register task as context
         sbp_state_set_io_context(&m_sbp_state, (void*) this);
 
         // Register callbacks
-        sbp_register_callback(&m_sbp_state, SBP_BASELINE_NED, sbp_baseline_ned_callback, (void*)this, &m_nodemap[SBP_BASELINE_NED]);
-        sbp_register_callback(&m_sbp_state, SBP_POS_LLH,      sbp_pos_llh_callback, (void*)this, &m_nodemap[SBP_POS_LLH]);
-        sbp_register_callback(&m_sbp_state, SBP_VEL_NED,      sbp_vel_ned_callback, (void*)this, &m_nodemap[SBP_VEL_NED]);
-        sbp_register_callback(&m_sbp_state, SBP_DOPS,         sbp_dops_callback, (void*)this, &m_nodemap[SBP_DOPS]);
-        sbp_register_callback(&m_sbp_state, SBP_GPS_TIME,     sbp_gps_time_callback, (void*)this, &m_nodemap[SBP_GPS_TIME]);
-        sbp_register_callback(&m_sbp_state, PIKSI_MSG_IAR_STATE,     sbp_iar_state_callback, (void*)this, &m_nodemap[PIKSI_MSG_IAR_STATE]);
+        sbp_register_callback(&m_sbp_state, SBP_MSG_BASELINE_NED, sbp_baseline_ned_callback, (void*)this, &m_nodemap[SBP_MSG_BASELINE_NED]);
+        sbp_register_callback(&m_sbp_state, SBP_MSG_POS_LLH,      sbp_pos_llh_callback, (void*)this, &m_nodemap[SBP_MSG_POS_LLH]);
+        sbp_register_callback(&m_sbp_state, SBP_MSG_VEL_NED,      sbp_vel_ned_callback, (void*)this, &m_nodemap[SBP_MSG_VEL_NED]);
+        sbp_register_callback(&m_sbp_state, SBP_MSG_DOPS,         sbp_dops_callback, (void*)this, &m_nodemap[SBP_MSG_DOPS]);
+        sbp_register_callback(&m_sbp_state, SBP_MSG_GPS_TIME,     sbp_gps_time_callback, (void*)this, &m_nodemap[SBP_MSG_GPS_TIME]);
+        sbp_register_callback(&m_sbp_state, SBP_MSG_IAR_STATE,     sbp_iar_state_callback, (void*)this, &m_nodemap[SBP_MSG_IAR_STATE]);
 
 
       }
@@ -374,7 +376,7 @@ namespace Sensors
           // Send message to init baseline
           inf("Resetting piksi baseline.");
           u16 sender_id = 99;
-          sbp_send_message(&m_sbp_state, PIKSI_MSG_INIT_BASELINE, sender_id, 0, NULL, &sendLocalData);
+          sbp_send_message(&m_sbp_state, SBP_MSG_INIT_BASE, sender_id, 0, NULL, &sendLocalData);
         }
         if(list.get("piksiResetFilters") == "1")
         {
@@ -383,7 +385,7 @@ namespace Sensors
 
           u8 value = 0x00;
           u16 sender_id = 99;
-          sbp_send_message(&m_sbp_state, PIKSI_MSG_RESET_FILTERS, sender_id, 1, &value, &sendLocalData);
+          sbp_send_message(&m_sbp_state, SBP_MSG_RESET_FILTERS, sender_id, 1, &value, &sendLocalData);
 
         }
 
@@ -395,7 +397,7 @@ namespace Sensors
 
           u8 value = 0x01;
           u16 sender_id = 99;
-          sbp_send_message(&m_sbp_state, PIKSI_MSG_RESET_FILTERS, sender_id, 1, &value, &sendLocalData);
+          sbp_send_message(&m_sbp_state, SBP_MSG_RESET_FILTERS, sender_id, 1, &value, &sendLocalData);
         }
 
 
@@ -770,7 +772,7 @@ namespace Sensors
       }
 
       void
-      handleBaselineNed(sbp_baseline_ned_t& msg)
+      handleBaselineNed(msg_baseline_ned_t& msg)
       {
         spew("Got baseline ned");
 
@@ -797,7 +799,7 @@ namespace Sensors
       }
 
       void
-      handlePosllh(sbp_pos_llh_t& msg)
+      handlePosllh(msg_pos_llh_t& msg)
       {
         spew("Got Pos LLH");
 
@@ -880,7 +882,7 @@ namespace Sensors
       }
 
       void
-      handleVelNed(sbp_vel_ned_t& msg)
+      handleVelNed(msg_vel_ned_t& msg)
       {
         trace("Got vel ned");
         static u32 prev_vel_ned;
@@ -913,7 +915,7 @@ namespace Sensors
       }
 
       void
-      handleDops(sbp_dops_t& msg)
+      handleDops(msg_dops_t& msg)
       {
         trace("GOT dops");
 
@@ -930,7 +932,7 @@ namespace Sensors
       }
 
       void
-      handleGpsTime(sbp_gps_time_t& msg)
+      handleGpsTime(msg_gps_time_t& msg)
       {
         trace("Got GPS time");
 
@@ -964,7 +966,7 @@ namespace Sensors
       static void
       sbp_baseline_ned_callback(u16 sender_id, u8 len, u8 msg[], void *context)
       {
-        sbp_baseline_ned_t baseline_ned = *(sbp_baseline_ned_t *)msg;
+        msg_baseline_ned_t baseline_ned = *(msg_baseline_ned_t *)msg;
         Sensors::Piksi::Task* task = (Sensors::Piksi::Task*)(context);
 
         (void) sender_id;
@@ -975,7 +977,7 @@ namespace Sensors
       static void
       sbp_pos_llh_callback(u16 sender_id, u8 len, u8 msg[], void *context)
       {
-        sbp_pos_llh_t pos_llh = *(sbp_pos_llh_t *)msg;
+        msg_pos_llh_t pos_llh = *(msg_pos_llh_t *)msg;
         Sensors::Piksi::Task* task = (Sensors::Piksi::Task*)(context);
 
         (void) sender_id;
@@ -986,7 +988,7 @@ namespace Sensors
       static void
       sbp_vel_ned_callback(u16 sender_id, u8 len, u8 msg[], void *context)
       {
-        sbp_vel_ned_t vel_ned = *(sbp_vel_ned_t *)msg;
+        msg_vel_ned_t vel_ned = *(msg_vel_ned_t *)msg;
         Sensors::Piksi::Task* task = (Sensors::Piksi::Task*)(context);
 
         (void) sender_id;
@@ -997,7 +999,7 @@ namespace Sensors
       static void
       sbp_dops_callback(u16 sender_id, u8 len, u8 msg[], void *context)
       {
-        sbp_dops_t dops = *(sbp_dops_t *)msg;
+        msg_dops_t dops = *(msg_dops_t *)msg;
         Sensors::Piksi::Task* task = (Sensors::Piksi::Task*)(context);
 
         (void) sender_id;
@@ -1008,7 +1010,7 @@ namespace Sensors
       static void
       sbp_gps_time_callback(u16 sender_id, u8 len, u8 msg[], void *context)
       {
-        sbp_gps_time_t gps_time = *(sbp_gps_time_t *)msg;
+        msg_gps_time_t gps_time = *(msg_gps_time_t *)msg;
         Sensors::Piksi::Task* task = (Sensors::Piksi::Task*)(context);
 
         (void) sender_id;
