@@ -46,7 +46,6 @@ namespace Control
         bool use_controller;
         double max_speed;
         double max_acc;
-        bool use_refmodel;
         double refmodel_max_speed;
         double refmodel_max_acc;
         double refmodel_omega_n;
@@ -59,11 +58,16 @@ namespace Control
         double max_integral;
         bool reset_integral_on_path_activation;
         std::string controller_type;
+        float copter_mass_kg;
+        float suspended_rope_length;
+        float suspended_load_mass_g;
       };
 
       enum ControllerType {
         CT_PID,
-        CT_PID_INPUT
+        CT_PID_INPUT,
+        CT_SUSPENDED,
+        CT_SUSPENDED_INPUT
       };
 
       class ReferenceHistoryContainer
@@ -73,7 +77,27 @@ namespace Control
         double timestamp;
 
         ReferenceHistoryContainer():state(9,1,0.0),timestamp(0) {};
-        ReferenceHistoryContainer(Matrix state, double timestamp): state(state), timestamp(timestamp) {};
+        ReferenceHistoryContainer(Matrix state_, double timestamp_): state(state_), timestamp(timestamp_) {};
+      };
+
+      struct InputFilterConfig
+      {
+        double t1;
+        double t2;
+        float A1;
+        float A2;
+      };
+
+      // Angle measurements in NED
+      class LoadAngle
+      {
+      public:
+        float phi;
+        float theta;
+        float dphi;
+        float dtheta;
+        double timestamp;
+        LoadAngle(): phi(0.0), theta(0.0), dphi(0.0), dtheta(0.0), timestamp(0.0){};
       };
 
       struct Task: public DUNE::Control::PathController
@@ -99,6 +123,24 @@ namespace Control
         ControllerType m_controllerType;
         //! Reference history for input shaper
         queue<ReferenceHistoryContainer> m_refhistory;
+        //! Input shaper preferences
+        InputFilterConfig m_input_cfg;
+        //! Translational setpoint for logging
+        IMC::TranslationalSetpoint m_setpoint_log;
+        //! Previous controller output
+        Matrix m_prev_controller_output;
+        //! Last Estimated State received
+        IMC::EstimatedState m_estate;
+        //! Last angle measurements
+        LoadAngle m_loadAngle;
+        //! MassMatrix and stuff
+        double m_massMatrix[25];
+        double m_coreolisMatrix[25];
+        Matrix m_MassMatrix;
+        Matrix m_CoreolisMatrix;
+        Matrix m_Gravity;
+        Matrix m_alpha_45;
+
 
 
         Task(const std::string& name, Tasks::Context& ctx):
@@ -106,7 +148,12 @@ namespace Control
           m_desired_speed(0),
           m_integrator_value(3,1, 0.0),
           m_timestamp_prev_step(0.0),
-          m_controllerType(CT_PID)
+          m_controllerType(CT_PID),
+          m_prev_controller_output(3,1, 0.0),
+          m_MassMatrix(5, 5, 0.0),
+          m_CoreolisMatrix(5,5, 0.0),
+          m_Gravity(5,5, 0.0),
+          m_alpha_45(2,1, 0.0)
         {
 
           param("Acceleration Controller", m_args.use_controller)
@@ -123,17 +170,11 @@ namespace Control
           .description("Max speed of the vehicle");
 
           param("Max Acceleration", m_args.max_acc)
-          .defaultValue("3.0")
+          .defaultValue("3")
           .units(Units::MeterPerSquareSecond)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Max acceleration of the vehicle");
-
-          param("Use Reference Model", m_args.use_refmodel)
-          .defaultValue("true")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .description("Enable Reference Model.");
 
           param("Reference Model - Max Speed", m_args.refmodel_max_speed)
           .defaultValue("3.0")
@@ -141,7 +182,7 @@ namespace Control
           .description("Max speed of the reference model.");
 
           param("Reference Model - Max Acceleration", m_args.refmodel_max_acc)
-          .defaultValue("2")
+          .defaultValue("1.5")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Max acceleration of the reference model.");
 
@@ -159,19 +200,19 @@ namespace Control
 
           param("Acceleration Controller - Kp", m_args.Kp)
           .units(Units::None)
-          .defaultValue("1")
+          .defaultValue("1.152")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("P-Gain of the velocity controller");
 
           param("Acceleration Controller - Kd", m_args.Kd)
           .units(Units::None)
-          .defaultValue("1")
+          .defaultValue("2.24")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("D-Gain of the velocity controller");
 
           param("Acceleration Controller - Ki", m_args.Ki)
           .units(Units::None)
-          .defaultValue("0")
+          .defaultValue("0.08064")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("I-Gain of the velocity controller");
 
@@ -192,17 +233,43 @@ namespace Control
           .description("Choose whether to reset the integrator in a path activation. ");
 
           param("Acceleration Controller - Max Integral", m_args.max_integral)
-          .defaultValue("1")
+          .defaultValue("20")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Max integral value");
 
+          param("Copter Mass", m_args.copter_mass_kg)
+          .defaultValue("2.5")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .units(Units::Kilogram)
+          .description("Mass of the copter");
+
           param("Controller Type", m_args.controller_type)
-          .values("PID,PID-InputShaper")
+          .values("PID,PID-InputShaper,SuspendedLoad,SuspendedLoad-InputShaper")
           .defaultValue("PID")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Sets type of controller to use");
 
+          param("Suspended Rope Length", m_args.suspended_rope_length)
+          .defaultValue("2.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Length of suspended rope. Used for various filters. ");
+
+          param("Suspended Load mass", m_args.suspended_load_mass_g)
+          .defaultValue("250")
+          .units(Units::Gram)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Mass of suspended object. Used for various filters. ");
+
+
+          bind<IMC::EulerAngles>(this);
+
+          // zero-initialize mass-matrices
+          for (int i = 0; i < 25; i++)
+          {
+            m_massMatrix[i] = 0.0;
+            m_coreolisMatrix[i] = 0.0;
+          }
         }
 
         void
@@ -218,6 +285,26 @@ namespace Control
             m_controllerType = CT_PID;
           else if (m_args.controller_type == "PID-InputShaper")
             m_controllerType = CT_PID_INPUT;
+          else if (m_args.controller_type == "SuspendedLoad")
+            m_controllerType = CT_SUSPENDED;
+          else if (m_args.controller_type == "SuspendedLoad-InputShaper")
+            m_controllerType = CT_SUSPENDED_INPUT;
+
+          // Set input shaper preferences
+
+          double pd =  0.001;
+          double omega_n = std::sqrt(Math::c_gravity/m_args.suspended_rope_length);
+          double xi = pd/(2*omega_n*(m_args.suspended_load_mass_g/1000.0));
+          double omega_d = omega_n*std::sqrt(1 - std::pow(xi,2));
+          double Td = 2*Math::c_pi/omega_d;
+
+          //input shaper values
+          double input_K = exp(-(xi*Math::c_pi)/sqrt(1-pow(xi,2)));
+
+          m_input_cfg.A1 = 1/(1 + input_K);
+          m_input_cfg.A2 = input_K/(1 + input_K);
+          m_input_cfg.t1 = 0.0;
+          m_input_cfg.t2 = Td/2;
 
 
         }
@@ -249,6 +336,56 @@ namespace Control
           PathController::consume(dspeed);
         }
 
+        //! Consumer for EulerAngles message
+        void
+        consume(const IMC::EulerAngles* eangles)
+        {
+          // Need to convert to NED-measurements. (Sensor is mounted on body)
+
+          // update wire length.
+          Matrix load_z_vect = Matrix(3,1,0);
+          load_z_vect(2) = m_args.suspended_rope_length;
+
+          Matrix loadRnl = Rzyx(m_estate.phi,m_estate.theta,m_estate.psi) *
+              Rx(eangles->phi)*Ry(eangles->theta);
+
+          Matrix loadPosNED = loadRnl * load_z_vect;
+
+          // Insert new element at the end
+          LoadAngle newLoadAngles;
+          newLoadAngles.timestamp = eangles->time;
+          double dt = newLoadAngles.timestamp - m_loadAngle.timestamp;
+
+          //newLoadAngles.phi   = atan((double) (loadPosNED(1)/loadPosNED(2)));
+          //newLoadAngles.theta = atan((double) (loadPosNED(0)/loadPosNED(2)));
+
+          newLoadAngles.phi   = atan((double) (loadRnl(0,2)/loadRnl(0,0)));
+          newLoadAngles.theta = atan((double) (loadRnl(2,1)/loadRnl(1,1)));
+
+          if (dt > 0.0 && dt < 1)
+          {
+            newLoadAngles.dphi   = (newLoadAngles.phi - m_loadAngle.phi) / dt;
+            newLoadAngles.dtheta = (newLoadAngles.theta - m_loadAngle.theta) / dt;
+          }
+
+          // store
+          m_loadAngle = newLoadAngles;
+
+          // Update system matrices with new values
+          updateSystemMatrices();
+
+          trace("Got and processed new angle measurement");
+        }
+
+
+        void
+        updateSystemMatrices()
+        {
+          m_MassMatrix = MassMatrix();
+          m_CoreolisMatrix = CoreolisMatrix();
+          m_Gravity = Gravity();
+        }
+
         void
         initRefmodel(const IMC::EstimatedState& state)
         {
@@ -272,6 +409,13 @@ namespace Control
           m_refmodel_x(7) = 0.0;
           m_refmodel_x(8) = 0.0;
 
+          // Consider using last setpoint as acc startup
+          if (Clock::get() - m_timestamp_prev_step < 2.0)
+          {
+            m_refmodel_x(6) = m_prev_controller_output(0);
+            m_refmodel_x(7) = m_prev_controller_output(1);
+            m_refmodel_x(8) = m_prev_controller_output(2);
+          }
 
 
 
@@ -314,8 +458,22 @@ namespace Control
           initRefmodel(state);
 
           // Reset integral
-          if (m_args.reset_integral_on_path_activation)
+          // If switch, and always if more than x seconds since last step.
+          if (m_args.reset_integral_on_path_activation || Clock::get() - m_timestamp_prev_step > 4.0)
             m_integrator_value = Matrix(3, 1, 0.0);
+
+          // If more than 4 seconds since last step, flush history
+          if (Clock::get() - m_timestamp_prev_step > 4.0)
+          {
+            // Stack Overflow suggests swapping with empty, but doing this for now.
+            while(!m_refhistory.empty()) m_refhistory.pop();
+          }
+
+          // If more than 2 seconds since last step, restart suspended integrator
+          if (Clock::get() - m_timestamp_prev_step > 4.0)
+          {
+            m_alpha_45 = Matrix(2,1, 0.0);
+          }
 
 
         }
@@ -372,17 +530,74 @@ namespace Control
         }
 
         void
+        stepRefModel(const IMC::EstimatedState& state, const TrackingState& ts)
+        {
+          (void) state;
+
+          // Get target position
+          Matrix x_d = Matrix(3, 1, 0.0);
+          x_d(0) = ts.end.x;
+          x_d(1) = ts.end.y;
+          x_d(2) = -ts.end.z - state.height; // z is received as height. For copters, state.height will usually be zero.
+          trace("x_d:\t [%1.2f, %1.2f, %1.2f]",
+              x_d(0), x_d(1), x_d(2));
+
+
+          // Update reference
+          m_refmodel_x += ts.delta * (m_refmodel_A * m_refmodel_x + m_refmodel_B * x_d);
+
+          // Saturate reference velocity
+          Matrix vel = getRefVel();
+          Matrix acc = getRefAcc();
+
+          // Set heave to 0 if not controlling altitude
+          if (!m_args.use_altitude)
+          {
+            vel(2) = 0.0;
+            acc(2) = 0.0;
+          }
+
+
+          if (vel.norm_2() > m_args.refmodel_max_speed)
+          {
+            vel = m_args.refmodel_max_speed * vel / vel.norm_2();
+            setRefVel(vel);
+          }
+
+          if (acc.norm_2() > m_args.refmodel_max_acc)
+          {
+            acc = m_args.refmodel_max_acc * acc / acc.norm_2();
+            setRefAcc(acc);
+          }
+
+          m_setpoint_log.x = m_refmodel_x(0);
+          m_setpoint_log.y = m_refmodel_x(1);
+          m_setpoint_log.z = m_refmodel_x(2);
+          m_setpoint_log.u = m_refmodel_x(3);
+          m_setpoint_log.v = m_refmodel_x(4);
+          m_setpoint_log.w = m_refmodel_x(5);
+
+          // Print reference pos and vel
+          trace("x_r:\t [%1.2f, %1.2f, %1.2f]",
+              m_refmodel_x(0), m_refmodel_x(1), m_refmodel_x(2));
+          trace("v_r:\t [%1.2f, %1.2f, %1.2f]",
+              m_refmodel_x(3), m_refmodel_x(4), m_refmodel_x(5));
+        }
+
+        void
         step(const IMC::EstimatedState& state, const TrackingState& ts)
         {
 
           if (!m_args.use_controller)
             return;
 
+          double now = Clock::get();
+
           // Get current position
-          Matrix x = Matrix(3, 1, 0.0);
-          x(0) = state.x;
-          x(1) = state.y;
-          x(2) = state.z;
+          Matrix curPos = Matrix(3, 1, 0.0);
+          curPos(0) = state.x;
+          curPos(1) = state.y;
+          curPos(2) = state.z;
           trace("x:\t [%1.2f, %1.2f, %1.2f]",
               state.x, state.y, state.z);
 
@@ -392,57 +607,66 @@ namespace Control
           curVel(1) = state.vy;
           curVel(2) = state.vz;
 
-          // Get target position
-          Matrix x_d = Matrix(3, 1, 0.0);
-          x_d(0) = ts.end.x;
-          x_d(1) = ts.end.y;
-          x_d(2) = -ts.end.z; // NEU?!
-          trace("x_d:\t [%1.2f, %1.2f, %1.2f]",
-              x_d(0), x_d(1), x_d(2));
+          // Step the internal reference model
+          stepRefModel(state, ts);
 
-          Matrix vel = Matrix(3,1, 0.0);
+          // Prepare main controller container
           Matrix desiredAcc = Matrix(3,1, 0.0);
 
-          if (m_args.use_refmodel)
+
+          //if (m_controllerType == CT_PID || m_controllerType == CT_PID_INPUT || )
+          // always run baseline PID controller for now.
+          if (true)
           {
-            // Update reference
-            m_refmodel_x += ts.delta * (m_refmodel_A * m_refmodel_x + m_refmodel_B * x_d);
 
-            // Saturate reference velocity
-            vel = getRefVel();
+            // Define error signals
+            Matrix error_p = getRefPos() - curPos;
+            Matrix error_d = getRefVel() - curVel;
+            Matrix refAcc  = getRefAcc();
 
-            // Set heave to 0 if not controlling altitude
-            if (!m_args.use_altitude)
+            // If using input shaper, we are using some different error signals
+            if (m_controllerType == CT_PID_INPUT || m_controllerType == CT_SUSPENDED_INPUT)
             {
-              vel(2) = 0;
+
+              // Store current history
+              m_refhistory.push(ReferenceHistoryContainer(m_refmodel_x, now));
+
+              Matrix t2Ref = Matrix(9, 1, 0.0);
+              Matrix new_ref = Matrix(9, 1, 0.0);
+              // Peek first, to see if we have one far enough back in time
+              if (now - m_refhistory.front().timestamp >= m_input_cfg.t2)
+              {
+                t2Ref = m_refhistory.front().state;
+                m_refhistory.pop();
+
+                new_ref = m_refmodel_x * m_input_cfg.A1 + t2Ref * m_input_cfg.A2;
+              }
+              else
+              {
+                // Use only the first refmodel
+                new_ref = m_refhistory.front().state;
+              }
+
+              // Calculate new reference state
+
+
+              // New setpoint for logging
+              m_setpoint_log.x = new_ref(0);
+              m_setpoint_log.y = new_ref(1);
+              m_setpoint_log.z = new_ref(2);
+              m_setpoint_log.u = new_ref(3);
+              m_setpoint_log.v = new_ref(4);
+              m_setpoint_log.w = new_ref(5);
+
+              // Calculate new error states
+              error_p = new_ref.get(0,2, 0,0) - curPos;
+              error_d = new_ref.get(3,5, 0,0) - curVel;
+              refAcc  = new_ref.get(6,8, 0,0);
+
             }
-
-            if( vel.norm_2() > m_args.refmodel_max_speed )
-            {
-              vel = m_args.refmodel_max_speed * vel / vel.norm_2();
-              setRefVel(vel);
-            }
-            spew("Vel norm: %f", m_refmodel_x.get(3,5,0,0).norm_2());
-
-            Matrix acc = getRefAcc();
-            if (!m_args.use_altitude)
-              acc(2) = 0.0;
-
-            if (acc.norm_2() > m_args.refmodel_max_acc)
-            {
-              acc = m_args.refmodel_max_acc * acc / acc.norm_2();
-              setRefAcc(acc);
-            }
-
-            // Print reference pos and vel
-            trace("x_r:\t [%1.2f, %1.2f, %1.2f]",
-                m_refmodel_x(0), m_refmodel_x(1), m_refmodel_x(2));
-            trace("v_r:\t [%1.2f, %1.2f, %1.2f]",
-                m_refmodel_x(3), m_refmodel_x(4), m_refmodel_x(5));
-
 
             // Integral effect
-            m_integrator_value += ts.delta * (getRefPos() - x);
+            m_integrator_value += ts.delta * error_p;
             // Negate altitude
             if (!m_args.use_altitude)
               m_integrator_value(2) = 0.0;
@@ -451,13 +675,14 @@ namespace Control
             if (m_integrator_value.norm_2() > m_args.max_integral)
               m_integrator_value = m_args.max_integral * m_integrator_value / m_integrator_value.norm_2();
 
-            desiredAcc = getRefAcc() + m_args.Kd * (getRefVel() - curVel) + m_args.Kp * (getRefPos() - x) + m_args.Ki * m_integrator_value;
+            desiredAcc = refAcc + m_args.Kd * error_d + m_args.Kp * error_p + m_args.Ki * m_integrator_value;
+
 
 
             // Dispatch debug parcels
             IMC::ControlParcel parcel;
-            Matrix parcel_p = m_args.Kp * (getRefPos() - x);
-            Matrix parcel_d = m_args.Kd * (getRefVel() - curVel);
+            Matrix parcel_p = m_args.Kp * error_p;
+            Matrix parcel_d = m_args.Kd * error_d;
             Matrix parcel_i = m_args.Ki * m_integrator_value;
 
             if (!m_args.use_altitude)
@@ -472,15 +697,44 @@ namespace Control
             parcel.i = parcel_i.norm_2();
 
             dispatch(parcel);
+
           }
-          else
+
+          if(m_controllerType == CT_SUSPENDED || m_controllerType == CT_SUSPENDED_INPUT)
           {
-            // Head straight to target
-            //vel(0) = - m_args.Kp * (state.x - x_d(0));
-            //vel(1) = - m_args.Kp * (state.y - x_d(1));
-            //vel(2) = - m_args.Kp * (state.z - x_d(2));
-            vel = m_args.Kp * (x_d - x);
+            Matrix beta = Matrix(3, 1, 0.0);
+            Matrix dalpha_45 = Matrix(2, 1, 0.0);
+
+            double k2 = 1;
+            double k1 = 1;
+            try{
+              Matrix dTheta = Matrix(2,1, 0.0);
+              dTheta(0) = m_loadAngle.dphi;
+              dTheta(1) = m_loadAngle.dtheta;
+              Matrix refAcc = getRefAcc();
+              Matrix error_d = getRefVel() - curVel;
+
+              dalpha_45 = -.1 *m_alpha_45 - C22()*m_alpha_45 -G2() + k2 * (dTheta - m_alpha_45) - M21() *( refAcc - k1*(error_d));
+              dalpha_45 = M22_inv() * dalpha_45;
+
+
+            }
+            catch(...)
+            {
+              // don't do anything.
+              war("Error when calculating dalpha_45");
+            }
+
+            // Add to normal output
+            beta = C12() * m_alpha_45 + M12() * dalpha_45;
+
+            desiredAcc = desiredAcc + beta;
+
+            // integrate
+            m_alpha_45 = m_alpha_45 + ts.delta * dalpha_45;
           }
+
+
 
           // Set heave to 0 if not controlling altitude
           if (!m_args.use_altitude)
@@ -494,6 +748,9 @@ namespace Control
             desiredAcc = m_args.max_acc * desiredAcc / desiredAcc.norm_2();
           }
 
+          // store
+          m_prev_controller_output = desiredAcc;
+
           m_desired_control.x = desiredAcc(0);
           m_desired_control.y = desiredAcc(1);
           m_desired_control.z = desiredAcc(2);
@@ -501,24 +758,171 @@ namespace Control
 
           m_desired_control.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y | IMC::DesiredControl::FL_Z;
 
-          if(m_args.disable_heave)
+          if(m_args.disable_heave || !m_args.use_altitude)
             m_desired_control.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y;
 
 
           dispatch(m_desired_control);
 
           // Dispatch linear setpoint for logging
-          IMC::TranslationalSetpoint setpoint;
-          setpoint.x = m_refmodel_x(0);
-          setpoint.y = m_refmodel_x(1);
-          setpoint.z = m_refmodel_x(2);
-          setpoint.u = m_refmodel_x(3);
-          setpoint.v = m_refmodel_x(4);
-          setpoint.w = m_refmodel_x(5);
-          dispatch(setpoint);
+
+          dispatch(m_setpoint_log);
 
 
           spew("Sent acc data.");
+
+          // Update step-time
+          m_timestamp_prev_step = Clock::get();
+        }
+        Matrix MassMatrix()
+        {
+          float m_L = m_args.suspended_load_mass_g / 1000.0;
+          float m_c = m_args.copter_mass_kg;
+          float L   = m_args.suspended_rope_length;
+
+          float phi_L = m_loadAngle.phi;
+          float theta_L = m_loadAngle.theta;
+          float epsilon = 0.001;
+
+
+          m_massMatrix[0] = m_L+m_c;
+          m_massMatrix[4] = L*m_L*cos(theta_L);
+          m_massMatrix[6] = m_L+m_c;
+          m_massMatrix[8] = -L*m_L*cos(phi_L)*cos(theta_L);
+          m_massMatrix[9] = L*m_L*sin(phi_L)*sin(theta_L);
+          m_massMatrix[12] = m_L+m_c;
+          m_massMatrix[13] = -L*m_L*cos(theta_L)*sin(phi_L);
+          m_massMatrix[14] = -L*m_L*cos(phi_L)*sin(theta_L);
+          m_massMatrix[16] = -L*m_L*cos(phi_L)*cos(theta_L);
+          m_massMatrix[17] = -L*m_L*cos(theta_L)*sin(phi_L);
+          m_massMatrix[18] = epsilon*pow(sin(theta_L),2.0)+(L*L)*m_L*pow(cos(theta_L),2.0);
+          m_massMatrix[20] = L*m_L*cos(theta_L);
+          m_massMatrix[21] = L*m_L*sin(phi_L)*sin(theta_L);
+          m_massMatrix[22] = -L*m_L*cos(phi_L)*sin(theta_L);
+          m_massMatrix[24] = (L*L)*m_L;
+
+
+          return Matrix(m_massMatrix, 5, 5);
+        }
+
+        Matrix CoreolisMatrix()
+        {
+
+          float m_L = m_args.suspended_load_mass_g / 1000.0;
+
+          float L   = m_args.suspended_rope_length;
+
+          float phi_L = m_loadAngle.phi;
+          float theta_L = m_loadAngle.theta;
+          float dphi_L = m_loadAngle.dphi;
+          float dtheta_L = m_loadAngle.dtheta;
+
+          float epsilon = 0.001;
+
+
+
+          m_coreolisMatrix[16] = L*m_L*(dphi_L*cos(theta_L)*sin(phi_L)+dtheta_L*cos(phi_L)*sin(theta_L));
+          m_coreolisMatrix[17] = -L*m_L*(dphi_L*cos(phi_L)*cos(theta_L)-dtheta_L*sin(phi_L)*sin(theta_L));
+          m_coreolisMatrix[18] = dtheta_L*sin(theta_L*2.0)*(epsilon-(L*L)*m_L)*(1.0/2.0);
+          m_coreolisMatrix[19] = (L*L)*dphi_L*m_L*sin(theta_L*2.0)*(1.0/2.0);
+          m_coreolisMatrix[20] = -L*dtheta_L*m_L*sin(theta_L);
+          m_coreolisMatrix[21] = L*m_L*(dphi_L*cos(phi_L)*sin(theta_L)+dtheta_L*cos(theta_L)*sin(phi_L));
+          m_coreolisMatrix[22] = -L*m_L*(dtheta_L*cos(phi_L)*cos(theta_L)-dphi_L*sin(phi_L)*sin(theta_L));
+          m_coreolisMatrix[23] = (L*L)*dphi_L*m_L*sin(theta_L*2.0)*(-1.0/2.0);
+
+          return Matrix(m_coreolisMatrix, 5, 5);
+
+        }
+        Matrix Gravity()
+        {
+          float m_L = m_args.suspended_load_mass_g / 1000.0;
+          float m_c = m_args.copter_mass_kg;
+          float L   = m_args.suspended_rope_length;
+
+          float phi_L = m_loadAngle.phi;
+          float theta_L = m_loadAngle.theta;
+          double g = Math::c_gravity;
+
+
+          double T[5];
+          T[0] = 0.0;
+          T[1] = 0.0;
+          T[2] = -g*(m_L+m_c);
+          T[3] = L*g*m_L*cos(theta_L)*sin(phi_L);
+          T[4] = L*g*m_L*cos(phi_L)*sin(theta_L);
+
+          return Matrix(T, 5, 1);
+        }
+
+        Matrix M11()
+        {
+          return m_MassMatrix.get(0,2,0,2);
+        }
+        Matrix M12()
+        {
+          return m_MassMatrix.get(0,2,3,4);
+        }
+        Matrix M21()
+        {
+          return m_MassMatrix.get(3,4,0,2);
+        }
+        Matrix M22()
+        {
+          return m_MassMatrix.get(3,4,3,4);
+        }
+        Matrix M22_inv()
+        {
+
+          float m_L = m_args.suspended_load_mass_g / 1000.0;
+          float L   = m_args.suspended_rope_length;
+
+          //float phi_L = m_loadAngle.phi;
+          float theta_L = m_loadAngle.theta;
+          float epsilon = 0.001;
+
+
+          double b[4];
+
+          b[0] = 1.0/(epsilon*pow(sin(theta_L),2.0)+(L*L)*m_L*pow(cos(theta_L),2.0));
+          b[1] = 0.0;
+          b[2] = 0.0;
+          b[3] = 1.0/(L*L)/m_L;
+
+          return Matrix(b, 2, 2);
+        }
+
+        Matrix C12()
+        {
+          return m_CoreolisMatrix.get(0,2,3,4);
+        }
+
+        Matrix C22()
+        {
+          return m_CoreolisMatrix.get(3,4,3,4);
+        }
+
+        Matrix G2()
+        {
+          return m_Gravity.get(3,4,0,0);
+        }
+
+
+
+        //! @return  Rotation matrix.
+        Matrix Rzyx(double phi, double theta, double psi) const
+        {
+          double R_en_elements[] = {cos(psi)*cos(theta), (-sin(psi)*cos(phi))+(cos(psi)*sin(theta)*sin(psi)), (sin(psi)*sin(phi))+(cos(psi)*cos(phi)*sin(theta)) ,
+              sin(psi)*cos(theta), (cos(psi)*cos(phi))+(sin(phi)*sin(theta)*sin(psi)), (-cos(psi)*sin(phi))+(sin(theta)*sin(psi)*cos(phi)),
+              -sin(theta), cos(theta)*sin(phi), cos(theta)*cos(phi)};
+          return Matrix(R_en_elements,3,3);
+        }
+        Matrix Rx(double phi) const{
+          double Rx_elements[] = {1.0, 0.0, 0.0, 0.0, cos(phi), -sin(phi), 0.0, sin(phi), cos(phi)};
+          return Matrix(Rx_elements,3,3);
+        }
+        Matrix Ry(double theta) const{
+          double Ry_elements[] = {cos(theta), 0.0, sin(theta), 0.0, 1.0, 0.0, -sin(theta), 0.0, cos(theta)};
+          return Matrix(Ry_elements,3,3);
         }
       };
     }
