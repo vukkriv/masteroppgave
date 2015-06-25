@@ -61,7 +61,22 @@ namespace Control
         float copter_mass_kg;
         float suspended_rope_length;
         float suspended_load_mass_g;
+        float ks[3];
       };
+
+      static const std::string c_parcel_names[] = {DTR_RT("PID"), DTR_RT("Beta-X"),
+                                                   DTR_RT("Beta-Y"), DTR_RT("Beta-Z"),
+                                                   DTR_RT("Alpha45-Phi"), DTR_RT("Alpha45-Theta")};
+      enum Parcel {
+        PC_PID = 0,
+        PC_BETA_X = 1,
+        PC_BETA_Y = 2,
+        PC_BETA_Z = 3,
+        PC_ALPHA45_PHI = 4,
+        PC_ALPHA45_THETA = 5
+      };
+
+      static const int NUM_PARCELS = 6;
 
       enum ControllerType {
         CT_PID,
@@ -140,6 +155,9 @@ namespace Control
         Matrix m_CoreolisMatrix;
         Matrix m_Gravity;
         Matrix m_alpha_45;
+        //! Parcel array
+        IMC::ControlParcel m_parcels[NUM_PARCELS];
+        IMC::EulerAngles m_calculated_angles;
 
 
 
@@ -261,8 +279,22 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Mass of suspended object. Used for various filters. ");
 
+          char buf[10];
+          for (int i = 0; i < 3; i++)
+          {
+            sprintf(buf, "%d", i+1);
+            param("K" + std::string(buf), m_args.ks[i])
+            .defaultValue("1")
+            .units(Units::None)
+            .visibility(Tasks::Parameter::VISIBILITY_USER)
+            .description("Gain for suspended controller. 3 is overall beta-changer. ");
+          }
+
+
+
 
           bind<IMC::EulerAngles>(this);
+          bind<IMC::EstimatedState>(this);
 
           // zero-initialize mass-matrices
           for (int i = 0; i < 25; i++)
@@ -313,6 +345,12 @@ namespace Control
         onEntityReservation(void)
         {
           PathController::onEntityReservation();
+
+          for (unsigned i = 0; i < NUM_PARCELS; ++i)
+            m_parcels[i].setSourceEntity(reserveEntity(c_parcel_names[i] + " Parcel"));
+
+          m_calculated_angles.setSourceEntity(reserveEntity("Calculated Suspended Angles"));
+
         }
 
 
@@ -334,6 +372,12 @@ namespace Control
           }
 
           PathController::consume(dspeed);
+        }
+
+        void
+        consume(const IMC::EstimatedState* estate)
+        {
+          m_estate = *estate;
         }
 
         //! Consumer for EulerAngles message
@@ -373,6 +417,14 @@ namespace Control
 
           // Update system matrices with new values
           updateSystemMatrices();
+
+          // Dispatch the new angels in logs
+          m_calculated_angles.phi = newLoadAngles.phi;
+          m_calculated_angles.theta = newLoadAngles.theta;
+          m_calculated_angles.psi = newLoadAngles.dphi;
+          m_calculated_angles.psi_magnetic = newLoadAngles.dtheta;
+
+          dispatch(m_calculated_angles);
 
           trace("Got and processed new angle measurement");
         }
@@ -680,7 +732,7 @@ namespace Control
 
 
             // Dispatch debug parcels
-            IMC::ControlParcel parcel;
+            IMC::ControlParcel parcel = m_parcels[PC_PID];
             Matrix parcel_p = m_args.Kp * error_p;
             Matrix parcel_d = m_args.Kd * error_d;
             Matrix parcel_i = m_args.Ki * m_integrator_value;
@@ -705,8 +757,8 @@ namespace Control
             Matrix beta = Matrix(3, 1, 0.0);
             Matrix dalpha_45 = Matrix(2, 1, 0.0);
 
-            double k2 = 1;
-            double k1 = 1;
+            double k2 = m_args.ks[1];
+            double k1 = m_args.ks[0];
             try{
               Matrix dTheta = Matrix(2,1, 0.0);
               dTheta(0) = m_loadAngle.dphi;
@@ -728,10 +780,29 @@ namespace Control
             // Add to normal output
             beta = C12() * m_alpha_45 + M12() * dalpha_45;
 
-            desiredAcc = desiredAcc + beta;
+            // Store for logs
+            for (int i = 0; i < 3; i++)
+            {
+              m_parcels[PC_BETA_X + i].p = beta(i);
+              m_parcels[PC_BETA_X + i].d = desiredAcc(i);
+              m_parcels[PC_BETA_X + i].i = m_args.Ki*m_integrator_value(i);
+              dispatch(m_parcels[PC_BETA_X + i]);
+            }
+
+            desiredAcc = desiredAcc + m_args.ks[2] * beta;
 
             // integrate
+            // and store
+            m_parcels[PC_ALPHA45_PHI].p = m_alpha_45(0);
+            m_parcels[PC_ALPHA45_PHI].d = dalpha_45(0);
+
+            m_parcels[PC_ALPHA45_THETA].p = m_alpha_45(1);
+            m_parcels[PC_ALPHA45_THETA].d = dalpha_45(1);
+
             m_alpha_45 = m_alpha_45 + ts.delta * dalpha_45;
+
+            dispatch(m_parcels[PC_ALPHA45_PHI]);
+            dispatch(m_parcels[PC_ALPHA45_THETA]);
           }
 
 
