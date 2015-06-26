@@ -28,6 +28,7 @@
 // ISO C++ 98 headers.
 #include <cmath>
 #include <queue>
+#include <deque>
 
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
@@ -40,6 +41,7 @@ namespace Control
     {
       using DUNE_NAMESPACES;
       using std::queue;
+      using std::deque;
 
       struct Arguments
       {
@@ -62,21 +64,25 @@ namespace Control
         float suspended_rope_length;
         float suspended_load_mass_g;
         float ks[3];
+        float pd;
+        bool activate_delayed_feedback;
       };
 
       static const std::string c_parcel_names[] = {DTR_RT("PID"), DTR_RT("Beta-X"),
                                                    DTR_RT("Beta-Y"), DTR_RT("Beta-Z"),
-                                                   DTR_RT("Alpha45-Phi"), DTR_RT("Alpha45-Theta")};
+                                                   DTR_RT("Alpha45-Phi"), DTR_RT("Alpha45-Theta"), "Delayed-x", "Delayed-y"};
       enum Parcel {
         PC_PID = 0,
         PC_BETA_X = 1,
         PC_BETA_Y = 2,
         PC_BETA_Z = 3,
         PC_ALPHA45_PHI = 4,
-        PC_ALPHA45_THETA = 5
+        PC_ALPHA45_THETA = 5,
+        PC_DELAYED_X = 6,
+        PC_DELAYED_Y = 7
       };
 
-      static const int NUM_PARCELS = 6;
+      static const int NUM_PARCELS = 8;
 
       enum ControllerType {
         CT_PID,
@@ -107,12 +113,22 @@ namespace Control
       class LoadAngle
       {
       public:
-        float phi;
-        float theta;
-        float dphi;
-        float dtheta;
+        double phi;
+        double theta;
+        double dphi;
+        double dtheta;
         double timestamp;
         LoadAngle(): phi(0.0), theta(0.0), dphi(0.0), dtheta(0.0), timestamp(0.0){};
+      };
+
+      class LoadAngleHistoryContainer
+      {
+      public:
+        LoadAngle angle;
+        double timestamp;
+
+        LoadAngleHistoryContainer():timestamp(0.0) {};
+        LoadAngleHistoryContainer(LoadAngle angle_, double timestamp_): angle(angle_), timestamp(timestamp_) {};
       };
 
       struct Task: public DUNE::Control::PathController
@@ -158,6 +174,9 @@ namespace Control
         //! Parcel array
         IMC::ControlParcel m_parcels[NUM_PARCELS];
         IMC::EulerAngles m_calculated_angles;
+        //! AngleHistory
+        deque<LoadAngleHistoryContainer> m_anglehistory;
+        Matrix m_delayed_feedback_desired_pos;
 
 
 
@@ -171,7 +190,8 @@ namespace Control
           m_MassMatrix(5, 5, 0.0),
           m_CoreolisMatrix(5,5, 0.0),
           m_Gravity(5,5, 0.0),
-          m_alpha_45(2,1, 0.0)
+          m_alpha_45(2,1, 0.0),
+          m_delayed_feedback_desired_pos(3,1, 0.0)
         {
 
           param("Acceleration Controller", m_args.use_controller)
@@ -279,6 +299,11 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Mass of suspended object. Used for various filters. ");
 
+          param("Activate Delayed Feedback", m_args.activate_delayed_feedback)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER);
+
           char buf[10];
           for (int i = 0; i < 3; i++)
           {
@@ -290,6 +315,12 @@ namespace Control
             .description("Gain for suspended controller. 3 is overall beta-changer. ");
           }
 
+
+          param("pd", m_args.pd)
+          .defaultValue("0.01")
+          .units(Units::None)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Estimated angle-damping.  ");
 
 
 
@@ -403,8 +434,28 @@ namespace Control
           //newLoadAngles.phi   = atan((double) (loadPosNED(1)/loadPosNED(2)));
           //newLoadAngles.theta = atan((double) (loadPosNED(0)/loadPosNED(2)));
 
-          newLoadAngles.phi   = atan((double) (loadRnl(0,2)/loadRnl(0,0)));
-          newLoadAngles.theta = atan((double) (loadRnl(2,1)/loadRnl(1,1)));
+          //newLoadAngles.phi   = atan2( loadRnl(2,1),loadRnl(1,1) );
+          newLoadAngles.phi   = asin(loadRnl(2,1));
+
+          //newLoadAngles.theta = atan2( loadRnl(0,2),loadRnl(0,0) );
+          newLoadAngles.theta = asin(loadRnl(0,2));
+
+
+          spew("Calculations: (atan/acossin): phi: %f, %f. Theta: %f, %f", newLoadAngles.phi, asin(loadRnl(2,1)), newLoadAngles.theta, asin(loadRnl(0,2)));
+          spew("Determinant: %f", loadRnl.det());
+          /*
+          char buf[1024];
+          int counter = 0;
+          for (int i = 0; i<3; i++)
+          {
+            counter += snprintf(&buf[counter-1], 1024-counter, "\n");
+            for (int j = 0; j<3; j++)
+            {
+              counter += snprintf(&buf[counter-1], 1024-counter, "%.2f, ", loadRnl(i,j));
+            }
+          }
+          inf("R is: %s", buf);
+          */
 
           if (dt > 0.0 && dt < 1)
           {
@@ -427,6 +478,9 @@ namespace Control
           dispatch(m_calculated_angles);
 
           trace("Got and processed new angle measurement");
+
+          // store
+          m_anglehistory.push_back(LoadAngleHistoryContainer(newLoadAngles, eangles->time));
         }
 
 
@@ -517,6 +571,12 @@ namespace Control
           // If more than 4 seconds since last step, flush history
           if (Clock::get() - m_timestamp_prev_step > 4.0)
           {
+            while(!m_anglehistory.empty()) m_anglehistory.pop_front();
+          }
+
+          // check  the latest timestamp.
+          if (!m_refhistory.empty() && Clock::get() - m_refhistory.back().timestamp > 4.0)
+          {
             // Stack Overflow suggests swapping with empty, but doing this for now.
             while(!m_refhistory.empty()) m_refhistory.pop();
           }
@@ -526,6 +586,12 @@ namespace Control
           {
             m_alpha_45 = Matrix(2,1, 0.0);
           }
+
+          // Store current position as reference for delayed feedback hover control
+          m_delayed_feedback_desired_pos = Matrix(3,1, 0.0);
+          m_delayed_feedback_desired_pos(0) = state.x;
+          m_delayed_feedback_desired_pos(1) = state.y;
+          m_delayed_feedback_desired_pos(2) = state.z;
 
 
         }
@@ -676,8 +742,90 @@ namespace Control
             Matrix error_d = getRefVel() - curVel;
             Matrix refAcc  = getRefAcc();
 
+            // if using delayed, we are staying put and using sstart coordinates
+            if (m_args.activate_delayed_feedback)
+            {
+              // initiate new error variables
+              error_p = m_delayed_feedback_desired_pos - curPos;
+              error_d = -curVel;
+              refAcc  = Matrix(3,1, 0.0);
+
+
+
+              double pd =  0.001;
+              double omega_n = std::sqrt(Math::c_gravity/m_args.suspended_rope_length);
+              double xi = pd/(2*omega_n*(m_args.suspended_load_mass_g/1000.0));
+              double omega_d = omega_n*std::sqrt(1 - std::pow(xi,2));
+              double Td = 2*Math::c_pi/omega_d;
+              double tau_d = 0.325*Td;
+              double Gd    = 0.325;
+
+              double pL = m_args.suspended_rope_length;
+
+              spew("Angle history size: %lu", m_anglehistory.size());
+
+
+              Matrix addPos = Matrix(3,1, 0.0);
+              Matrix addVel = Matrix(3,1, 0.0);
+              Matrix addAcc = Matrix(3,1, 0.0);
+
+              // check if we have angles far enough back
+              while ( m_anglehistory.size() >=1 && now - m_anglehistory.front().timestamp >= tau_d)
+              {
+
+                LoadAngle oldAngle = m_anglehistory.front().angle;
+
+
+                addPos(0)     =  sin(oldAngle.theta);
+                addPos(1)     = -sin(oldAngle.phi);
+
+
+                addVel(0)     =  cos(oldAngle.theta) * oldAngle.dtheta;
+                addVel(1)     = -cos(oldAngle.phi)   * oldAngle.dphi;
+
+
+                addAcc(0)     = -sin(oldAngle.theta) * oldAngle.dtheta;
+                addAcc(1)     =  sin(oldAngle.phi)   * oldAngle.dphi;
+
+                addPos *= Gd*pL;
+                addVel *= Gd*pL;
+                addAcc *= Gd*pL;
+
+
+                spew("Delayed: Calculating");
+
+                // if the next one is also valid, it is ok to delete this one. And we continue the loop
+                if ( m_anglehistory.size() >= 2 && (now - m_anglehistory.at(1).timestamp >= tau_d))
+                {
+                  m_anglehistory.pop_front();
+                }
+                else
+                  break;
+
+
+
+
+              }
+
+              error_p += addPos;
+              error_d += addVel;
+              refAcc  += addAcc;
+
+              // log
+              m_parcels[PC_DELAYED_X].p = addPos(0);
+              m_parcels[PC_DELAYED_X].d = addVel(0);
+              m_parcels[PC_DELAYED_X].i = addAcc(0);
+
+              m_parcels[PC_DELAYED_Y].p = addPos(1);
+              m_parcels[PC_DELAYED_Y].d = addVel(1);
+              m_parcels[PC_DELAYED_Y].i = addAcc(1);
+
+              dispatch(m_parcels[PC_DELAYED_X]);
+              dispatch(m_parcels[PC_DELAYED_Y]);
+            }
+
             // If using input shaper, we are using some different error signals
-            if (m_controllerType == CT_PID_INPUT || m_controllerType == CT_SUSPENDED_INPUT)
+            if ((m_controllerType == CT_PID_INPUT || m_controllerType == CT_SUSPENDED_INPUT) && !m_args.activate_delayed_feedback)
             {
 
               // Store current history
@@ -759,6 +907,7 @@ namespace Control
 
             double k2 = m_args.ks[1];
             double k1 = m_args.ks[0];
+            double pd = m_args.pd;
             try{
               Matrix dTheta = Matrix(2,1, 0.0);
               dTheta(0) = m_loadAngle.dphi;
@@ -766,7 +915,7 @@ namespace Control
               Matrix refAcc = getRefAcc();
               Matrix error_d = getRefVel() - curVel;
 
-              dalpha_45 = -.1 *m_alpha_45 - C22()*m_alpha_45 -G2() + k2 * (dTheta - m_alpha_45) - M21() *( refAcc - k1*(error_d));
+              dalpha_45 = -pd *m_alpha_45 - C22()*m_alpha_45 -G2() + k2 * (dTheta - m_alpha_45) - M21() *( refAcc - k1*(error_d));
               dalpha_45 = M22_inv() * dalpha_45;
 
 
