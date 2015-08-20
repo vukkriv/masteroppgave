@@ -66,6 +66,8 @@ namespace Control
         float ks[3];
         float pd;
         bool activate_delayed_feedback;
+        int tau_d_extra_ms;
+        double Gd_extra;
       };
 
       static const std::string c_parcel_names[] = {DTR_RT("PID"), DTR_RT("Beta-X"),
@@ -226,7 +228,7 @@ namespace Control
 
           param("Reference Model - Natural Frequency",m_args.refmodel_omega_n)
           .units(Units::RadianPerSecond)
-          .defaultValue("0.5")
+          .defaultValue("1")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Natural frequency for the speed reference model");
 
@@ -255,7 +257,7 @@ namespace Control
           .description("I-Gain of the velocity controller");
 
           param("Use Altitude", m_args.use_altitude)
-          .defaultValue("false")
+          .defaultValue("true")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Choose whether altitude is controlled or not (set to 0 if not).");
 
@@ -276,7 +278,7 @@ namespace Control
           .description("Max integral value");
 
           param("Copter Mass", m_args.copter_mass_kg)
-          .defaultValue("2.5")
+          .defaultValue("2.3")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .units(Units::Kilogram)
           .description("Mass of the copter");
@@ -289,7 +291,7 @@ namespace Control
           .description("Sets type of controller to use");
 
           param("Suspended Rope Length", m_args.suspended_rope_length)
-          .defaultValue("2.0")
+          .defaultValue("4.3")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Length of suspended rope. Used for various filters. ");
 
@@ -318,6 +320,18 @@ namespace Control
 
           param("pd", m_args.pd)
           .defaultValue("0.01")
+          .units(Units::None)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Estimated angle-damping.  ");
+
+          param("tau_d extra", m_args.tau_d_extra_ms)
+          .defaultValue("-600")
+          .units(Units::Millisecond)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Extra delay taime  ");
+
+          param("Gd extra", m_args.Gd_extra)
+          .defaultValue("1.0")
           .units(Units::None)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Estimated angle-damping.  ");
@@ -431,8 +445,7 @@ namespace Control
           newLoadAngles.timestamp = eangles->time;
           double dt = newLoadAngles.timestamp - m_loadAngle.timestamp;
 
-          //newLoadAngles.phi   = atan((double) (loadPosNED(1)/loadPosNED(2)));
-          //newLoadAngles.theta = atan((double) (loadPosNED(0)/loadPosNED(2)));
+
 
           //newLoadAngles.phi   = atan2( loadRnl(2,1),loadRnl(1,1) );
           newLoadAngles.phi   = asin(loadRnl(2,1));
@@ -440,6 +453,8 @@ namespace Control
           //newLoadAngles.theta = atan2( loadRnl(0,2),loadRnl(0,0) );
           newLoadAngles.theta = asin(loadRnl(0,2));
 
+          newLoadAngles.phi   = -atan((double) (loadPosNED(1)/loadPosNED(2)));
+         newLoadAngles.theta = atan((double) (loadPosNED(0)/loadPosNED(2)));
 
           spew("Calculations: (atan/acossin): phi: %f, %f. Theta: %f, %f", newLoadAngles.phi, asin(loadRnl(2,1)), newLoadAngles.theta, asin(loadRnl(0,2)));
           spew("Determinant: %f", loadRnl.det());
@@ -461,6 +476,10 @@ namespace Control
           {
             newLoadAngles.dphi   = (newLoadAngles.phi - m_loadAngle.phi) / dt;
             newLoadAngles.dtheta = (newLoadAngles.theta - m_loadAngle.theta) / dt;
+          }
+          else
+          {
+            debug("Angle DT is: %f", dt);
           }
 
           // store
@@ -688,6 +707,7 @@ namespace Control
             setRefAcc(acc);
           }
 
+
           m_setpoint_log.x = m_refmodel_x(0);
           m_setpoint_log.y = m_refmodel_x(1);
           m_setpoint_log.z = m_refmodel_x(2);
@@ -731,6 +751,10 @@ namespace Control
           // Prepare main controller container
           Matrix desiredAcc = Matrix(3,1, 0.0);
 
+          // stuff for delayed controller
+          Matrix addPos = Matrix(3,1, 0.0);
+          Matrix addVel = Matrix(3,1, 0.0);
+          Matrix addAcc = Matrix(3,1, 0.0);
 
           //if (m_controllerType == CT_PID || m_controllerType == CT_PID_INPUT || )
           // always run baseline PID controller for now.
@@ -757,17 +781,15 @@ namespace Control
               double xi = pd/(2*omega_n*(m_args.suspended_load_mass_g/1000.0));
               double omega_d = omega_n*std::sqrt(1 - std::pow(xi,2));
               double Td = 2*Math::c_pi/omega_d;
-              double tau_d = 0.325*Td;
-              double Gd    = 0.325;
+              double tau_d = 0.325*Td + m_args.tau_d_extra_ms / 1000.0;
+              double Gd    = 0.325 * m_args.Gd_extra;
 
               double pL = m_args.suspended_rope_length;
 
-              spew("Angle history size: %lu", m_anglehistory.size());
+              debug("Angle history size: %lu", m_anglehistory.size());
 
 
-              Matrix addPos = Matrix(3,1, 0.0);
-              Matrix addVel = Matrix(3,1, 0.0);
-              Matrix addAcc = Matrix(3,1, 0.0);
+
 
               // check if we have angles far enough back
               while ( m_anglehistory.size() >=1 && now - m_anglehistory.front().timestamp >= tau_d)
@@ -787,12 +809,12 @@ namespace Control
                 addAcc(0)     = -sin(oldAngle.theta) * oldAngle.dtheta;
                 addAcc(1)     =  sin(oldAngle.phi)   * oldAngle.dphi;
 
-                addPos *= Gd*pL;
-                addVel *= Gd*pL;
-                addAcc *= Gd*pL;
+                addPos = Gd*pL*addPos;
+                addVel = Gd*pL*addVel;
+                addAcc = Gd*pL*addAcc;
 
 
-                spew("Delayed: Calculating");
+                debug("Delayed: Calculating");
 
                 // if the next one is also valid, it is ok to delete this one. And we continue the loop
                 if ( m_anglehistory.size() >= 2 && (now - m_anglehistory.at(1).timestamp >= tau_d))
@@ -820,12 +842,21 @@ namespace Control
               m_parcels[PC_DELAYED_Y].d = addVel(1);
               m_parcels[PC_DELAYED_Y].i = addAcc(1);
 
+              // New setpoint for logging
+              Matrix newPosRef = m_delayed_feedback_desired_pos + addPos;
+              m_setpoint_log.x = newPosRef(0);
+              m_setpoint_log.y = newPosRef(1);
+              m_setpoint_log.z = newPosRef(2);
+              m_setpoint_log.u = addVel(0);
+              m_setpoint_log.v = addVel(1);
+              m_setpoint_log.w = addVel(2);
+
               dispatch(m_parcels[PC_DELAYED_X]);
               dispatch(m_parcels[PC_DELAYED_Y]);
             }
 
             // If using input shaper, we are using some different error signals
-            if ((m_controllerType == CT_PID_INPUT || m_controllerType == CT_SUSPENDED_INPUT) && !m_args.activate_delayed_feedback)
+            if ((m_controllerType == CT_PID_INPUT || m_controllerType == CT_SUSPENDED_INPUT))
             {
 
               // Store current history
@@ -859,9 +890,9 @@ namespace Control
               m_setpoint_log.w = new_ref(5);
 
               // Calculate new error states
-              error_p = new_ref.get(0,2, 0,0) - curPos;
-              error_d = new_ref.get(3,5, 0,0) - curVel;
-              refAcc  = new_ref.get(6,8, 0,0);
+              error_p = new_ref.get(0,2, 0,0) - curPos + addPos;
+              error_d = new_ref.get(3,5, 0,0) - curVel + addVel;
+              refAcc  = new_ref.get(6,8, 0,0) + addAcc;
 
             }
 
