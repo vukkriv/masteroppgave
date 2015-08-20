@@ -140,7 +140,7 @@ namespace Sensors
         debug("Angle: %f, %f \n", a1, a2);
 
         IMC::EulerAngles angles;
-
+        angles.time = Clock::get();
         angles.phi = -(a1 * Math::c_pi) / 180.0;
         angles.theta = (a2 * Math::c_pi) / 180.0 ;
 
