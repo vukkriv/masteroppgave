@@ -68,11 +68,12 @@ namespace Control
         bool activate_delayed_feedback;
         int tau_d_extra_ms;
         double Gd_extra;
+        bool reset_to_state;
       };
 
       static const std::string c_parcel_names[] = {DTR_RT("PID"), DTR_RT("Beta-X"),
                                                    DTR_RT("Beta-Y"), DTR_RT("Beta-Z"),
-                                                   DTR_RT("Alpha45-Phi"), DTR_RT("Alpha45-Theta"), "Delayed-x", "Delayed-y"};
+                                                   DTR_RT("Alpha45-Phi"), DTR_RT("Alpha45-Theta"), "Delayed-x", "Delayed-y", "PID-X", "PID-Y", "PID-Z"};
       enum Parcel {
         PC_PID = 0,
         PC_BETA_X = 1,
@@ -81,10 +82,13 @@ namespace Control
         PC_ALPHA45_PHI = 4,
         PC_ALPHA45_THETA = 5,
         PC_DELAYED_X = 6,
-        PC_DELAYED_Y = 7
+        PC_DELAYED_Y = 7,
+        PC_PID_X = 8,
+        PC_PID_Y = 9,
+        PC_PID_Z = 10
       };
 
-      static const int NUM_PARCELS = 8;
+      static const int NUM_PARCELS = 11;
 
       enum ControllerType {
         CT_PID,
@@ -336,6 +340,12 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Estimated angle-damping.  ");
 
+          param("Reset to position on path startup", m_args.reset_to_state)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Set to reset to state rather than previus ref_pos on change");
+
 
 
           bind<IMC::EulerAngles>(this);
@@ -347,6 +357,8 @@ namespace Control
             m_massMatrix[i] = 0.0;
             m_coreolisMatrix[i] = 0.0;
           }
+
+          m_refmodel_x = Matrix(9, 1, 0.0);
         }
 
         void
@@ -520,27 +532,32 @@ namespace Control
           Matrix eye = Matrix(ones, 3);
           Matrix zero = Matrix(3,3, 0.0);
 
+
           // Restart refmodel
-          m_refmodel_x = Matrix(9, 1, 0.0);
-          m_refmodel_x(0) = state.x;
-          m_refmodel_x(1) = state.y;
-          m_refmodel_x(2) = state.z;
-
-          m_refmodel_x(3) = state.vx;
-          m_refmodel_x(4) = state.vy;
-          m_refmodel_x(5) = state.vz;
-
-          m_refmodel_x(6) = 0.0;
-          m_refmodel_x(7) = 0.0;
-          m_refmodel_x(8) = 0.0;
-
-          // Consider using last setpoint as acc startup
-          if (Clock::get() - m_timestamp_prev_step < 2.0)
+          if (m_args.reset_to_state || Clock::get() - m_timestamp_prev_step > 2.0)
           {
-            m_refmodel_x(6) = m_prev_controller_output(0);
-            m_refmodel_x(7) = m_prev_controller_output(1);
-            m_refmodel_x(8) = m_prev_controller_output(2);
+            m_refmodel_x = Matrix(9, 1, 0.0);
+            m_refmodel_x(0) = state.x;
+            m_refmodel_x(1) = state.y;
+            m_refmodel_x(2) = state.z;
+
+            m_refmodel_x(3) = state.vx;
+            m_refmodel_x(4) = state.vy;
+            m_refmodel_x(5) = state.vz;
+
+            m_refmodel_x(6) = 0.0;
+            m_refmodel_x(7) = 0.0;
+            m_refmodel_x(8) = 0.0;
+
+            // Consider using last setpoint as acc startup
+            if (Clock::get() - m_timestamp_prev_step < 2.0)
+            {
+              m_refmodel_x(6) = m_prev_controller_output(0);
+              m_refmodel_x(7) = m_prev_controller_output(1);
+              m_refmodel_x(8) = m_prev_controller_output(2);
+            }
           }
+
 
 
 
@@ -880,14 +897,17 @@ namespace Control
 
               // Calculate new reference state
 
+              // Actually disable input-shaping
+              new_ref = m_refmodel_x;
+
 
               // New setpoint for logging
-              m_setpoint_log.x = new_ref(0);
-              m_setpoint_log.y = new_ref(1);
-              m_setpoint_log.z = new_ref(2);
-              m_setpoint_log.u = new_ref(3);
-              m_setpoint_log.v = new_ref(4);
-              m_setpoint_log.w = new_ref(5);
+              m_setpoint_log.x = new_ref(0) + addPos(0);
+              m_setpoint_log.y = new_ref(1) + addPos(1);
+              m_setpoint_log.z = new_ref(2) + addPos(2);
+              m_setpoint_log.u = new_ref(3) + addVel(0);
+              m_setpoint_log.v = new_ref(4) + addVel(1);
+              m_setpoint_log.w = new_ref(5) + addVel(2);
 
               // Calculate new error states
               error_p = new_ref.get(0,2, 0,0) - curPos + addPos;
@@ -928,6 +948,14 @@ namespace Control
             parcel.i = parcel_i.norm_2();
 
             dispatch(parcel);
+
+            for (int i = 0; i < 3; i++)
+            {
+              m_parcels[PC_PID_X + i].p = parcel_p(i);
+              m_parcels[PC_PID_X + i].d = parcel_d(i);
+              m_parcels[PC_PID_X + i].i = parcel_i(i);
+              dispatch(m_parcels[PC_PID_X + i]);
+            }
 
           }
 
