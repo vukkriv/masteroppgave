@@ -34,15 +34,13 @@ extern "C"
   #include <phidget21.h>
 }
 
-
+#include <numeric>
 
 namespace Sensors
 {
   namespace PhidgetBridge
   {
     using DUNE_NAMESPACES;
-
-
 
     //! %Task arguments.
     struct Arguments
@@ -53,9 +51,12 @@ namespace Sensors
       int data_rate_ms;
       //! Gain setting
       int gain;
-
-
-
+      //! Calibration data
+      bool lin_reg_enable;
+      std::vector <double> cal_voltage;
+      std::vector <double> cal_mass;
+      //! Sensor ID
+      std::string sensor_id;
     };
 
     struct Task: public DUNE::Tasks::Task
@@ -68,8 +69,9 @@ namespace Sensors
       CPhidgetBridge_Gain m_gain;
       //! Sensor connected
       bool m_connected;
-
-
+      //! Results linear regression
+      double m_slope;
+      double m_offset;
 
       //! Constructor.
       //! @param[in] name task name.
@@ -77,10 +79,10 @@ namespace Sensors
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Task(name, ctx),
         m_gain(PHIDGET_BRIDGE_GAIN_1),
-        m_connected(false)
+        m_connected(false),
+        m_slope(1.0),
+        m_offset(0.0)
       {
-
-
         param("Communication Timeout", m_args.comm_timeout)
         .defaultValue("5")
         .units(Units::Second)
@@ -96,10 +98,26 @@ namespace Sensors
         .values("1,8,16,32,64,128")
         .description("Sensor Gain. ");
 
+        param("Sensor ID", m_args.sensor_id)
+        .defaultValue("Unknown")
+        .description("String descriptor of the sensor ");
+
+        param("Lin_reg_enable", m_args.lin_reg_enable)
+        .defaultValue("true")
+        .description("Enables linear regression settings for sensor");
+
+        param("Cal_voltage", m_args.cal_voltage)
+        //.defaultValue("1.0")
+        .units(Units::Volt)
+        .description("Calibration voltage in V");
+
+        param("Cal_mass", m_args.cal_mass)
+        //.defaultValue("1.0")
+        .units(Units::Kilogram)
+        .description("Calibration mass in kg");
 
         // Init bridge interface
         CPhidgetBridge_create(&m_bridge);
-
 
         // Populate callback nodes.
         CPhidget_set_OnAttach_Handler((CPhidgetHandle)m_bridge, ph_attachHandler, (void*)this);
@@ -107,18 +125,15 @@ namespace Sensors
         CPhidget_set_OnError_Handler((CPhidgetHandle)m_bridge, ph_errorHandler, (void*)this);
 
         CPhidgetBridge_set_OnBridgeData_Handler(m_bridge, ph_dataHandler, (void*)this);
-
-
       }
-
-
-
-
 
       //! Update internal state with new parameter values.
       void
       onUpdateParameters(void)
       {
+
+        inf("Connected to sensor: %s", m_args.sensor_id.c_str());
+
         switch (m_args.gain)
         {
           default:
@@ -150,23 +165,52 @@ namespace Sensors
             trace("Set gain to %d", m_args.gain);
             break;
         }
-
-
-
       }
 
+      void
+      linear_regression(void) //make linear regression of calibration data
+      {	
 
+	if (m_args.lin_reg_enable)
+	{
+	  double sum_cal_voltage = std::accumulate(m_args.cal_voltage.begin(),m_args.cal_voltage.end(),0.0);
+	  double sum_cal_mass = std::accumulate(m_args.cal_mass.begin(),m_args.cal_mass.end(),0.0);
+	  double sum_cal_voltage2 = std::inner_product(m_args.cal_voltage.begin(),m_args.cal_voltage.end(),m_args.cal_voltage.begin(),0.0);
+	  double sum_cal_massvoltage = std::inner_product(m_args.cal_mass.begin(),m_args.cal_mass.end(),m_args.cal_voltage.begin(),0.0);
+	  double voltage_mean = sum_cal_voltage/m_args.cal_voltage.size();
+	  double mass_mean = sum_cal_mass/m_args.cal_mass.size();
+
+	  m_slope = (sum_cal_massvoltage - sum_cal_voltage*mass_mean) / (sum_cal_voltage2 - sum_cal_voltage*voltage_mean);
+	  m_offset = mass_mean - m_slope*voltage_mean;
+	}
+	else
+	{
+	  m_slope = 1;
+	  m_offset = 0;
+	}
+
+	//print results
+	//std::cout << "\ny = ax + b =>" << " a = " << slope << " b = " << offset << "\n\n";
+	debug("y = ax + b => a = %f, b = %f", m_slope, m_offset);
+      }
 
       void
       handleBridgeData(int index, double val)
       {
         trace("New handler data: (%d) %f", index, val);
+
+	//calculate load: y=ax+b
+	double load = m_slope*val + m_offset;
+
+	//send via IMC
+	IMC::Pressure msg;
+        msg.value = load;
+        dispatch(msg);
       }
 
       void
       handleAttachment(CPhidgetBridgeHandle bridge)
       {
-
         m_connected = true;
 
         inf("Attached a phidget bridge.");
@@ -212,9 +256,6 @@ namespace Sensors
       void
       onResourceAcquisition(void)
       {
-
-
-
       }
 
 
@@ -223,13 +264,15 @@ namespace Sensors
       onResourceInitialization(void)
       {
         CPhidget_open((CPhidgetHandle)m_bridge, -1);
+
+	//execute linear regression algorithm ones
+        linear_regression();
       }
 
       //! Release resources.
       void
       onResourceRelease(void)
       {
-
         if (m_connected)
         {
           CPhidget_close((CPhidgetHandle)m_bridge);
@@ -239,15 +282,12 @@ namespace Sensors
         }
       }
 
-
-
       //! Main loop.
       void
       onMain(void)
       {
         while (!stopping())
         {
-
           // Wait for messages
           waitForMessages(1);
         }
@@ -267,7 +307,6 @@ namespace Sensors
       static int
       ph_detachHandler(  CPhidgetHandle phid, void *userPtr)
       {
-
         CPhidgetBridgeHandle bridge = (CPhidgetBridgeHandle)phid;
         (void) bridge;
 
@@ -280,7 +319,6 @@ namespace Sensors
       static int
       ph_errorHandler(  CPhidgetHandle phid, void *userPtr, int errorCode, const char *errorString)
       {
-
         CPhidgetBridgeHandle bridge = (CPhidgetBridgeHandle)phid;
         (void) bridge;
 
@@ -293,17 +331,15 @@ namespace Sensors
       static int
       ph_dataHandler( CPhidgetBridgeHandle phid, void *userPtr, int index, double val)
       {
-
         CPhidgetBridgeHandle bridge = (CPhidgetBridgeHandle)phid;
         (void)bridge;
 
         Sensors::PhidgetBridge::Task* task = (Sensors::PhidgetBridge::Task*) userPtr;
+
         task->handleBridgeData(index, val);
 
         return 0;
       }
-
-
     };
   }
 }
