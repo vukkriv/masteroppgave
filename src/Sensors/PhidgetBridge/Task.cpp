@@ -53,6 +53,7 @@ namespace Sensors
       int gain;
       //! Calibration data
       bool lin_reg_enable;
+      double cal_offset;
       std::vector <double> cal_voltage;
       std::vector <double> cal_mass;
       //! Sensor ID
@@ -106,6 +107,11 @@ namespace Sensors
         .defaultValue("true")
         .description("Enables linear regression settings for sensor");
 
+        param("Cal_offset", m_args.cal_offset)
+        //.defaultValue("1.0")
+        .units(Units::Volt)
+        .description("Calibration offset in V");
+
         param("Cal_voltage", m_args.cal_voltage)
         //.defaultValue("1.0")
         .units(Units::Volt)
@@ -113,8 +119,8 @@ namespace Sensors
 
         param("Cal_mass", m_args.cal_mass)
         //.defaultValue("1.0")
-        .units(Units::Kilogram)
-        .description("Calibration mass in kg");
+        //.units(Units::Pounds)
+        .description("Calibration mass in lb");
 
         // Init bridge interface
         CPhidgetBridge_create(&m_bridge);
@@ -169,12 +175,24 @@ namespace Sensors
 
       void
       linear_regression(void) //make linear regression of calibration data
-      {	
+      {			
 
 	if (m_args.lin_reg_enable)
 	{
+	  //to add the calibration offset
+	  for(unsigned int i = 0; i < m_args.cal_voltage.size(); i++)
+	  {
+	     m_args.cal_voltage[i] = m_args.cal_voltage[i] + m_args.cal_offset;
+	  }
+
+	  //to get it in kg instead of lb
+	  for(unsigned int i = 0; i < m_args.cal_mass.size(); i++)
+	  {
+	     m_args.cal_mass[i] = m_args.cal_mass[i] * 0.45359;
+	  }
+
 	  double sum_cal_voltage = std::accumulate(m_args.cal_voltage.begin(),m_args.cal_voltage.end(),0.0);
-	  double sum_cal_mass = std::accumulate(m_args.cal_mass.begin(),m_args.cal_mass.end(),0.0);
+	  double sum_cal_mass = std::accumulate(m_args.cal_mass.begin(),m_args.cal_mass.end(),0.0); 
 	  double sum_cal_voltage2 = std::inner_product(m_args.cal_voltage.begin(),m_args.cal_voltage.end(),m_args.cal_voltage.begin(),0.0);
 	  double sum_cal_massvoltage = std::inner_product(m_args.cal_mass.begin(),m_args.cal_mass.end(),m_args.cal_voltage.begin(),0.0);
 	  double voltage_mean = sum_cal_voltage/m_args.cal_voltage.size();
