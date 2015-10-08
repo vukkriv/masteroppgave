@@ -171,6 +171,14 @@ namespace Sensors
             trace("Set gain to %d", m_args.gain);
             break;
         }
+
+        // Update the gain if connected
+        if (m_connected)
+        {
+        	CPhidgetBridge_setGain(m_bridge, 0, m_gain);
+        	CPhidgetBridge_setDataRate(m_bridge, m_args.data_rate_ms);
+        	debug("Updated gain to %d and data-rate to %d", m_gain, m_args.data_rate_ms);
+        }
       }
 
       void
