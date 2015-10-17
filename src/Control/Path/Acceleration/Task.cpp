@@ -166,7 +166,7 @@ namespace Control
         //! Input shaper preferences
         InputFilterConfig m_input_cfg;
         //! Translational setpoint for logging
-        IMC::TranslationalSetpoint m_setpoint_log;
+        IMC::LinearSetpoint m_setpoint_log;
         //! Previous controller output
         Matrix m_prev_controller_output;
         //! Last Estimated State received
@@ -748,9 +748,9 @@ namespace Control
           m_setpoint_log.x = m_refmodel_x(0);
           m_setpoint_log.y = m_refmodel_x(1);
           m_setpoint_log.z = m_refmodel_x(2);
-          m_setpoint_log.u = m_refmodel_x(3);
-          m_setpoint_log.v = m_refmodel_x(4);
-          m_setpoint_log.w = m_refmodel_x(5);
+          m_setpoint_log.vx = m_refmodel_x(3);
+          m_setpoint_log.vy = m_refmodel_x(4);
+          m_setpoint_log.vz = m_refmodel_x(5);
 
           // Print reference pos and vel
           trace("x_r:\t [%1.2f, %1.2f, %1.2f]",
@@ -884,9 +884,9 @@ namespace Control
               m_setpoint_log.x = newPosRef(0);
               m_setpoint_log.y = newPosRef(1);
               m_setpoint_log.z = newPosRef(2);
-              m_setpoint_log.u = addVel(0);
-              m_setpoint_log.v = addVel(1);
-              m_setpoint_log.w = addVel(2);
+              m_setpoint_log.vx = addVel(0);
+              m_setpoint_log.vy = addVel(1);
+              m_setpoint_log.vz = addVel(2);
 
               dispatch(m_parcels[PC_DELAYED_X]);
               dispatch(m_parcels[PC_DELAYED_Y]);
@@ -925,9 +925,9 @@ namespace Control
               m_setpoint_log.x = new_ref(0) + addPos(0);
               m_setpoint_log.y = new_ref(1) + addPos(1);
               m_setpoint_log.z = new_ref(2) + addPos(2);
-              m_setpoint_log.u = new_ref(3) + addVel(0);
-              m_setpoint_log.v = new_ref(4) + addVel(1);
-              m_setpoint_log.w = new_ref(5) + addVel(2);
+              m_setpoint_log.vx = new_ref(3) + addVel(0);
+              m_setpoint_log.vy = new_ref(4) + addVel(1);
+              m_setpoint_log.vz = new_ref(5) + addVel(2);
 
               // Calculate new error states
               error_p = new_ref.get(0,2, 0,0) - curPos + addPos;
