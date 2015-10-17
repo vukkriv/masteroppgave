@@ -73,6 +73,8 @@ namespace Control
         bool enable_delayed_feedback;
         bool enable_slung_control;
         bool enable_hold_position;
+        double ctrl_omega_b;
+        double ctrl_xi;
       };
 
       static const std::string c_parcel_names[] = {DTR_RT("PID"), DTR_RT("Beta-X"),
@@ -207,7 +209,7 @@ namespace Control
         void
         setReference(Matrix& x_new) { x.put(0,0, x_new); }
 
-      private:
+      public:
 
         Matrix x;
       };
@@ -477,6 +479,18 @@ namespace Control
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Enable or disable hold current position functionality");
 
+          param("Acceleration Controller Bandwidth", m_args.ctrl_omega_b)
+          .defaultValue("1.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Controller bandwidth");
+
+          param("Acceleration Controller Relative Damping", m_args.ctrl_xi)
+          .defaultValue("1.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Controller damping");
+
 
           bind<IMC::EulerAngles>(this);
           bind<IMC::EstimatedState>(this);
@@ -524,6 +538,47 @@ namespace Control
           m_input_cfg.A2 = input_K/(1 + input_K);
           m_input_cfg.t1 = 0.0;
           m_input_cfg.t2 = Td/2;
+
+          // Controller variables
+          if (paramChanged(m_args.ctrl_omega_b) || paramChanged(m_args.ctrl_xi))
+          {
+            // Update controller parameters!
+            double ctrl_omega_n = m_args.ctrl_omega_b/0.64;
+
+            double vKp = m_args.copter_mass_kg * pow(ctrl_omega_n, 2);
+            double vKd = 2.0 * m_args.ctrl_xi * ctrl_omega_n * m_args.copter_mass_kg;
+            double vKi = (ctrl_omega_n / 10.0) * m_args.Kp;
+
+
+
+            IMC::EntityParameter Kp, Kd, Ki;
+            Kp.name = "Acceleration Controller - Kp";
+            Kd.name = "Acceleration Controller - Kd";
+            Ki.name = "Acceleration Controller - Ki";
+
+            char buffer[32];
+
+            snprintf(buffer, sizeof(buffer), "%g", vKp);
+            Kp.value = std::string(buffer);
+
+            snprintf(buffer, sizeof(buffer), "%g", vKd);
+            Kd.value = std::string(buffer);
+
+            snprintf(buffer, sizeof(buffer), "%g", vKi);
+            Ki.value = std::string(buffer);
+
+            MessageList<IMC::EntityParameter> msgList;
+            msgList.push_back(Kp);
+            msgList.push_back(Kd);
+            msgList.push_back(Ki);
+
+            IMC::SetEntityParameters toSet;
+            toSet.name = getEntityLabel();
+            toSet.params = msgList;
+
+            dispatch(toSet, DF_LOOP_BACK);
+
+          }
 
 
         }
@@ -991,6 +1046,19 @@ namespace Control
 
 
           }
+
+          // Log
+          m_setpoint_log.x = m_reference.x(0);
+          m_setpoint_log.y = m_reference.x(1);
+          m_setpoint_log.z = m_reference.x(2);
+          m_setpoint_log.vx = m_reference.x(3);
+          m_setpoint_log.vy = m_reference.x(4);
+          m_setpoint_log.vz = m_reference.x(5);
+          m_setpoint_log.ax = m_reference.x(6);
+          m_setpoint_log.ay = m_reference.x(7);
+          m_setpoint_log.az = m_reference.x(8);
+
+          dispatch(m_setpoint_log);
         }
 
         void
@@ -1024,26 +1092,162 @@ namespace Control
           curVel(1) = state.vy;
           curVel(2) = state.vz;
 
-          // Step the internal reference model
-          stepRefModel(state, ts);
+          // Update reference mechanism
+          updateReference(state, ts, now);
 
           // Prepare main controller container
           Matrix desiredAcc = Matrix(3,1, 0.0);
 
-          // stuff for delayed controller
-          Matrix addPos = Matrix(3,1, 0.0);
-          Matrix addVel = Matrix(3,1, 0.0);
-          Matrix addAcc = Matrix(3,1, 0.0);
+          // Main PID controller part
+          // Define error signals
+          Matrix error_p = m_reference.getPos() - curPos;
+          Matrix error_d = m_reference.getVel() - curVel;
+          Matrix refAcc  = m_reference.getAcc();
 
+          // Integral effect
+          m_integrator_value += ts.delta * error_p;
+          // Negate altitude
+          if (!m_args.use_altitude)
+            m_integrator_value(2) = 0.0;
+
+          // Constrain
+          if (m_integrator_value.norm_2() > m_args.max_integral)
+            m_integrator_value = m_args.max_integral * m_integrator_value / m_integrator_value.norm_2();
+
+          desiredAcc = refAcc + m_args.Kd * error_d + m_args.Kp * error_p + m_args.Ki * m_integrator_value;
+
+
+
+          // Dispatch debug parcels
+          IMC::ControlParcel parcel = m_parcels[PC_PID];
+          Matrix parcel_p = m_args.Kp * error_p;
+          Matrix parcel_d = m_args.Kd * error_d;
+          Matrix parcel_i = m_args.Ki * m_integrator_value;
+
+          if (!m_args.use_altitude)
+          {
+            parcel_p(2) = 0.0;
+            parcel_d(2) = 0.0;
+            parcel_i(2) = 0.0;
+          }
+
+          parcel.p = parcel_p.norm_2();
+          parcel.d = parcel_d.norm_2();
+          parcel.i = parcel_i.norm_2();
+
+          // Dispatch normed parcel
+          dispatch(parcel);
+
+          // Dispatch individual parcels
+          for (int i = 0; i < 3; i++)
+          {
+            m_parcels[PC_PID_X + i].p = parcel_p(i);
+            m_parcels[PC_PID_X + i].d = parcel_d(i);
+            m_parcels[PC_PID_X + i].i = parcel_i(i);
+            dispatch(m_parcels[PC_PID_X + i]);
+          }
+
+
+
+
+          // Set heave to 0 if not controlling altitude
+          if (!m_args.use_altitude)
+          {
+            desiredAcc(2) = 0;
+          }
+
+          // Saturate acceleration
+          if( desiredAcc.norm_2() > m_args.max_acc )
+          {
+            desiredAcc = m_args.max_acc * desiredAcc / desiredAcc.norm_2();
+          }
+
+          // store
+          m_prev_controller_output = desiredAcc;
+
+          m_desired_control.x = desiredAcc(0);
+          m_desired_control.y = desiredAcc(1);
+          m_desired_control.z = desiredAcc(2);
+
+
+          m_desired_control.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y | IMC::DesiredControl::FL_Z;
+
+          if(m_args.disable_heave || !m_args.use_altitude)
+            m_desired_control.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y;
+
+
+          dispatch(m_desired_control);
+
+          // Dispatch linear setpoint for logging
+          dispatch(m_setpoint_log);
+
+
+          spew("Sent acc data.");
+
+          // Update step-time
+          m_timestamp_prev_step = Clock::get();
+
+
+          if (m_args.enable_slung_control )
+          {
+            Matrix beta = Matrix(3, 1, 0.0);
+            Matrix dalpha_45 = Matrix(2, 1, 0.0);
+
+            double k2 = m_args.ks[1];
+            double k1 = m_args.ks[0];
+            double pd = m_args.pd;
+            try{
+              Matrix dTheta = Matrix(2,1, 0.0);
+              dTheta(0) = m_loadAngle.dphi;
+              dTheta(1) = m_loadAngle.dtheta;
+
+
+              dalpha_45 = -pd *m_alpha_45 - C22()*m_alpha_45 -G2() + k2 * (dTheta - m_alpha_45) - M21() *( refAcc - k1*(error_d));
+              dalpha_45 = M22_inv() * dalpha_45;
+
+
+            }
+            catch(...)
+            {
+              // don't do anything.
+              war("Error when calculating dalpha_45");
+            }
+
+            // Add to normal output
+            beta = C12() * m_alpha_45 + M12() * dalpha_45;
+
+            // Store for logs
+            for (int i = 0; i < 3; i++)
+            {
+              m_parcels[PC_BETA_X + i].p = beta(i);
+              m_parcels[PC_BETA_X + i].d = desiredAcc(i);
+              m_parcels[PC_BETA_X + i].i = m_args.Ki*m_integrator_value(i);
+              dispatch(m_parcels[PC_BETA_X + i]);
+            }
+
+            desiredAcc = desiredAcc + m_args.ks[2] * beta;
+
+            // integrate
+            // and store
+            m_parcels[PC_ALPHA45_PHI].p = m_alpha_45(0);
+            m_parcels[PC_ALPHA45_PHI].d = dalpha_45(0);
+
+            m_parcels[PC_ALPHA45_THETA].p = m_alpha_45(1);
+            m_parcels[PC_ALPHA45_THETA].d = dalpha_45(1);
+
+            m_alpha_45 = m_alpha_45 + ts.delta * dalpha_45;
+
+            dispatch(m_parcels[PC_ALPHA45_PHI]);
+            dispatch(m_parcels[PC_ALPHA45_THETA]);
+          }
+
+/*
           //if (m_controllerType == CT_PID || m_controllerType == CT_PID_INPUT || )
           // always run baseline PID controller for now.
           if (true)
           {
 
-            // Define error signals
-            Matrix error_p = m_refmodel.getPos() - curPos;
-            Matrix error_d = m_refmodel.getVel() - curVel;
-            Matrix refAcc  = m_refmodel.getAcc();
+
 
             // if using delayed, we are staying put and using sstart coordinates
             if (m_args.activate_delayed_feedback)
@@ -1178,142 +1382,17 @@ namespace Control
 
             }
 
-            // Integral effect
-            m_integrator_value += ts.delta * error_p;
-            // Negate altitude
-            if (!m_args.use_altitude)
-              m_integrator_value(2) = 0.0;
-
-            // Constrain
-            if (m_integrator_value.norm_2() > m_args.max_integral)
-              m_integrator_value = m_args.max_integral * m_integrator_value / m_integrator_value.norm_2();
-
-            desiredAcc = refAcc + m_args.Kd * error_d + m_args.Kp * error_p + m_args.Ki * m_integrator_value;
-
-
-
-            // Dispatch debug parcels
-            IMC::ControlParcel parcel = m_parcels[PC_PID];
-            Matrix parcel_p = m_args.Kp * error_p;
-            Matrix parcel_d = m_args.Kd * error_d;
-            Matrix parcel_i = m_args.Ki * m_integrator_value;
-
-            if (!m_args.use_altitude)
-            {
-              parcel_p(2) = 0.0;
-              parcel_d(2) = 0.0;
-              parcel_i(2) = 0.0;
-            }
-
-            parcel.p = parcel_p.norm_2();
-            parcel.d = parcel_d.norm_2();
-            parcel.i = parcel_i.norm_2();
-
-            dispatch(parcel);
-
-            for (int i = 0; i < 3; i++)
-            {
-              m_parcels[PC_PID_X + i].p = parcel_p(i);
-              m_parcels[PC_PID_X + i].d = parcel_d(i);
-              m_parcels[PC_PID_X + i].i = parcel_i(i);
-              dispatch(m_parcels[PC_PID_X + i]);
-            }
 
           }
 
           if(m_controllerType == CT_SUSPENDED || m_controllerType == CT_SUSPENDED_INPUT)
           {
-            Matrix beta = Matrix(3, 1, 0.0);
-            Matrix dalpha_45 = Matrix(2, 1, 0.0);
 
-            double k2 = m_args.ks[1];
-            double k1 = m_args.ks[0];
-            double pd = m_args.pd;
-            try{
-              Matrix dTheta = Matrix(2,1, 0.0);
-              dTheta(0) = m_loadAngle.dphi;
-              dTheta(1) = m_loadAngle.dtheta;
-              Matrix refAcc = m_refmodel.getAcc();
-              Matrix error_d = m_refmodel.getVel() - curVel;
-
-              dalpha_45 = -pd *m_alpha_45 - C22()*m_alpha_45 -G2() + k2 * (dTheta - m_alpha_45) - M21() *( refAcc - k1*(error_d));
-              dalpha_45 = M22_inv() * dalpha_45;
-
-
-            }
-            catch(...)
-            {
-              // don't do anything.
-              war("Error when calculating dalpha_45");
-            }
-
-            // Add to normal output
-            beta = C12() * m_alpha_45 + M12() * dalpha_45;
-
-            // Store for logs
-            for (int i = 0; i < 3; i++)
-            {
-              m_parcels[PC_BETA_X + i].p = beta(i);
-              m_parcels[PC_BETA_X + i].d = desiredAcc(i);
-              m_parcels[PC_BETA_X + i].i = m_args.Ki*m_integrator_value(i);
-              dispatch(m_parcels[PC_BETA_X + i]);
-            }
-
-            desiredAcc = desiredAcc + m_args.ks[2] * beta;
-
-            // integrate
-            // and store
-            m_parcels[PC_ALPHA45_PHI].p = m_alpha_45(0);
-            m_parcels[PC_ALPHA45_PHI].d = dalpha_45(0);
-
-            m_parcels[PC_ALPHA45_THETA].p = m_alpha_45(1);
-            m_parcels[PC_ALPHA45_THETA].d = dalpha_45(1);
-
-            m_alpha_45 = m_alpha_45 + ts.delta * dalpha_45;
-
-            dispatch(m_parcels[PC_ALPHA45_PHI]);
-            dispatch(m_parcels[PC_ALPHA45_THETA]);
           }
+  */
 
 
 
-          // Set heave to 0 if not controlling altitude
-          if (!m_args.use_altitude)
-          {
-            desiredAcc(2) = 0;
-          }
-
-          // Saturate acceleration
-          if( desiredAcc.norm_2() > m_args.max_acc )
-          {
-            desiredAcc = m_args.max_acc * desiredAcc / desiredAcc.norm_2();
-          }
-
-          // store
-          m_prev_controller_output = desiredAcc;
-
-          m_desired_control.x = desiredAcc(0);
-          m_desired_control.y = desiredAcc(1);
-          m_desired_control.z = desiredAcc(2);
-
-
-          m_desired_control.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y | IMC::DesiredControl::FL_Z;
-
-          if(m_args.disable_heave || !m_args.use_altitude)
-            m_desired_control.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y;
-
-
-          dispatch(m_desired_control);
-
-          // Dispatch linear setpoint for logging
-
-          dispatch(m_setpoint_log);
-
-
-          spew("Sent acc data.");
-
-          // Update step-time
-          m_timestamp_prev_step = Clock::get();
         }
         Matrix MassMatrix()
         {
