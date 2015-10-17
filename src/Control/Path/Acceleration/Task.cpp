@@ -69,6 +69,9 @@ namespace Control
         int tau_d_extra_ms;
         double Gd_extra;
         bool reset_to_state;
+        bool enable_input_shaping;
+        bool enable_delayed_feedback;
+        bool enable_slung_control;
       };
 
       static const std::string c_parcel_names[] = {DTR_RT("PID"), DTR_RT("Beta-X"),
@@ -346,6 +349,23 @@ namespace Control
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Set to reset to state rather than previus ref_pos on change");
 
+          param("Enable Input Shaping", m_args.enable_input_shaping)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Enable or disable input shaping on reference signal");
+
+          param("Enable Delayed Feedback", m_args.enable_delayed_feedback)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Enable or disable delayed feedback for slung angle minimization");
+
+          param("Enable Slung Control", m_args.enable_slung_control)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Enable or disable slung control compensation");
 
 
           bind<IMC::EulerAngles>(this);
