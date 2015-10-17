@@ -152,10 +152,31 @@ namespace Control
       {
           /* Intentionally Empty */
       }
+        Matrix
+        getPos(void) { return x.get(0,2, 0,0); }
+
+        Matrix
+        getVel(void) { return x.get(3,5, 0,0); }
+
+        Matrix
+        getAcc(void) { return x.get(6,8, 0,0); }
+
+        void
+        setPos(Matrix& pos) { x.put(0,0, pos); }
+
+        void
+        setVel(Matrix& vel) { x.put(3,0, vel); }
+
+        void
+        setAcc(Matrix& acc) { x.put(6,0, acc); }
+
+
+      public:
         Matrix A;
         Matrix B;
         Matrix x;
       };
+
 
       class DelayedFeedbackState
       {
@@ -722,38 +743,7 @@ namespace Control
 
         }
 
-        // Helpers
-        Matrix
-        getRefModelPos(void)
-        {
-          return m_refmodel.x.get(0,2, 0,0);
-        }
-        Matrix
-        getRefModelVel(void)
-        {
-          return m_refmodel.x.get(3,5, 0,0);
-        }
-        Matrix
-        getRefModelAcc(void)
-        {
-          return m_refmodel.x.get(6,8, 0,0);
-        }
 
-        void
-        setRefModelPos(Matrix& pos)
-        {
-          m_refmodel.x.put(0,0,pos);
-        }
-        void
-        setRefModelVel(Matrix& vel)
-        {
-          m_refmodel.x.put(3,0,vel);
-        }
-        void
-        setRefModelAcc(Matrix& acc)
-        {
-          m_refmodel.x.put(6,0,acc);
-        }
 
         void
         stepRefModel(const IMC::EstimatedState& state, const TrackingState& ts)
@@ -773,8 +763,8 @@ namespace Control
           m_refmodel.x += ts.delta * (m_refmodel.A * m_refmodel.x + m_refmodel.B * x_d);
 
           // Saturate reference velocity
-          Matrix vel = getRefModelVel();
-          Matrix acc = getRefModelAcc();
+          Matrix vel = m_refmodel.getVel();
+          Matrix acc = m_refmodel.getAcc();
 
           // Set heave to 0 if not controlling altitude
           if (!m_args.use_altitude)
@@ -787,13 +777,13 @@ namespace Control
           if (vel.norm_2() > m_args.refmodel_max_speed)
           {
             vel = m_args.refmodel_max_speed * vel / vel.norm_2();
-            setRefModelVel(vel);
+            m_refmodel.setVel(vel);
           }
 
           if (acc.norm_2() > m_args.refmodel_max_acc)
           {
             acc = m_args.refmodel_max_acc * acc / acc.norm_2();
-            setRefModelAcc(acc);
+            m_refmodel.setAcc(acc);
           }
 
 
@@ -970,9 +960,9 @@ namespace Control
           {
 
             // Define error signals
-            Matrix error_p = getRefModelPos() - curPos;
-            Matrix error_d = getRefModelVel() - curVel;
-            Matrix refAcc  = getRefModelAcc();
+            Matrix error_p = m_refmodel.getPos() - curPos;
+            Matrix error_d = m_refmodel.getVel() - curVel;
+            Matrix refAcc  = m_refmodel.getAcc();
 
             // if using delayed, we are staying put and using sstart coordinates
             if (m_args.activate_delayed_feedback)
@@ -1162,8 +1152,8 @@ namespace Control
               Matrix dTheta = Matrix(2,1, 0.0);
               dTheta(0) = m_loadAngle.dphi;
               dTheta(1) = m_loadAngle.dtheta;
-              Matrix refAcc = getRefModelAcc();
-              Matrix error_d = getRefModelVel() - curVel;
+              Matrix refAcc = m_refmodel.getAcc();
+              Matrix error_d = m_refmodel.getVel() - curVel;
 
               dalpha_45 = -pd *m_alpha_45 - C22()*m_alpha_45 -G2() + k2 * (dTheta - m_alpha_45) - M21() *( refAcc - k1*(error_d));
               dalpha_45 = M22_inv() * dalpha_45;
