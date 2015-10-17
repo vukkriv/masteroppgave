@@ -72,6 +72,7 @@ namespace Control
         bool enable_input_shaping;
         bool enable_delayed_feedback;
         bool enable_slung_control;
+        bool enable_hold_position;
       };
 
       static const std::string c_parcel_names[] = {DTR_RT("PID"), DTR_RT("Beta-X"),
@@ -140,6 +141,23 @@ namespace Control
         LoadAngleHistoryContainer(LoadAngle angle_, double timestamp_): angle(angle_), timestamp(timestamp_) {};
       };
 
+      class DelayedFeedbackState
+      {
+      public:
+
+        DelayedFeedbackState():
+          addPos(3,1, 0.0),
+          addVel(3,1, 0.0),
+          addAcc(3,1, 0.0)
+          {
+          /* Intentionally Empty */
+          }
+
+        Matrix addPos;
+        Matrix addVel;
+        Matrix addAcc;
+      };
+
       struct Task: public DUNE::Control::PathController
       {
         IMC::DesiredControl m_desired_control;
@@ -186,6 +204,8 @@ namespace Control
         //! AngleHistory
         deque<LoadAngleHistoryContainer> m_anglehistory;
         Matrix m_delayed_feedback_desired_pos;
+        //! Delayed Feedback State
+        DelayedFeedbackState m_delayed_feedback_state;
 
 
 
@@ -366,6 +386,12 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Enable or disable slung control compensation");
+
+          param("Enable Hold Position", m_args.enable_hold_position)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Enable or disable hold current position functionality");
 
 
           bind<IMC::EulerAngles>(this);
@@ -751,6 +777,9 @@ namespace Control
           m_setpoint_log.vx = m_refmodel_x(3);
           m_setpoint_log.vy = m_refmodel_x(4);
           m_setpoint_log.vz = m_refmodel_x(5);
+          m_setpoint_log.ax = m_refmodel_x(6);
+          m_setpoint_log.ay = m_refmodel_x(7);
+          m_setpoint_log.az = m_refmodel_x(8);
 
           // Print reference pos and vel
           trace("x_r:\t [%1.2f, %1.2f, %1.2f]",
@@ -758,6 +787,88 @@ namespace Control
           trace("v_r:\t [%1.2f, %1.2f, %1.2f]",
               m_refmodel_x(3), m_refmodel_x(4), m_refmodel_x(5));
         }
+
+        void
+        updateDelayedFeedbackState()
+        {
+          // This function uses the angle-history to update the current additions to the reference signal
+
+          // To be able to continiously update the parameters, they are re-calculated each step.
+          double pd =  0.001;
+          double omega_n = std::sqrt(Math::c_gravity/m_args.suspended_rope_length);
+          double xi = pd/(2*omega_n*(m_args.suspended_load_mass_g/1000.0));
+          double omega_d = omega_n*std::sqrt(1 - std::pow(xi,2));
+          double Td = 2*Math::c_pi/omega_d;
+          double tau_d = 0.325*Td + m_args.tau_d_extra_ms / 1000.0;
+          double Gd    = 0.325 * m_args.Gd_extra;
+
+          double pL = m_args.suspended_rope_length;
+
+          debug("Angle history size: %lu", m_anglehistory.size());
+
+
+
+          double now = Clock::get();
+
+          // check if we have angles far enough back
+          while ( m_anglehistory.size() >=1 && now - m_anglehistory.front().timestamp >= tau_d)
+          {
+
+            LoadAngle oldAngle = m_anglehistory.front().angle;
+
+
+            m_delayed_feedback_state.addPos(0)     =  sin(oldAngle.theta);
+            m_delayed_feedback_state.addPos(1)     = -sin(oldAngle.phi);
+
+
+            m_delayed_feedback_state.addVel(0)     =  cos(oldAngle.theta) * oldAngle.dtheta;
+            m_delayed_feedback_state.addVel(1)     = -cos(oldAngle.phi)   * oldAngle.dphi;
+
+
+            m_delayed_feedback_state.addAcc(0)     = -sin(oldAngle.theta) * oldAngle.dtheta;
+            m_delayed_feedback_state.addAcc(1)     =  sin(oldAngle.phi)   * oldAngle.dphi;
+
+            m_delayed_feedback_state.addPos = Gd*pL*m_delayed_feedback_state.addPos;
+            m_delayed_feedback_state.addVel = Gd*pL*m_delayed_feedback_state.addVel;
+            m_delayed_feedback_state.addAcc = Gd*pL*m_delayed_feedback_state.addAcc;
+
+
+            trace("Delayed: Calculating");
+
+            // if the next one is also valid, it is ok to delete this one. And we continue the loop
+            if ( m_anglehistory.size() >= 2 && (now - m_anglehistory.at(1).timestamp >= tau_d))
+            {
+              m_anglehistory.pop_front();
+            }
+            else
+              break;
+
+
+
+
+          }
+
+          // log
+          m_parcels[PC_DELAYED_X].p = m_delayed_feedback_state.addPos(0);
+          m_parcels[PC_DELAYED_X].d = m_delayed_feedback_state.addVel(0);
+          m_parcels[PC_DELAYED_X].i = m_delayed_feedback_state.addAcc(0);
+
+          m_parcels[PC_DELAYED_Y].p = m_delayed_feedback_state.addPos(1);
+          m_parcels[PC_DELAYED_Y].d = m_delayed_feedback_state.addVel(1);
+          m_parcels[PC_DELAYED_Y].i = m_delayed_feedback_state.addAcc(1);
+
+          dispatch(m_parcels[PC_DELAYED_X]);
+          dispatch(m_parcels[PC_DELAYED_Y]);
+
+        }
+
+        void
+        clearDelayedFeedbackState()
+        {
+          // Nop for now
+        }
+
+
 
         void
         step(const IMC::EstimatedState& state, const TrackingState& ts)
