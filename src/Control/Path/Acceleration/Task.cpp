@@ -177,6 +177,41 @@ namespace Control
         Matrix x;
       };
 
+      class Reference
+      {
+      public:
+        Reference():
+          x(9,1, 0.0)
+        {
+
+        }
+
+        Matrix
+        getPos(void) const { return x.get(0,2, 0,0); }
+
+        Matrix
+        getVel(void) { return x.get(3,5, 0,0); }
+
+        Matrix
+        getAcc(void) { return x.get(6,8, 0,0); }
+
+        void
+        setPos(Matrix& pos) { x.put(0,0, pos); }
+
+        void
+        setVel(Matrix& vel) { x.put(3,0, vel); }
+
+        void
+        setAcc(Matrix& acc) { x.put(6,0, acc); }
+
+        void
+        setReference(Matrix& x_new) { x.put(0,0, x_new); }
+
+      private:
+
+        Matrix x;
+      };
+
 
       class DelayedFeedbackState
       {
@@ -253,6 +288,8 @@ namespace Control
         DelayedFeedbackState m_delayed_feedback_state;
         //! Shaping Filter State
         InputShapingFilterState m_input_shaping_state;
+        //! The current reference
+        Reference m_reference;
 
 
 
@@ -750,11 +787,17 @@ namespace Control
         {
           (void) state;
 
+
           // Get target position
+          TrackingState::Coord targetPosition = ts.end;
+
+          if (m_args.enable_hold_position)
+            targetPosition = ts.start;
+
           Matrix x_d = Matrix(3, 1, 0.0);
-          x_d(0) = ts.end.x;
-          x_d(1) = ts.end.y;
-          x_d(2) = -ts.end.z - state.height; // z is received as height. For copters, state.height will usually be zero.
+          x_d(0) = targetPosition.x;
+          x_d(1) = targetPosition.y;
+          x_d(2) = -targetPosition.z - state.height; // z is received as height. For copters, state.height will usually be zero.
           trace("x_d:\t [%1.2f, %1.2f, %1.2f]",
               x_d(0), x_d(1), x_d(2));
 
@@ -918,6 +961,44 @@ namespace Control
         updateReference(const IMC::EstimatedState& state, const TrackingState& ts, double now)
         {
           // Updates the reference model, and checks which modules are enabled.
+
+          stepRefModel(state, ts);
+
+          // Set reference from reference model
+          m_reference.setReference(m_refmodel.x);
+
+
+          if (m_args.enable_input_shaping)
+          {
+            // Update input shaping
+            updateInputShapingState(now);
+
+            m_reference.setReference(m_input_shaping_state.filteredRef);
+          }
+
+          if (m_args.enable_delayed_feedback)
+          {
+            // Update delayed feedback state
+            updateDelayedFeedbackState(now);
+
+            // Add new states
+            Matrix newPos = m_reference.getPos() + m_delayed_feedback_state.addPos;
+            Matrix newVel = m_reference.getVel() + m_delayed_feedback_state.addVel;
+            Matrix newAcc = m_reference.getAcc() + m_delayed_feedback_state.addAcc;
+            m_reference.setPos(newPos);
+            m_reference.setVel(newVel);
+            m_reference.setAcc(newAcc);
+
+
+          }
+        }
+
+        void
+        clearReferenceStates()
+        {
+          // Resets the reference states
+          clearDelayedFeedbackState();
+          clearInputShapingState();
         }
 
         void
