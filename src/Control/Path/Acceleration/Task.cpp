@@ -141,6 +141,22 @@ namespace Control
         LoadAngleHistoryContainer(LoadAngle angle_, double timestamp_): angle(angle_), timestamp(timestamp_) {};
       };
 
+      class ReferenceModel
+      {
+      public:
+
+        ReferenceModel():
+          A(9,9, 0.0),
+          B(9,3, 0.0),
+          x(9,1, 0.0)
+      {
+          /* Intentionally Empty */
+      }
+        Matrix A;
+        Matrix B;
+        Matrix x;
+      };
+
       class DelayedFeedbackState
       {
       public:
@@ -175,12 +191,8 @@ namespace Control
         IMC::DesiredControl m_desired_control;
         //! Task arguments.
         Arguments m_args;
-        //! Reference model state
-        Matrix m_refmodel_x;
-        //! Reference model trans.matrix
-        Matrix m_refmodel_A;
-        //! Reference model input matrix
-        Matrix m_refmodel_B;
+        //! Reference Model
+        ReferenceModel m_refmodel;
         //! Desired speed profile
         double m_desired_speed;
         //! Current autopilot mode
@@ -418,7 +430,7 @@ namespace Control
             m_coreolisMatrix[i] = 0.0;
           }
 
-          m_refmodel_x = Matrix(9, 1, 0.0);
+
         }
 
         void
@@ -596,25 +608,25 @@ namespace Control
           // Restart refmodel
           if (m_args.reset_to_state || Clock::get() - m_timestamp_prev_step > 2.0)
           {
-            m_refmodel_x = Matrix(9, 1, 0.0);
-            m_refmodel_x(0) = state.x;
-            m_refmodel_x(1) = state.y;
-            m_refmodel_x(2) = state.z;
+            m_refmodel.x = Matrix(9, 1, 0.0);
+            m_refmodel.x(0) = state.x;
+            m_refmodel.x(1) = state.y;
+            m_refmodel.x(2) = state.z;
 
-            m_refmodel_x(3) = state.vx;
-            m_refmodel_x(4) = state.vy;
-            m_refmodel_x(5) = state.vz;
+            m_refmodel.x(3) = state.vx;
+            m_refmodel.x(4) = state.vy;
+            m_refmodel.x(5) = state.vz;
 
-            m_refmodel_x(6) = 0.0;
-            m_refmodel_x(7) = 0.0;
-            m_refmodel_x(8) = 0.0;
+            m_refmodel.x(6) = 0.0;
+            m_refmodel.x(7) = 0.0;
+            m_refmodel.x(8) = 0.0;
 
             // Consider using last setpoint as acc startup
             if (Clock::get() - m_timestamp_prev_step < 2.0)
             {
-              m_refmodel_x(6) = m_prev_controller_output(0);
-              m_refmodel_x(7) = m_prev_controller_output(1);
-              m_refmodel_x(8) = m_prev_controller_output(2);
+              m_refmodel.x(6) = m_prev_controller_output(0);
+              m_refmodel.x(7) = m_prev_controller_output(1);
+              m_refmodel.x(8) = m_prev_controller_output(2);
             }
           }
 
@@ -640,9 +652,9 @@ namespace Control
           Matrix A_2 = A_21.horzCat(A_22.horzCat(A_23));
           Matrix A_3 = A_31.horzCat(A_32.horzCat(A_33));
 
-          m_refmodel_A = A_1.vertCat(A_2.vertCat(A_3));
+          m_refmodel.A = A_1.vertCat(A_2.vertCat(A_3));
 
-          m_refmodel_B = Matrix(6,3, 0.0).vertCat(eye) * pow(m_args.refmodel_omega_n,3);
+          m_refmodel.B = Matrix(6,3, 0.0).vertCat(eye) * pow(m_args.refmodel_omega_n,3);
 
         }
 
@@ -714,33 +726,33 @@ namespace Control
         Matrix
         getRefModelPos(void)
         {
-          return m_refmodel_x.get(0,2, 0,0);
+          return m_refmodel.x.get(0,2, 0,0);
         }
         Matrix
         getRefModelVel(void)
         {
-          return m_refmodel_x.get(3,5, 0,0);
+          return m_refmodel.x.get(3,5, 0,0);
         }
         Matrix
         getRefModelAcc(void)
         {
-          return m_refmodel_x.get(6,8, 0,0);
+          return m_refmodel.x.get(6,8, 0,0);
         }
 
         void
         setRefModelPos(Matrix& pos)
         {
-          m_refmodel_x.put(0,0,pos);
+          m_refmodel.x.put(0,0,pos);
         }
         void
         setRefModelVel(Matrix& vel)
         {
-          m_refmodel_x.put(3,0,vel);
+          m_refmodel.x.put(3,0,vel);
         }
         void
         setRefModelAcc(Matrix& acc)
         {
-          m_refmodel_x.put(6,0,acc);
+          m_refmodel.x.put(6,0,acc);
         }
 
         void
@@ -758,7 +770,7 @@ namespace Control
 
 
           // Update reference
-          m_refmodel_x += ts.delta * (m_refmodel_A * m_refmodel_x + m_refmodel_B * x_d);
+          m_refmodel.x += ts.delta * (m_refmodel.A * m_refmodel.x + m_refmodel.B * x_d);
 
           // Saturate reference velocity
           Matrix vel = getRefModelVel();
@@ -785,21 +797,21 @@ namespace Control
           }
 
 
-          m_setpoint_log.x = m_refmodel_x(0);
-          m_setpoint_log.y = m_refmodel_x(1);
-          m_setpoint_log.z = m_refmodel_x(2);
-          m_setpoint_log.vx = m_refmodel_x(3);
-          m_setpoint_log.vy = m_refmodel_x(4);
-          m_setpoint_log.vz = m_refmodel_x(5);
-          m_setpoint_log.ax = m_refmodel_x(6);
-          m_setpoint_log.ay = m_refmodel_x(7);
-          m_setpoint_log.az = m_refmodel_x(8);
+          m_setpoint_log.x = m_refmodel.x(0);
+          m_setpoint_log.y = m_refmodel.x(1);
+          m_setpoint_log.z = m_refmodel.x(2);
+          m_setpoint_log.vx = m_refmodel.x(3);
+          m_setpoint_log.vy = m_refmodel.x(4);
+          m_setpoint_log.vz = m_refmodel.x(5);
+          m_setpoint_log.ax = m_refmodel.x(6);
+          m_setpoint_log.ay = m_refmodel.x(7);
+          m_setpoint_log.az = m_refmodel.x(8);
 
           // Print reference pos and vel
           trace("x_r:\t [%1.2f, %1.2f, %1.2f]",
-              m_refmodel_x(0), m_refmodel_x(1), m_refmodel_x(2));
+              m_refmodel.x(0), m_refmodel.x(1), m_refmodel.x(2));
           trace("v_r:\t [%1.2f, %1.2f, %1.2f]",
-              m_refmodel_x(3), m_refmodel_x(4), m_refmodel_x(5));
+              m_refmodel.x(3), m_refmodel.x(4), m_refmodel.x(5));
         }
 
         void
@@ -885,7 +897,7 @@ namespace Control
         updateInputShapingState(double now)
         {
           // Store current history
-          m_refhistory.push(ReferenceHistoryContainer(m_refmodel_x, now));
+          m_refhistory.push(ReferenceHistoryContainer(m_refmodel.x, now));
 
           Matrix t2Ref = Matrix(9, 1, 0.0);
           Matrix new_ref = Matrix(9, 1, 0.0);
@@ -895,7 +907,7 @@ namespace Control
             t2Ref = m_refhistory.front().state;
             m_refhistory.pop();
 
-            new_ref = m_refmodel_x * m_input_cfg.A1 + t2Ref * m_input_cfg.A2;
+            new_ref = m_refmodel.x * m_input_cfg.A1 + t2Ref * m_input_cfg.A2;
           }
           else
           {
@@ -910,6 +922,12 @@ namespace Control
         clearInputShapingState()
         {
           // Nop for now
+        }
+
+        void
+        updateReference(const IMC::EstimatedState& state, const TrackingState& ts, double now)
+        {
+          // Updates the reference model, and checks which modules are enabled.
         }
 
         void
@@ -1050,7 +1068,7 @@ namespace Control
             {
 
               // Store current history
-              m_refhistory.push(ReferenceHistoryContainer(m_refmodel_x, now));
+              m_refhistory.push(ReferenceHistoryContainer(m_refmodel.x, now));
 
               Matrix t2Ref = Matrix(9, 1, 0.0);
               Matrix new_ref = Matrix(9, 1, 0.0);
@@ -1060,7 +1078,7 @@ namespace Control
                 t2Ref = m_refhistory.front().state;
                 m_refhistory.pop();
 
-                new_ref = m_refmodel_x * m_input_cfg.A1 + t2Ref * m_input_cfg.A2;
+                new_ref = m_refmodel.x * m_input_cfg.A1 + t2Ref * m_input_cfg.A2;
               }
               else
               {
@@ -1071,7 +1089,7 @@ namespace Control
               // Calculate new reference state
 
               // Actually disable input-shaping
-              new_ref = m_refmodel_x;
+              new_ref = m_refmodel.x;
 
 
               // New setpoint for logging
