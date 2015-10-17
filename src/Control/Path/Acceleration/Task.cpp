@@ -672,33 +672,33 @@ namespace Control
 
         // Helpers
         Matrix
-        getRefPos(void)
+        getRefModelPos(void)
         {
           return m_refmodel_x.get(0,2, 0,0);
         }
         Matrix
-        getRefVel(void)
+        getRefModelVel(void)
         {
           return m_refmodel_x.get(3,5, 0,0);
         }
         Matrix
-        getRefAcc(void)
+        getRefModelAcc(void)
         {
           return m_refmodel_x.get(6,8, 0,0);
         }
 
         void
-        setRefPos(Matrix& pos)
+        setRefModelPos(Matrix& pos)
         {
           m_refmodel_x.put(0,0,pos);
         }
         void
-        setRefVel(Matrix& vel)
+        setRefModelVel(Matrix& vel)
         {
           m_refmodel_x.put(3,0,vel);
         }
         void
-        setRefAcc(Matrix& acc)
+        setRefModelAcc(Matrix& acc)
         {
           m_refmodel_x.put(6,0,acc);
         }
@@ -721,8 +721,8 @@ namespace Control
           m_refmodel_x += ts.delta * (m_refmodel_A * m_refmodel_x + m_refmodel_B * x_d);
 
           // Saturate reference velocity
-          Matrix vel = getRefVel();
-          Matrix acc = getRefAcc();
+          Matrix vel = getRefModelVel();
+          Matrix acc = getRefModelAcc();
 
           // Set heave to 0 if not controlling altitude
           if (!m_args.use_altitude)
@@ -735,13 +735,13 @@ namespace Control
           if (vel.norm_2() > m_args.refmodel_max_speed)
           {
             vel = m_args.refmodel_max_speed * vel / vel.norm_2();
-            setRefVel(vel);
+            setRefModelVel(vel);
           }
 
           if (acc.norm_2() > m_args.refmodel_max_acc)
           {
             acc = m_args.refmodel_max_acc * acc / acc.norm_2();
-            setRefAcc(acc);
+            setRefModelAcc(acc);
           }
 
 
@@ -799,9 +799,9 @@ namespace Control
           {
 
             // Define error signals
-            Matrix error_p = getRefPos() - curPos;
-            Matrix error_d = getRefVel() - curVel;
-            Matrix refAcc  = getRefAcc();
+            Matrix error_p = getRefModelPos() - curPos;
+            Matrix error_d = getRefModelVel() - curVel;
+            Matrix refAcc  = getRefModelAcc();
 
             // if using delayed, we are staying put and using sstart coordinates
             if (m_args.activate_delayed_feedback)
@@ -991,8 +991,8 @@ namespace Control
               Matrix dTheta = Matrix(2,1, 0.0);
               dTheta(0) = m_loadAngle.dphi;
               dTheta(1) = m_loadAngle.dtheta;
-              Matrix refAcc = getRefAcc();
-              Matrix error_d = getRefVel() - curVel;
+              Matrix refAcc = getRefModelAcc();
+              Matrix error_d = getRefModelVel() - curVel;
 
               dalpha_45 = -pd *m_alpha_45 - C22()*m_alpha_45 -G2() + k2 * (dTheta - m_alpha_45) - M21() *( refAcc - k1*(error_d));
               dalpha_45 = M22_inv() * dalpha_45;
