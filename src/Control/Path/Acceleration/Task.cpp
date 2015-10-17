@@ -158,6 +158,18 @@ namespace Control
         Matrix addAcc;
       };
 
+      class InputShapingFilterState
+      {
+      public:
+        InputShapingFilterState():
+          filteredRef(9, 1, 0.0)
+        {
+          /* Intentionally Empty */
+        }
+
+        Matrix filteredRef;
+      };
+
       struct Task: public DUNE::Control::PathController
       {
         IMC::DesiredControl m_desired_control;
@@ -206,6 +218,8 @@ namespace Control
         Matrix m_delayed_feedback_desired_pos;
         //! Delayed Feedback State
         DelayedFeedbackState m_delayed_feedback_state;
+        //! Shaping Filter State
+        InputShapingFilterState m_input_shaping_state;
 
 
 
@@ -789,7 +803,7 @@ namespace Control
         }
 
         void
-        updateDelayedFeedbackState()
+        updateDelayedFeedbackState(double now)
         {
           // This function uses the angle-history to update the current additions to the reference signal
 
@@ -808,7 +822,6 @@ namespace Control
 
 
 
-          double now = Clock::get();
 
           // check if we have angles far enough back
           while ( m_anglehistory.size() >=1 && now - m_anglehistory.front().timestamp >= tau_d)
@@ -868,7 +881,36 @@ namespace Control
           // Nop for now
         }
 
+        void
+        updateInputShapingState(double now)
+        {
+          // Store current history
+          m_refhistory.push(ReferenceHistoryContainer(m_refmodel_x, now));
 
+          Matrix t2Ref = Matrix(9, 1, 0.0);
+          Matrix new_ref = Matrix(9, 1, 0.0);
+          // Peek first, to see if we have one far enough back in time
+          if (now - m_refhistory.front().timestamp >= m_input_cfg.t2)
+          {
+            t2Ref = m_refhistory.front().state;
+            m_refhistory.pop();
+
+            new_ref = m_refmodel_x * m_input_cfg.A1 + t2Ref * m_input_cfg.A2;
+          }
+          else
+          {
+            // Use only the first refmodel
+            new_ref = m_refhistory.front().state;
+          }
+
+          m_input_shaping_state.filteredRef = new_ref;
+        }
+
+        void
+        clearInputShapingState()
+        {
+          // Nop for now
+        }
 
         void
         step(const IMC::EstimatedState& state, const TrackingState& ts)
