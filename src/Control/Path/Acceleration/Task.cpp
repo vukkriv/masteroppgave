@@ -73,6 +73,7 @@ namespace Control
         bool enable_delayed_feedback;
         bool enable_slung_control;
         bool enable_hold_position;
+        bool enable_mass_division;
         double ctrl_omega_b;
         double ctrl_xi;
       };
@@ -478,6 +479,11 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Enable or disable hold current position functionality");
+
+          param("Enable Output Division By Mass", m_args.enable_mass_division)
+          .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Enable or disable division by copter mass in final output");
 
           param("Acceleration Controller Bandwidth", m_args.ctrl_omega_b)
           .defaultValue("1.0")
@@ -1199,6 +1205,10 @@ namespace Control
             dispatch(m_parcels[PC_ALPHA45_PHI]);
             dispatch(m_parcels[PC_ALPHA45_THETA]);
           }
+
+          // Divide by mass
+          if (m_args.enable_mass_division)
+            desiredAcc = desiredAcc / m_args.copter_mass_kg;
 
 
           // Set heave to 0 if not controlling altitude
