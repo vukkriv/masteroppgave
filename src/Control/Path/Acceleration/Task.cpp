@@ -1147,47 +1147,6 @@ namespace Control
             dispatch(m_parcels[PC_PID_X + i]);
           }
 
-
-
-
-          // Set heave to 0 if not controlling altitude
-          if (!m_args.use_altitude)
-          {
-            desiredAcc(2) = 0;
-          }
-
-          // Saturate acceleration
-          if( desiredAcc.norm_2() > m_args.max_acc )
-          {
-            desiredAcc = m_args.max_acc * desiredAcc / desiredAcc.norm_2();
-          }
-
-          // store
-          m_prev_controller_output = desiredAcc;
-
-          m_desired_control.x = desiredAcc(0);
-          m_desired_control.y = desiredAcc(1);
-          m_desired_control.z = desiredAcc(2);
-
-
-          m_desired_control.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y | IMC::DesiredControl::FL_Z;
-
-          if(m_args.disable_heave || !m_args.use_altitude)
-            m_desired_control.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y;
-
-
-          dispatch(m_desired_control);
-
-          // Dispatch linear setpoint for logging
-          dispatch(m_setpoint_log);
-
-
-          spew("Sent acc data.");
-
-          // Update step-time
-          m_timestamp_prev_step = Clock::get();
-
-
           if (m_args.enable_slung_control )
           {
             Matrix beta = Matrix(3, 1, 0.0);
@@ -1240,6 +1199,47 @@ namespace Control
             dispatch(m_parcels[PC_ALPHA45_PHI]);
             dispatch(m_parcels[PC_ALPHA45_THETA]);
           }
+
+
+          // Set heave to 0 if not controlling altitude
+          if (!m_args.use_altitude)
+          {
+            desiredAcc(2) = 0;
+          }
+
+          // Saturate acceleration
+          if( desiredAcc.norm_2() > m_args.max_acc )
+          {
+            desiredAcc = m_args.max_acc * desiredAcc / desiredAcc.norm_2();
+          }
+
+          // store
+          m_prev_controller_output = desiredAcc;
+
+          m_desired_control.x = desiredAcc(0);
+          m_desired_control.y = desiredAcc(1);
+          m_desired_control.z = desiredAcc(2);
+
+
+          m_desired_control.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y | IMC::DesiredControl::FL_Z;
+
+          if(m_args.disable_heave || !m_args.use_altitude)
+            m_desired_control.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y;
+
+
+          dispatch(m_desired_control);
+
+          // Dispatch linear setpoint for logging
+          dispatch(m_setpoint_log);
+
+
+          spew("Sent acc data.");
+
+          // Update step-time
+          m_timestamp_prev_step = Clock::get();
+
+
+
 
 /*
           //if (m_controllerType == CT_PID || m_controllerType == CT_PID_INPUT || )
