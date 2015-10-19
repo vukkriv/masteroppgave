@@ -102,6 +102,7 @@ namespace Simulators
         m_estate.lat = simState->lat;
         m_estate.lon = simState->lon;
         m_estate.height = simState->height;
+        m_estate.alt    = - simState->z;
 
         m_estate.x = simState->x;
         m_estate.y = simState->y;
@@ -111,14 +112,23 @@ namespace Simulators
         m_estate.v = simState->v;
         m_estate.w = simState->w;
 
-        m_eulerAngles.theta = simState->theta;
-        m_eulerAngles.phi = simState->phi;
-        m_eulerAngles.psi = simState->p;
-        m_eulerAngles.psi_magnetic = simState->q;
+        BodyFixedFrame::toInertialFrame(m_estate.phi, m_estate.theta, m_estate.psi,
+                                       m_estate.u, m_estate.v, m_estate.w,
+                                       &m_estate.vx, &m_estate.vy, &m_estate.vz);
+
+        m_estate.theta = simState->theta;
+        m_estate.phi = simState->phi;
+        m_estate.psi = simState->psi;
+
+        m_estate.p  = simState->p;
+        m_estate.q  = simState->q;
+        m_estate.r  = simState->r;
 
 
-        //dispatch(m_estate);
-        dispatch(m_eulerAngles);
+
+
+        dispatch(m_estate);
+        //dispatch(m_eulerAngles);
         debug("Dispatched m_estate - Estimated states \n");
       }
 
