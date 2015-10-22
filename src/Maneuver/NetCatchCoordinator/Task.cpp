@@ -191,6 +191,13 @@ namespace Maneuver
         m_cross_track   = std::vector<Matrix>(no_vehicles);
         m_cross_track_d = std::vector<Matrix>(no_vehicles);
 
+        for (unsigned int i=0; i<no_vehicles; i++) {
+          m_p[i] = Matrix(3,1,0);
+          m_v[i] = Matrix(3,1,0);
+          m_cross_track[i]   = Matrix(2,1,0);
+          m_cross_track_d[i] = Matrix(2,1,0);
+        }
+
         inf("# Length of vectors: %d",static_cast<int>(m_estate.size()) );
       }
 
@@ -227,12 +234,16 @@ namespace Maneuver
 
           m_cross_track[s-1]    = eps.get(1,2,0,0); 
           m_cross_track_d[s-1]  = eps_dot.get(1,2,0,0); 
+          inf("Cross-track e_a:   [%f,%f]",m_cross_track[0](0),m_cross_track[0](1));
+          inf("Cross-track e_c1:  [%f,%f]",m_cross_track[1](0),m_cross_track[1](1));
+          inf("Cross-track_d e_a:   [%f,%f]",m_cross_track_d[0](0),m_cross_track_d[0](1));
+          inf("Cross-track_d e_c1:  [%f,%f]",m_cross_track_d[1](0),m_cross_track_d[1](1));
+
           inf("Position in NED from '%d': [%f,%f,%f]",s,estate.x,estate.y,estate.z);
 
 
           //NB m_p and m_v must be populated or properly defined before this can be done
 
-/*
           Matrix delta_p_path = R*(m_p[1]-m_p[0]);
           Matrix delta_v_path = R*(m_v[1]-m_v[0]);
 
@@ -240,7 +251,6 @@ namespace Maneuver
           delta_v_path_x = delta_v_path(0);
           inf("delta_p_path_x = %f",delta_p_path_x);
           inf("delta_v_path_x = %f",delta_v_path_x);
-*/
       }
 
       //! Main loop.
