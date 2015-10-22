@@ -331,25 +331,29 @@ namespace Control
           .description("Max acceleration of the vehicle");
 
           param("Reference Model - Max Speed", m_args.refmodel_max_speed)
-          .defaultValue("3.0")
+          .defaultValue("1.5")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Max speed of the reference model.");
 
           param("Reference Model - Max Acceleration", m_args.refmodel_max_acc)
           .defaultValue("1.5")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Max acceleration of the reference model.");
 
           param("Reference Model - Natural Frequency",m_args.refmodel_omega_n)
           .units(Units::RadianPerSecond)
-          .defaultValue("1")
+          .defaultValue("0.5")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Natural frequency for the speed reference model");
 
           param("Reference Model - Relative Damping", m_args.refmodel_xi)
           .units(Units::None)
           .defaultValue("0.9")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Relative Damping Factor of the speed reference model");
 
           param("Acceleration Controller - Kp", m_args.Kp)
@@ -381,7 +385,7 @@ namespace Control
           .description("Choose whether to disable heave flag. In turn, this will utilize new rate controller on some targets");
 
           param("Reset integrator on path activation", m_args.reset_integral_on_path_activation)
-          .defaultValue("true")
+          .defaultValue("false")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Choose whether to reset the integrator in a path activation. ");
@@ -392,7 +396,7 @@ namespace Control
           .description("Max integral value");
 
           param("Copter Mass", m_args.copter_mass_kg)
-          .defaultValue("2.3")
+          .defaultValue("2.5")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .units(Units::Kilogram)
           .description("Mass of the copter");
@@ -486,7 +490,7 @@ namespace Control
           .description("Enable or disable division by copter mass in final output");
 
           param("Acceleration Controller Bandwidth", m_args.ctrl_omega_b)
-          .defaultValue("1.0")
+          .defaultValue("0.7")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Controller bandwidth");
