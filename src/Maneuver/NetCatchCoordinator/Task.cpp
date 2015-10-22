@@ -44,12 +44,17 @@ namespace Maneuver
 
       //! Enable coordinated catch
       bool enable_coord;
+      //! Moving mean window size
+      double mean_ws;
+      
+      //! Maximum cross-track error aircraft
+      Matrix eps_ct_a;
+      //! Maximum cross-track error net
+      Matrix eps_ct_n;
 
       //! WP 1 Runway NED
-      //std::vector<double> WP1;
       Matrix WP1;
       //! WP 2 Runway NED
-      //std::vector<double> WP2;
       Matrix WP2;
     };
 
@@ -67,21 +72,30 @@ namespace Maneuver
       std::vector<Matrix> m_p;
       //! Last velocity in NED
       std::vector<Matrix> m_v;
-
+      
       //! Cross track errors
       std::vector<Matrix> m_cross_track;
+      std::vector<Matrix> m_cross_track_mean;
       //! Cross track errors derivative
       std::vector<Matrix> m_cross_track_d;
+      std::vector<Matrix> m_cross_track_d_mean;
 
       //! Position difference along path
       double delta_p_path_x;
+      double delta_p_path_x_mean;
       //! Velocity difference along path
       double delta_v_path_x;
+      double delta_v_path_x_mean;
 
       //! Course of runway
       double alpha_runway;
       //! Pitch of runway
       double theta_runway;
+      
+      //! Aircraft vehicle initialized
+      bool initializedA;
+      //! Copter vehicles initialized
+      bool initializedC;
 
       //! Constructor.
       //! @param[in] name task name.
@@ -107,6 +121,16 @@ namespace Maneuver
         .units(Units::Meter)
         .description("Second WP of runway");
         
+        param("Mean Window Size", m_args.mean_ws)
+        .defaultValue("1.0")
+        .description("Number of samples in moving average window");
+
+        param("Maximum Cross-Track Error Aircraft", m_args.eps_ct_a)
+        .units(Units::Meter);
+
+        param("Maximum Cross-Track Error Net", m_args.eps_ct_n)
+        .units(Units::Meter);
+
         // Bind incoming IMC messages
         bind<IMC::EstimatedState>(this);
       }
@@ -162,14 +186,34 @@ namespace Maneuver
         //if (estate->getSource() == getSystemId())
         //  return;
 
-        inf("Alpha: %f",alpha_runway);
-        inf("Theta: %f",theta_runway);
+        debug("Alpha: %f",alpha_runway);
+        debug("Theta: %f",theta_runway);
         
         int s = estate->getSourceEntity();
+        switch (s)
+        {
+          case A:
+          {
+            initializedA = true;
+            break;
+          }
+          case C1:
+          {
+            initializedC = true;
+            break;
+          }
+        } 
         if (s <= static_cast<int>(m_estate.size()) )
         {
           m_estate[s-1]       = *estate;
-          calcPathErrors(m_estate[s-1], s);
+          calcPathErrors(m_estate[s-1], s);          
+          if( initializedA && initializedC )
+          {
+            updateMeanValues(s);
+
+            // should implement a state-machine here, run different checks
+            checkAbortCondition();    //requires that the net is along the runway
+          }
         }
         
       }
@@ -181,7 +225,9 @@ namespace Maneuver
         unsigned int no_vehicles = 2;
         if (m_args.enable_coord)
           no_vehicles = 3;
-        
+        initializedA = false;
+        initializedC = true;
+
         inf("# Vehicles: %d",no_vehicles); 
         
         m_estate        = std::vector<IMC::EstimatedState>(no_vehicles);
@@ -241,9 +287,6 @@ namespace Maneuver
 
           inf("Position in NED from '%d': [%f,%f,%f]",s,estate.x,estate.y,estate.z);
 
-
-          //NB m_p and m_v must be populated or properly defined before this can be done
-
           Matrix delta_p_path = R*(m_p[1]-m_p[0]);
           Matrix delta_v_path = R*(m_v[1]-m_v[0]);
 
@@ -251,6 +294,37 @@ namespace Maneuver
           delta_v_path_x = delta_v_path(0);
           inf("delta_p_path_x = %f",delta_p_path_x);
           inf("delta_v_path_x = %f",delta_v_path_x);
+      }
+
+      void
+      updateMeanValues(int s)
+      {
+        // should use a ring-buffer to calculate the mean value based on the last value in the buffer
+        m_cross_track_mean[s]   = m_cross_track[s];
+        m_cross_track_d_mean[s] = m_cross_track_d[s];
+
+        delta_p_path_x_mean = delta_p_path_x;
+        delta_v_path_x_mean = delta_v_path_x;
+      }
+
+      void
+      checkAbortCondition()
+      {
+        //cḧeck the mean values of the cross-track errors, if too high, possible abort
+        // if the erros are too high and increasing, at a given radius between the vehicles, send abort catch
+        // requires that the net-catch mission has started (net at runway)
+        bool aircraftOff = false;
+        bool netOff = false;
+        if (abs(m_cross_track_mean[A](0))  >= m_args.eps_ct_a(0) ||
+            abs(m_cross_track_mean[A](1))  >= m_args.eps_ct_a(1) )
+        {
+          aircraftOff = true;
+        }
+        if (abs(m_cross_track_mean[C1](0))  >= m_args.eps_ct_n(0) ||
+            abs(m_cross_track_mean[C1](1))  >= m_args.eps_ct_n(1) )
+        {
+          netOff = true;
+        }
       }
 
       //! Main loop.
