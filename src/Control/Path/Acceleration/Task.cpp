@@ -151,7 +151,8 @@ namespace Control
         ReferenceModel():
           A(9,9, 0.0),
           B(9,3, 0.0),
-          x(9,1, 0.0)
+          x(9,1, 0.0),
+          a_out(3,1, 0.0)
       {
           /* Intentionally Empty */
       }
@@ -164,6 +165,9 @@ namespace Control
         Matrix
         getAcc(void) { return x.get(6,8, 0,0); }
 
+        Matrix
+        getAOut(void) { return a_out; };
+
         void
         setPos(Matrix& pos) { x.put(0,0, pos); }
 
@@ -173,11 +177,15 @@ namespace Control
         void
         setAcc(Matrix& acc) { x.put(6,0, acc); }
 
+        void
+        setAOut(Matrix& a) { a_out.put(0, 0, a); }
+
 
       public:
         Matrix A;
         Matrix B;
         Matrix x;
+        Matrix a_out;
       };
 
       class Reference
@@ -744,6 +752,9 @@ namespace Control
             m_refmodel.x(7) = 0.0;
             m_refmodel.x(8) = 0.0;
 
+            m_refmodel.a_out(0) = 0.0;
+            m_refmodel.a_out(1) = 0.0;
+            m_refmodel.a_out(2) = 0.0;
             // Consider using last setpoint as acc startup
             if (Clock::get() - m_timestamp_prev_step < 2.0)
             {
@@ -867,6 +878,8 @@ namespace Control
               x_d(0), x_d(1), x_d(2));
 
 
+          Matrix old_pos = m_refmodel.getPos();
+          Matrix old_vel = m_refmodel.getVel();
           // Update reference
           m_refmodel.x += ts.delta * (m_refmodel.A * m_refmodel.x + m_refmodel.B * x_d);
 
@@ -886,6 +899,11 @@ namespace Control
           {
             vel = m_args.refmodel_max_speed * vel / vel.norm_2();
             m_refmodel.setVel(vel);
+
+            // Recalculate pos
+            Matrix new_pos = old_pos + ts.delta * m_refmodel.getVel();
+
+            m_refmodel.setPos(new_pos);
           }
 
           if (acc.norm_2() > m_args.refmodel_max_acc)
@@ -893,6 +911,10 @@ namespace Control
             acc = m_args.refmodel_max_acc * acc / acc.norm_2();
             m_refmodel.setAcc(acc);
           }
+
+          // Update A out
+          // numeric filter
+          m_refmodel.a_out = (m_refmodel.getVel() - old_vel) / ts.delta;
 
 
           m_setpoint_log.x = m_refmodel.x(0);
@@ -1031,6 +1053,10 @@ namespace Control
 
           // Set reference from reference model
           m_reference.setReference(m_refmodel.x);
+
+          // Use numeric filtered version
+          Matrix a_out = m_refmodel.a_out;
+          m_reference.setAcc(a_out);
 
 
           if (m_args.enable_input_shaping)
