@@ -59,12 +59,19 @@ namespace Maneuver
     };
 
     //! % Vehicles
-    enum Vehicle { A, C1, C2 };
+    enum Vehicle { A=0, C1=1, C2=2 };
     
+    //! % Coordinator states
+    enum CoordState {INIT, GOTO_RUNW, STANDBY_RUNW, EN_CATCH, END_RUNW, CATCH_ABORT};
+
     struct Task: public DUNE::Tasks::Task
     {
       //! Task arguments.
       Arguments m_args;
+      
+      //! Current state
+      CoordState m_curr_state;
+
       //! Last Estimated State received
       std::vector<IMC::EstimatedState> m_estate;
       
@@ -193,7 +200,7 @@ namespace Maneuver
         debug("Theta: %f",theta_runway);
         
         int s = estate->getSourceEntity();
-        switch (s)
+        switch (s-1)
         {
           case A:
           {
@@ -210,14 +217,44 @@ namespace Maneuver
         {
           m_estate[s-1]       = *estate;
           calcPathErrors(m_estate[s-1], s);          
-          if( initializedA && initializedC )
+          updateMeanValues(s);
+          switch(m_curr_state)
           {
-            updateMeanValues(s);
-
-            // should implement a state-machine here, run different checks
-            checkAbortCondition();    //requires that the net is along the runway
-            checkPositionsAtRunway(); //requires that the net is standby at the start of the runway            
+            case INIT:
+            {
+              inf("A init: %d, C init: %d",initializedA,initializedC);
+              if( initializedA && initializedC ) 
+              {
+                m_curr_state = GOTO_RUNW;
+              }
+              break;
+            }
+            case GOTO_RUNW:
+            {
+              m_curr_state = STANDBY_RUNW;
+              break;
+            }
+            case STANDBY_RUNW:
+            {
+              checkPositionsAtRunway(); //requires that the net is standby at the start of the runway
+              break;
+            }
+            case EN_CATCH:
+            {
+              //segmentation fault
+              checkAbortCondition();    //requires that the net is along the runway
+              break;
+            }                            
+            case END_RUNW:
+            {
+              break;
+            }
+            case CATCH_ABORT:
+            {
+              break;
+            }                            
           }
+          inf("Curr state: %d",static_cast<int>(m_curr_state));
         }
         
       }
@@ -230,7 +267,7 @@ namespace Maneuver
         if (m_args.enable_coord)
           no_vehicles = 3;
         initializedA = false;
-        initializedC = true;
+        initializedC = false;
 
         inf("# Vehicles: %d",no_vehicles); 
         
@@ -240,16 +277,22 @@ namespace Maneuver
 
         m_cross_track   = std::vector<Matrix>(no_vehicles);
         m_cross_track_d = std::vector<Matrix>(no_vehicles);
+        m_cross_track_mean   = std::vector<Matrix>(no_vehicles);
+        m_cross_track_d_mean = std::vector<Matrix>(no_vehicles);
 
         for (unsigned int i=0; i<no_vehicles; i++) {
           m_p[i] = Matrix(3,1,0);
           m_v[i] = Matrix(3,1,0);
           m_cross_track[i]   = Matrix(2,1,0);
           m_cross_track_d[i] = Matrix(2,1,0);
+          m_cross_track_mean[i]   = Matrix(2,1,0);
+          m_cross_track_d_mean[i] = Matrix(2,1,0);
         }
 
         // TODO: calculate the desired net-catch radius
         m_startCatch_radius = 100;
+        // For now: set the state directly to standby at runway
+        m_curr_state = INIT;
 
         inf("# Length of vectors: %d",static_cast<int>(m_estate.size()) );
       }
@@ -307,9 +350,8 @@ namespace Maneuver
       updateMeanValues(int s)
       {
         // should use a ring-buffer to calculate the mean value based on the last value in the buffer
-        m_cross_track_mean[s]   = m_cross_track[s];
-        m_cross_track_d_mean[s] = m_cross_track_d[s];
-
+        m_cross_track_mean[s-1]   = m_cross_track[s-1];
+        m_cross_track_d_mean[s-1] = m_cross_track_d[s-1];
         delta_p_path_x_mean = delta_p_path_x;
         delta_v_path_x_mean = delta_v_path_x;
       }
@@ -332,6 +374,11 @@ namespace Maneuver
         {
           netOff = true;
         }
+
+        if (aircraftOff || netOff) 
+        {
+          m_curr_state = CATCH_ABORT;
+        }
       }
 
       void
@@ -340,9 +387,10 @@ namespace Maneuver
         //monitor the path-along distance between the net and the aircraft
           // when at a given boundary, start the net-catch mission
         // this requires that the net are stand-by at the first WP at the runway
-        bool shouldStartCatch = false;
         if (abs(delta_p_path_x_mean) <= m_startCatch_radius)
-          shouldStartCatch = true;
+        {
+          m_curr_state = EN_CATCH;
+        }
       }
 
       //! Main loop.
