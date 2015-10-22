@@ -97,6 +97,9 @@ namespace Maneuver
       //! Copter vehicles initialized
       bool initializedC;
 
+      //! Radius to start net-catch
+      unsigned int m_startCatch_radius;
+
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
@@ -213,6 +216,7 @@ namespace Maneuver
 
             // should implement a state-machine here, run different checks
             checkAbortCondition();    //requires that the net is along the runway
+            checkPositionsAtRunway(); //requires that the net is standby at the start of the runway            
           }
         }
         
@@ -243,6 +247,9 @@ namespace Maneuver
           m_cross_track[i]   = Matrix(2,1,0);
           m_cross_track_d[i] = Matrix(2,1,0);
         }
+
+        // TODO: calculate the desired net-catch radius
+        m_startCatch_radius = 100;
 
         inf("# Length of vectors: %d",static_cast<int>(m_estate.size()) );
       }
@@ -325,6 +332,17 @@ namespace Maneuver
         {
           netOff = true;
         }
+      }
+
+      void
+      checkPositionsAtRunway()
+      {
+        //monitor the path-along distance between the net and the aircraft
+          // when at a given boundary, start the net-catch mission
+        // this requires that the net are stand-by at the first WP at the runway
+        bool shouldStartCatch = false;
+        if (abs(delta_p_path_x_mean) <= m_startCatch_radius)
+          shouldStartCatch = true;
       }
 
       //! Main loop.
