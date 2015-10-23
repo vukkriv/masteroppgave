@@ -37,45 +37,30 @@ namespace Control
     //! %Task arguments.
     struct Arguments
     {
-      //! Frequency of output
-      double freq;
-      fp32_t north;
-      fp32_t east;
-      fp32_t down;
+
     };
 
-    //! Last Estimated State received
-    IMC::EstimatedState m_estate;
+    //! Controllable loops.
+    static const uint32_t c_controllable = 1;
+    //! Required loops.
+    static const uint32_t c_required = 1;
 
-    struct Task: public DUNE::Tasks::Periodic
+    struct Task: public DUNE::Control::BasicUAVAutopilot
     {
       //! Task arguments.
       Arguments m_args;
+
+      //! Last desired velocity
+      IMC::DesiredVelocity m_dv;
 
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Periodic(name, ctx)
+        DUNE::Control::BasicUAVAutopilot(name,ctx, c_controllable, c_required)
       {
-        param("Frequency", m_args.freq)
-        .description("Frequency of task")
-        .defaultValue("0.0");
-
-        param("North", m_args.north)
-        .units(Units::Meter)
-        .description("Default position in north");
-        
-        param("East", m_args.east)
-        .units(Units::Meter)
-        .description("Default position in east");
-
-        param("Down", m_args.down)
-        .units(Units::Meter)
-        .description("Default position in down");
-
-        this->setFrequency(m_args.freq);
-        
+        // Bind incoming IMC messages
+        bind<IMC::DesiredVelocity>(this);                
       }
 
       //! Update internal state with new parameter values.
@@ -88,7 +73,6 @@ namespace Control
       void
       onEntityReservation(void)
       {
-        inf("Starting: %s", resolveEntity(getEntityId()).c_str());
       }
 
       //! Resolve entity names.
@@ -101,29 +85,38 @@ namespace Control
       void
       onResourceAcquisition(void)
       {
+        BasicUAVAutopilot::onResourceAcquisition();        
       }
 
       //! Initialize resources.
       void
       onResourceInitialization(void)
       {
+        BasicUAVAutopilot::onResourceInitialization();        
       }
 
       //! Release resources.
       void
       onResourceRelease(void)
       {
+        BasicUAVAutopilot::onResourceRelease();        
       }
 
-      //! Main loop.
+      // consume desired path from NetCatchPath
       void
-      task(void)
+      consume(const IMC::DesiredVelocity* dv)
       {
-          m_estate.x = m_args.north;
-          m_estate.y = m_args.east;
-          m_estate.z = m_args.down;
-          m_estate.setSourceEntity(getEntityId());
-          dispatch(m_estate);
+        trace("Got DesiredVelocity \nfrom '%s' at '%s'",
+             resolveEntity(dv->getSourceEntity()).c_str(),
+             resolveSystemId(dv->getSource()));
+
+        m_dv = *dv;
+      }
+
+      void
+      onEstimatedState(const double timestep, const IMC::EstimatedState* msg)
+      {
+          //calculate desired inertial force, input to coordinated control
       }
     };
   }
