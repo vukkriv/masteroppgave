@@ -56,10 +56,10 @@ namespace Maneuver
       Matrix WP1;
       //! WP 2 Runway NED
       Matrix WP2;
-    };
 
-    //! % Vehicles
-    enum Vehicle { A=0, C1=1, C2=2 };
+      //! Vehicle list
+      std::vector<std::string> m_vehicles;
+    };
     
     //! % Coordinator states
     enum CoordState {INIT, GOTO_RUNW, STANDBY_RUNW, EN_CATCH, END_RUNW, CATCH_ABORT};
@@ -141,6 +141,8 @@ namespace Maneuver
         param("Maximum Cross-Track Error Net", m_args.eps_ct_n)
         .units(Units::Meter);
 
+        param("Vehicle list", m_args.m_vehicles);
+
         // Bind incoming IMC messages
         bind<IMC::EstimatedState>(this);
       }
@@ -199,20 +201,30 @@ namespace Maneuver
         debug("Alpha: %f",alpha_runway);
         debug("Theta: %f",theta_runway);
         
-        int s = estate->getSourceEntity();
-        switch (s-1)
+        //int s = estate->getSourceEntity();
+        int s = 1;
+        std::string trg_prod  = resolveEntity(estate->getSourceEntity());
+
+        //compare with vehicle list to get list number
+
+
+        if (trg_prod == "X8")
         {
-          case A:
-          {
-            initializedA = true;
-            break;
-          }
-          case C1:
-          {
-            initializedC = true;
-            break;
-          }
-        } 
+          initializedA = true;
+          s = 1;
+        }
+        else if (trg_prod == "C1")
+        {
+          initializedC = true;
+          s = 2;
+        }
+        else if (trg_prod == "C2")
+        {
+          initializedC = true;
+          s = 3;
+        }
+
+        trace("s = %d",s);
         if (s <= static_cast<int>(m_estate.size()) )
         {
           m_estate[s-1]       = *estate;
@@ -362,15 +374,17 @@ namespace Maneuver
         //cḧeck the mean values of the cross-track errors, if too high, possible abort
         // if the erros are too high and increasing, at a given radius between the vehicles, send abort catch
         // requires that the net-catch mission has started (net at runway)
+
+        //TODO: use a string enumeration to get position of vehicle in the vector lists  
         bool aircraftOff = false;
         bool netOff = false;
-        if (abs(m_cross_track_mean[A](0))  >= m_args.eps_ct_a(0) ||
-            abs(m_cross_track_mean[A](1))  >= m_args.eps_ct_a(1) )
+        if (abs(m_cross_track_mean[0](0))  >= m_args.eps_ct_a(0) ||
+            abs(m_cross_track_mean[0](1))  >= m_args.eps_ct_a(1) )
         {
           aircraftOff = true;
         }
-        if (abs(m_cross_track_mean[C1](0))  >= m_args.eps_ct_n(0) ||
-            abs(m_cross_track_mean[C1](1))  >= m_args.eps_ct_n(1) )
+        if (abs(m_cross_track_mean[1](0))  >= m_args.eps_ct_n(0) ||
+            abs(m_cross_track_mean[1](1))  >= m_args.eps_ct_n(1) )
         {
           netOff = true;
         }
@@ -380,8 +394,18 @@ namespace Maneuver
           m_curr_state = CATCH_ABORT;
         }
       }
-
-      void
+      
+      int
+      getVehicle(std::string src_entity)
+      {
+        for(unsigned int i=0; i < m_args.m_vehicles.size(); i++) {
+          //compare 
+          if ( m_args.m_vehicles(i) == src_entity)
+            return i
+          else
+            return -1
+        }
+      }
       checkPositionsAtRunway()
       {
         //monitor the path-along distance between the net and the aircraft
