@@ -62,7 +62,7 @@ namespace Maneuver
     };
     
     //! % Coordinator states
-    enum CoordState {INIT, GOTO_RUNW, STANDBY_RUNW, EN_CATCH, END_RUNW, CATCH_ABORT};
+    enum CoordState {INIT=0, GOTO_RUNW, STANDBY_RUNW, EN_CATCH, END_RUNW, CATCH_ABORT};
 
     struct Task: public DUNE::Tasks::Task
     {
@@ -71,6 +71,9 @@ namespace Maneuver
       
       //! Current state
       CoordState m_curr_state;
+
+      //! Vehicles initialized
+      std::vector<bool> m_initialized;
 
       //! Last Estimated State received
       std::vector<IMC::EstimatedState> m_estate;
@@ -98,11 +101,6 @@ namespace Maneuver
       double alpha_runway;
       //! Pitch of runway
       double theta_runway;
-      
-      //! Aircraft vehicle initialized
-      bool initializedA;
-      //! Copter vehicles initialized
-      bool initializedC;
 
       //! Radius to start net-catch
       unsigned int m_startCatch_radius;
@@ -141,7 +139,7 @@ namespace Maneuver
         param("Maximum Cross-Track Error Net", m_args.eps_ct_n)
         .units(Units::Meter);
 
-        param("Vehicle list", m_args.m_vehicles);
+        param("Vehicles", m_args.m_vehicles);
 
         // Bind incoming IMC messages
         bind<IMC::EstimatedState>(this);
@@ -200,88 +198,62 @@ namespace Maneuver
 
         debug("Alpha: %f",alpha_runway);
         debug("Theta: %f",theta_runway);
-        
-        //int s = estate->getSourceEntity();
-        int s = 1;
+
         std::string trg_prod  = resolveEntity(estate->getSourceEntity());
-
-        //compare with vehicle list to get list number
-
-
-        if (trg_prod == "X8")
-        {
-          initializedA = true;
-          s = 1;
-        }
-        else if (trg_prod == "C1")
-        {
-          initializedC = true;
-          s = 2;
-        }
-        else if (trg_prod == "C2")
-        {
-          initializedC = true;
-          s = 3;
-        }
-
-        trace("s = %d",s);
-        if (s <= static_cast<int>(m_estate.size()) )
-        {
-          m_estate[s-1]       = *estate;
-          calcPathErrors(m_estate[s-1], s);          
-          updateMeanValues(s);
-          switch(m_curr_state)
-          {
-            case INIT:
-            {
-              inf("A init: %d, C init: %d",initializedA,initializedC);
-              if( initializedA && initializedC ) 
-              {
-                m_curr_state = GOTO_RUNW;
-              }
-              break;
-            }
-            case GOTO_RUNW:
-            {
-              m_curr_state = STANDBY_RUNW;
-              break;
-            }
-            case STANDBY_RUNW:
-            {
-              checkPositionsAtRunway(); //requires that the net is standby at the start of the runway
-              break;
-            }
-            case EN_CATCH:
-            {
-              //segmentation fault
-              checkAbortCondition();    //requires that the net is along the runway
-              break;
-            }                            
-            case END_RUNW:
-            {
-              break;
-            }
-            case CATCH_ABORT:
-            {
-              break;
-            }                            
-          }
-          inf("Curr state: %d",static_cast<int>(m_curr_state));
-        }
+        int s = getVehicle(trg_prod);
         
-      }
+        debug("s: %d",s);
+        
+        if (s == -1)  //invalid vehicle
+          return;
 
+        m_initialized[s] = true;
+        m_estate[s]       = *estate;
+        calcPathErrors(m_estate[s], s);          
+        updateMeanValues(s);
+        trace("Curr state: %d",static_cast<int>(m_curr_state));
+        switch(m_curr_state)
+        {
+          case INIT:
+          {
+            if (allInitialized())
+            {
+              m_curr_state = GOTO_RUNW; 
+            }
+            break;
+          }
+          case GOTO_RUNW:
+          {
+            m_curr_state = STANDBY_RUNW;
+            break;
+          }
+          case STANDBY_RUNW:
+          {
+            checkPositionsAtRunway(); //requires that the net is standby at the start of the runway
+            break;
+          }
+          case EN_CATCH:
+          {
+            checkAbortCondition();    //requires that the net is along the runway
+            break;
+          }                            
+          case END_RUNW:
+          {
+            break;
+          }
+          case CATCH_ABORT:
+          {
+            break;
+          }                            
+        }        
+      }
 
       void
       initCoordinator()
       {
-        unsigned int no_vehicles = 2;
-        if (m_args.enable_coord)
-          no_vehicles = 3;
-        initializedA = false;
-        initializedC = false;
+        unsigned int no_vehicles = m_args.m_vehicles.size();
 
-        inf("# Vehicles: %d",no_vehicles); 
+        debug("# Vehicles: %d",no_vehicles); 
         
         m_estate        = std::vector<IMC::EstimatedState>(no_vehicles);
         m_p             = std::vector<Matrix>(no_vehicles);
@@ -291,6 +263,7 @@ namespace Maneuver
         m_cross_track_d = std::vector<Matrix>(no_vehicles);
         m_cross_track_mean   = std::vector<Matrix>(no_vehicles);
         m_cross_track_d_mean = std::vector<Matrix>(no_vehicles);
+        m_initialized = std::vector<bool>(no_vehicles);
 
         for (unsigned int i=0; i<no_vehicles; i++) {
           m_p[i] = Matrix(3,1,0);
@@ -299,14 +272,13 @@ namespace Maneuver
           m_cross_track_d[i] = Matrix(2,1,0);
           m_cross_track_mean[i]   = Matrix(2,1,0);
           m_cross_track_d_mean[i] = Matrix(2,1,0);
+          m_initialized[i] = false;
         }
 
         // TODO: calculate the desired net-catch radius
         m_startCatch_radius = 100;
         // For now: set the state directly to standby at runway
         m_curr_state = INIT;
-
-        inf("# Length of vectors: %d",static_cast<int>(m_estate.size()) );
       }
 
       void
@@ -329,19 +301,19 @@ namespace Maneuver
           p(0) = estate.x;
           p(1) = estate.y;
           p(2) = estate.z;          
-          m_p[s-1] = p;
+          m_p[s] = p;
 
           v(0) = estate.vx;
           v(1) = estate.vy;
           v(2) = estate.vz;          
-          m_v[s-1] = v;
+          m_v[s] = v;
 
           Matrix R       = transpose(Rzyx(0.0, -theta_runway, alpha_runway));
           Matrix eps     = R*(p-m_args.WP1); 
           Matrix eps_dot = R*v;
 
-          m_cross_track[s-1]    = eps.get(1,2,0,0); 
-          m_cross_track_d[s-1]  = eps_dot.get(1,2,0,0); 
+          m_cross_track[s]    = eps.get(1,2,0,0); 
+          m_cross_track_d[s]  = eps_dot.get(1,2,0,0); 
           inf("Cross-track e_a:   [%f,%f]",m_cross_track[0](0),m_cross_track[0](1));
           inf("Cross-track e_c1:  [%f,%f]",m_cross_track[1](0),m_cross_track[1](1));
           inf("Cross-track_d e_a:   [%f,%f]",m_cross_track_d[0](0),m_cross_track_d[0](1));
@@ -362,8 +334,8 @@ namespace Maneuver
       updateMeanValues(int s)
       {
         // should use a ring-buffer to calculate the mean value based on the last value in the buffer
-        m_cross_track_mean[s-1]   = m_cross_track[s-1];
-        m_cross_track_d_mean[s-1] = m_cross_track_d[s-1];
+        m_cross_track_mean[s]   = m_cross_track[s];
+        m_cross_track_d_mean[s] = m_cross_track_d[s];
         delta_p_path_x_mean = delta_p_path_x;
         delta_v_path_x_mean = delta_v_path_x;
       }
@@ -398,14 +370,29 @@ namespace Maneuver
       int
       getVehicle(std::string src_entity)
       {
-        for(unsigned int i=0; i < m_args.m_vehicles.size(); i++) {
+        for(unsigned int i=0; i < m_args.m_vehicles.size(); i++) 
+        {
           //compare 
-          if ( m_args.m_vehicles(i) == src_entity)
-            return i
-          else
-            return -1
+          if ( m_args.m_vehicles[i] == src_entity )
+          {
+            return i;
+          }
         }
+        return -1;
       }
+
+      bool
+      allInitialized()
+      {
+        for(unsigned int i=0; i < m_initialized.size(); i++) 
+        {
+          if (!m_initialized[i])
+            return false;
+        }        
+        return true;
+      }
+
+      void
       checkPositionsAtRunway()
       {
         //monitor the path-along distance between the net and the aircraft
