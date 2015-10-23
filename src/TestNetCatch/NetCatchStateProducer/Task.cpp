@@ -43,14 +43,13 @@ namespace TestNetCatch
       fp32_t down;
     };
 
-    //! Last Estimated State received
-    IMC::EstimatedState m_estate;
-
     struct Task: public DUNE::Tasks::Periodic
     {
       //! Task arguments.
       Arguments m_args;
-            
+
+      //! Last estimated state
+      IMC::EstimatedState m_estate;
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
