@@ -53,6 +53,9 @@ namespace Control
       //! Last desired velocity
       IMC::DesiredVelocity m_dv;
 
+      //! Desired velocity receceived
+      bool m_initialized;
+
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
@@ -99,6 +102,7 @@ namespace Control
       void
       onResourceRelease(void)
       {
+        m_initialized = false;
         BasicUAVAutopilot::onResourceRelease();        
       }
 
@@ -110,13 +114,21 @@ namespace Control
              resolveEntity(dv->getSourceEntity()).c_str(),
              resolveSystemId(dv->getSource()));
 
+        debug("Got desired velocity: [%f,%f,%f]: ",dv->u,dv->v,dv->w);
         m_dv = *dv;
+
+        m_initialized = true;
       }
 
       void
       onEstimatedState(const double timestep, const IMC::EstimatedState* msg)
       {
           //calculate desired inertial force, input to coordinated control
+          
+          if (m_initialized)
+          {
+
+          }
       }
     };
   }
