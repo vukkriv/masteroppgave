@@ -37,7 +37,8 @@ namespace Control
     //! %Task arguments.
     struct Arguments
     {
-
+      double m_Delta_x;
+      double m_Delta_z;
     };
 
     //! Controllable loops.
@@ -53,12 +54,34 @@ namespace Control
       //! Last desired path received
       IMC::DesiredPath m_dp;
 
+      //! Last received start WP
+      Matrix WP_start;
+      //! Last received end WP
+      Matrix WP_end;
+      //! Course of current path
+      double m_alpha_k;
+      //! Pitch of current path
+      double m_theta_k;
+      //! Desired velocity along the path
+      double m_ud;
+      //! Desired path receceived
+      bool m_initialized;
+
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Control::BasicUAVAutopilot(name,ctx, c_controllable, c_required)
       {
+        param("Delta X", m_args.m_Delta_x)
+        .defaultValue("1.0")
+        .units(Units::Meter)
+        .description("Look-a-head distance LOS x-direction");
+
+        param("Delta Z", m_args.m_Delta_z)
+        .defaultValue("1.0")
+        .units(Units::Meter)
+        .description("Look-a-head distance LOS z-direction");
 
         // Bind incoming IMC messages
         bind<IMC::DesiredPath>(this);        
@@ -86,6 +109,7 @@ namespace Control
       void
       onResourceAcquisition(void)
       {
+        m_initialized = false;
         BasicUAVAutopilot::onResourceAcquisition();
       }
 
@@ -96,6 +120,13 @@ namespace Control
         BasicUAVAutopilot::onResourceInitialization();
       }
 
+      //! Release resources.
+      void
+      onResourceRelease(void)
+      {
+        BasicUAVAutopilot::onResourceRelease();
+      }      
+
       // consume desired path from NetCatchCoordinator
       void
       consume(const IMC::DesiredPath* dp)
@@ -104,19 +135,98 @@ namespace Control
              resolveEntity(dp->getSourceEntity()).c_str(),
              resolveSystemId(dp->getSource()));
 
+        //TODO: check somehow if this is sent from the NetCatchCoordinator 
         m_dp = *dp;
+        initDesiredPath(dp);
+        m_initialized = true;
+
+        //Testing
+        /*
+        if (m_initialized)
+        {
+          Matrix position = Matrix(3,1,0);
+          Matrix u = getDesiredVelocity(position);
+          sendDesiredVelocity(u);
+        } 
+        */       
       }
-      //! Release resources.
-      void
-      onResourceRelease(void)
+
+      void 
+      initDesiredPath(const IMC::DesiredPath* dp)
       {
-        BasicUAVAutopilot::onResourceRelease();
+        WP_start = Matrix(3,1,0);
+        WP_end   = Matrix(3,1,0);
+
+        Matrix deltaWP = WP_end - WP_start;
+        double deltaWP_NE = deltaWP.get(0,1,0,0).norm_2(); 
+        
+        m_alpha_k =  atan2(deltaWP(1),deltaWP(0));
+        m_theta_k = -atan2(deltaWP_NE,deltaWP(2)) + Angles::radians(90);
+        m_ud = dp->speed;
+        debug("m_alpha_k: %f",m_alpha_k);
+        debug("m_theta_k: %f",m_theta_k);        
+        debug("m_ud: %f",m_ud);        
+      }
+
+      Matrix
+      getPositionOfNet(const IMC::EstimatedState* msg)
+      {
+        Matrix pos(3,1,0);
+        pos(0)= msg->x;
+        pos(1)= msg->y;
+        pos(2)= msg->z;
+        return pos;
+      }
+
+      Matrix
+      getDesiredVelocity(Matrix position)
+      {
+        Matrix u_d_p(3,1,0);
+        u_d_p(0) = m_ud;
+
+        Matrix eps = transpose(Rzyx(0,-m_theta_k,m_alpha_k))*(position-WP_start);
+
+        double theta_d = 0;
+        double psi_d = 0;
+
+        Matrix u_d_n = Rzyx(0,-theta_d,psi_d)*u_d_p;
+
+        return u_d_n;
+      }
+
+      void 
+      sendDesiredVelocity(Matrix velocity)
+      {
+            IMC::DesiredVelocity d_vel;
+            d_vel.u = velocity(0);
+            d_vel.v = velocity(1);
+            d_vel.w = velocity(2);
+            debug("Dispatch desired velocity: [%f,%f,%f]: ",d_vel.u,d_vel.v,d_vel.w);
+            dispatch(d_vel);
       }
 
       void
       onEstimatedState(const double timestep, const IMC::EstimatedState* msg)
       {
           //calculate desired velocity to be dispatched to inner control loop
+          //assume IMC::EstimatedState* msg gives the state of the net?
+          // or should we calculate the net position here?
+
+          trace("Timestep: %f",timestep);
+          if (m_initialized)
+          {
+            Matrix position = getPositionOfNet(msg);
+            Matrix u = getDesiredVelocity(position);
+            sendDesiredVelocity(u);
+          }
+      }
+      //! @return  Rotation matrix.
+      Matrix Rzyx(double phi, double theta, double psi) const
+      {
+        double R_en_elements[] = {cos(psi)*cos(theta), (-sin(psi)*cos(phi))+(cos(psi)*sin(theta)*sin(psi)), (sin(psi)*sin(phi))+(cos(psi)*cos(phi)*sin(theta)) ,
+            sin(psi)*cos(theta), (cos(psi)*cos(phi))+(sin(phi)*sin(theta)*sin(psi)), (-cos(psi)*sin(phi))+(sin(theta)*sin(psi)*cos(phi)),
+            -sin(theta), cos(theta)*sin(phi), cos(theta)*cos(phi)};
+        return Matrix(R_en_elements,3,3);
       }
     };
   }
