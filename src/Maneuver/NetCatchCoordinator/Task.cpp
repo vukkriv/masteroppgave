@@ -190,8 +190,7 @@ namespace Maneuver
              resolveEntity(estate->getSourceEntity()).c_str(),
              resolveSystemId(estate->getSource()));
         
-        inf("Should use coordinated: %d",m_args.enable_coord);
-        inf("Target producer: %s",m_args.m_trg_prod.c_str());
+        debug("Target producer: %s",m_args.m_trg_prod.c_str());
         // Ignored if sent by self
         //if (estate->getSource() == getSystemId())
         //  return;
@@ -212,6 +211,10 @@ namespace Maneuver
         calcPathErrors(m_estate[s], s);          
         updateMeanValues(s);
         trace("Curr state: %d",static_cast<int>(m_curr_state));
+
+        // should be called only when waypoint/velocity update
+        sendDesiredPath(m_args.WP1,m_args.WP2, 1.1);
+
         switch(m_curr_state)
         {
           case INIT:
@@ -314,20 +317,20 @@ namespace Maneuver
 
           m_cross_track[s]    = eps.get(1,2,0,0); 
           m_cross_track_d[s]  = eps_dot.get(1,2,0,0); 
-          inf("Cross-track e_a:   [%f,%f]",m_cross_track[0](0),m_cross_track[0](1));
-          inf("Cross-track e_c1:  [%f,%f]",m_cross_track[1](0),m_cross_track[1](1));
-          inf("Cross-track_d e_a:   [%f,%f]",m_cross_track_d[0](0),m_cross_track_d[0](1));
-          inf("Cross-track_d e_c1:  [%f,%f]",m_cross_track_d[1](0),m_cross_track_d[1](1));
+          debug("Cross-track e_a:   [%f,%f]",m_cross_track[0](0),m_cross_track[0](1));
+          debug("Cross-track e_c1:  [%f,%f]",m_cross_track[1](0),m_cross_track[1](1));
+          debug("Cross-track_d e_a:   [%f,%f]",m_cross_track_d[0](0),m_cross_track_d[0](1));
+          debug("Cross-track_d e_c1:  [%f,%f]",m_cross_track_d[1](0),m_cross_track_d[1](1));
 
-          inf("Position in NED from '%d': [%f,%f,%f]",s,estate.x,estate.y,estate.z);
+          debug("Position in NED from '%d': [%f,%f,%f]",s,estate.x,estate.y,estate.z);
 
           Matrix delta_p_path = R*(m_p[1]-m_p[0]);
           Matrix delta_v_path = R*(m_v[1]-m_v[0]);
 
           delta_p_path_x = delta_p_path(0);
           delta_v_path_x = delta_v_path(0);
-          inf("delta_p_path_x = %f",delta_p_path_x);
-          inf("delta_v_path_x = %f",delta_v_path_x);
+          debug("delta_p_path_x = %f",delta_p_path_x);
+          debug("delta_v_path_x = %f",delta_v_path_x);
       }
 
       void
@@ -402,6 +405,23 @@ namespace Maneuver
         {
           m_curr_state = EN_CATCH;
         }
+      }
+
+      void
+      sendDesiredPath(Matrix WP_start, Matrix WP_end, double u_d)
+      {
+        IMC::DesiredPath dp;
+        dp.start_lat = WP_start(0);
+        dp.start_lon = WP_start(1);
+        dp.start_z   = WP_start(2);
+        
+        dp.end_lat = WP_end(0);
+        dp.end_lon = WP_end(1);
+        dp.end_z   = WP_end(2);
+
+        dp.speed = u_d;
+
+        dispatch(dp);
       }
 
       //! Main loop.
