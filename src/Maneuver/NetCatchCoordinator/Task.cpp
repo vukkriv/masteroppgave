@@ -52,9 +52,11 @@ namespace Maneuver
       //! Maximum cross-track error net
       Matrix eps_ct_n;
 
-      //! WP 1 Runway NED
+      //! NED origin
+      Matrix NED_origin;
+      //! WP 1 Runway llh
       Matrix WP1;
-      //! WP 2 Runway NED
+      //! WP 2 Runway llh
       Matrix WP2;
 
       //! Vehicle list
@@ -102,6 +104,11 @@ namespace Maneuver
       //! Pitch of runway
       double theta_runway;
 
+      //! Current WP NED
+      Matrix m_WP_curr;
+      //! Next WP NED
+      Matrix m_WP_next;
+
       //! Radius to start net-catch
       unsigned int m_startCatch_radius;
 
@@ -119,12 +126,17 @@ namespace Maneuver
         .defaultValue("test")
         .description("Producer to read from");
 
-        param("WP runway 1 NED", m_args.WP1)
+        param("NED origin", m_args.NED_origin)
+        .defaultValue("0.0, 0.0, 0.0")
+        .units(Units::Meter)
+        .description("Origin of NED in llh");
+
+        param("WP runway 1 llh", m_args.WP1)
         .defaultValue("0.0, 0.0, 0.0")
         .units(Units::Meter)
         .description("First WP of runway");
 
-        param("WP runway 2 NED", m_args.WP2)
+        param("WP runway 2 llh", m_args.WP2)
         .defaultValue("0.0, 0.0, 0.0")
         .units(Units::Meter)
         .description("Second WP of runway");
@@ -168,7 +180,7 @@ namespace Maneuver
       onResourceAcquisition(void)
       {
         initCoordinator();
-        initRunwayPath(m_args.WP1, m_args.WP2);
+        initRunwayPath(m_WP_curr, m_WP_next);
       }
 
       //! Initialize resources.
@@ -278,6 +290,20 @@ namespace Maneuver
           m_initialized[i] = false;
         }
 
+        m_WP_curr = Matrix(3,1,0);
+        m_WP_next = Matrix(3,1,0);
+
+        WGS84::displacement(m_args.NED_origin(0), m_args.NED_origin(1), 0,
+                    m_args.WP1(0), m_args.WP1(1), 0,
+                    &m_WP_curr(0), &m_WP_curr(1));
+        m_WP_curr(2) = m_args.WP1(2);
+
+        WGS84::displacement(m_args.NED_origin(0), m_args.NED_origin(1), 0,
+                            m_args.WP2(0), m_args.WP2(1), 0,
+                            &m_WP_next(0), &m_WP_next(1));
+        m_WP_next(2) = m_args.WP2(2);
+
+
         // TODO: calculate the desired net-catch radius
         m_startCatch_radius = 100;
         // For now: set the state directly to standby at runway
@@ -312,7 +338,7 @@ namespace Maneuver
           m_v[s] = v;
 
           Matrix R       = transpose(Rzyx(0.0, -theta_runway, alpha_runway));
-          Matrix eps     = R*(p-m_args.WP1); 
+          Matrix eps     = R*(p-m_WP_curr); 
           Matrix eps_dot = R*v;
 
           m_cross_track[s]    = eps.get(1,2,0,0); 
