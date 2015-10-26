@@ -53,6 +53,8 @@ namespace Control
 
       //! Last desired path received
       IMC::DesiredPath m_dp;
+      //! Last estimated state received
+      IMC::EstimatedState m_estate;
 
       //! Last received start WP
       Matrix WP_start;
@@ -85,6 +87,7 @@ namespace Control
 
         // Bind incoming IMC messages
         bind<IMC::DesiredPath>(this);        
+        bind<IMC::EstimatedState>(this);        
       }
 
       //! Update internal state with new parameter values.
@@ -127,6 +130,14 @@ namespace Control
         BasicUAVAutopilot::onResourceRelease();
       }      
 
+      void
+      consume(const IMC::EstimatedState* estate)
+      {
+        // Allow only EstimatedState from the same vehicle.
+        if (estate->getSource() != getSystemId())
+          return;
+        m_estate = *estate;
+      }
       // consume desired path from NetCatchCoordinator
       void
       consume(const IMC::DesiredPath* dp)
@@ -154,8 +165,20 @@ namespace Control
       void 
       initDesiredPath(const IMC::DesiredPath* dp)
       {
-        WP_start = Matrix(3,1,0);
-        WP_end   = Matrix(3,1,0);
+        WP_start = Matrix(3,1,0); //NED
+        WP_end   = Matrix(3,1,0); //NED
+
+        WGS84::displacement(m_estate.lat, m_estate.lon, 0,
+                    dp->start_lat, dp->start_lon, 0,
+                    &WP_start(0), &WP_start(1));
+        WP_start(2) = dp->start_z;
+
+        WGS84::displacement(m_estate.lat, m_estate.lon, 0,
+                            dp->end_lat, dp->end_lon, 0,
+                            &WP_end(0), &WP_end(1));
+        WP_end(2) = dp->end_z;
+
+
 
         Matrix deltaWP = WP_end - WP_start;
         double deltaWP_NE = deltaWP.get(0,1,0,0).norm_2(); 
