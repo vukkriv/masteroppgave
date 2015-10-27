@@ -27,17 +27,48 @@
 
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
-
+#include <DUNE/Control/DiscretePID.hpp>
 namespace Control
 {
   namespace NetCatchControl
   {
     using DUNE_NAMESPACES;
 
+    struct PID_Kp 
+    {
+      double x;
+      double y;
+      double z;
+    };
+
+    struct PID_Ki 
+    {
+      double x;
+      double y;
+      double z;
+    };
+
+    struct PID_Kd
+    {
+      double x;
+      double y;
+      double z;
+    };        
+
     //! %Task arguments.
     struct Arguments
     {
+      PID_Kp Kp;
+      PID_Ki Ki;
+      PID_Kd Kd;  
 
+      float m_maxVx;
+      float m_maxVy;
+      float m_maxVz;
+
+      float m_maxIntx;
+      float m_maxInty;
+      float m_maxIntz;
     };
 
     //! Controllable loops.
@@ -50,8 +81,20 @@ namespace Control
       //! Task arguments.
       Arguments m_args;
 
-      //! Last desired velocity
+      //! Last desired velocity received
       IMC::DesiredVelocity m_dv;
+
+      //! Last desired control sent
+      IMC::DesiredControl m_f;
+
+      //! Discrete velocity PID control x-direction
+      DiscretePID m_PID_vx;
+      
+      //! Discrete velocity PID control x-direction
+      DiscretePID m_PID_vy;
+
+      //! Discrete velocity PID control x-direction
+      DiscretePID m_PID_vz;
 
       //! Desired velocity receceived
       bool m_initialized;
@@ -62,6 +105,66 @@ namespace Control
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Control::BasicUAVAutopilot(name,ctx, c_controllable, c_required)
       {
+        param("Kp - X", m_args.Kp.x)
+        .defaultValue("1.0")
+        .description("PID Kp x");
+
+        param("Kp - Y", m_args.Kp.y)
+        .defaultValue("1.0")
+        .description("PID Kp y");
+
+        param("Kp - Z", m_args.Kp.z)
+        .defaultValue("1.0")
+        .description("PID Kp z");
+
+        param("Ki - X", m_args.Ki.x)
+        .defaultValue("1.0")
+        .description("PID Ki x");
+
+        param("Ki - Y", m_args.Ki.y)
+        .defaultValue("1.0")
+        .description("PID Ki y");
+
+        param("Ki - Z", m_args.Ki.z)
+        .defaultValue("1.0")
+        .description("PID Ki z");
+
+        param("Kd - X", m_args.Kd.x)
+        .defaultValue("1.0")
+        .description("PID Kd x");
+
+        param("Kd - Y", m_args.Kd.y)
+        .defaultValue("1.0")
+        .description("PID Kd y");
+
+        param("Kd - Z", m_args.Kd.z)
+        .defaultValue("1.0")
+        .description("PID Kd z");        
+
+        param("Max Vel X", m_args.m_maxVx)
+        .defaultValue("0.0")
+        .description("Maximum velocity x-direction");     
+
+        param("Max Vel Y", m_args.m_maxVy)
+        .defaultValue("0.0")
+        .description("Maximum velocity y-direction");     
+
+        param("Max Vel Z", m_args.m_maxVz)
+        .defaultValue("0.0")
+        .description("Maximum velocity z-direction");   
+
+        param("Max Integral X", m_args.m_maxIntx)
+        .defaultValue("0.0")
+        .description("Maximum integral x-direction");     
+
+        param("Max Integral Y", m_args.m_maxInty)
+        .defaultValue("0.0")
+        .description("Maximum integral y-direction");     
+
+        param("Max Integral Z", m_args.m_maxIntz)
+        .defaultValue("0.0")
+        .description("Maximum integral z-direction");            
+
         // Bind incoming IMC messages
         bind<IMC::DesiredVelocity>(this);                
       }
@@ -120,14 +223,39 @@ namespace Control
         m_initialized = true;
       }
 
+      void 
+      initialize()
+      {
+        m_PID_vx.setOutputLimits(0, m_args.m_maxVx);
+        m_PID_vy.setOutputLimits(0, m_args.m_maxVy);
+        m_PID_vz.setOutputLimits(0, m_args.m_maxVz);
+
+        m_PID_vx.setIntegralLimits(m_args.m_maxIntx);
+        m_PID_vy.setIntegralLimits(m_args.m_maxInty);
+        m_PID_vz.setIntegralLimits(m_args.m_maxIntz);
+
+        m_PID_vx.setProportionalGain(m_args.Kp.x);
+        m_PID_vy.setProportionalGain(m_args.Kp.y);
+        m_PID_vz.setProportionalGain(m_args.Kp.z);
+
+        m_PID_vx.setIntegralGain(m_args.Ki.x);
+        m_PID_vy.setIntegralGain(m_args.Ki.y);
+        m_PID_vz.setIntegralGain(m_args.Ki.z);
+
+        m_PID_vx.setDerivativeGain(m_args.Kd.x);
+        m_PID_vy.setDerivativeGain(m_args.Kd.y);
+        m_PID_vz.setDerivativeGain(m_args.Kd.z);
+      }
+
       void
       onEstimatedState(const double timestep, const IMC::EstimatedState* msg)
       {
           //calculate desired inertial force, input to coordinated control
-          
           if (m_initialized)
           {
-
+            m_f.x = m_PID_vx.step(timestep, m_dv.u - msg->vx);
+            m_f.y = m_PID_vy.step(timestep, m_dv.v - msg->vy);
+            m_f.z = m_PID_vz.step(timestep, m_dv.w - msg->vz);
           }
       }
     };
