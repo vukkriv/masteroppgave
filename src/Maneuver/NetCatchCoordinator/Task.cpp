@@ -58,6 +58,9 @@ namespace Maneuver
       Matrix WP1;
       //! WP 2 Runway llh
       Matrix WP2;
+      
+      //! Radius to stop at end of runway
+      unsigned int m_endCatch_radius;
 
       //! Vehicle list
       std::vector<std::string> m_vehicles;
@@ -108,15 +111,21 @@ namespace Maneuver
       Matrix m_WP_curr;
       //! Next WP NED
       Matrix m_WP_next;
+      //! Radius to change to next WP
+      unsigned int m_WP_radius;
+      //! Current WP
+      unsigned int m_WP;
 
-      //! Radius to start net-catch
+      //! Radius to start net-catch (calculate based on net-acceleration)
       unsigned int m_startCatch_radius;
+
 
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Task(name, ctx)
+        DUNE::Tasks::Task(name, ctx),
+        m_WP(0)
       {
         param("Coordinated Catch", m_args.enable_coord)
         .defaultValue("false")
@@ -152,6 +161,11 @@ namespace Maneuver
         .units(Units::Meter);
 
         param("Vehicles", m_args.m_vehicles);
+
+        param("Radius end-of runway", m_args.m_endCatch_radius)
+        .defaultValue("10.0")
+        .units(Units::Meter);
+
 
         // Bind incoming IMC messages
         bind<IMC::EstimatedState>(this);
@@ -223,6 +237,10 @@ namespace Maneuver
         calcPathErrors(m_estate[s], s);          
         updateMeanValues(s);
         trace("Curr state: %d",static_cast<int>(m_curr_state));
+
+
+        if (changeWP(m_p[s]))
+          m_WP += m_WP;
 
         // should be called only when waypoint/velocity update
         sendDesiredPath(m_args.WP1,m_args.WP2, 1.1);
@@ -306,6 +324,8 @@ namespace Maneuver
 
         // TODO: calculate the desired net-catch radius
         m_startCatch_radius = 100;
+        // TEMP: set current end WP as end of runway
+        m_WP_radius = m_args.m_endCatch_radius;
         // For now: set the state directly to standby at runway
         m_curr_state = INIT;
       }
@@ -396,6 +416,14 @@ namespace Maneuver
         }
       }
       
+      bool 
+      changeWP(Matrix currPos)
+      {
+        if ( (m_WP_next-currPos).norm_2() <= m_WP_radius*m_WP_radius )
+          return true;
+        return false;
+      }
+
       int
       getVehicle(std::string src_entity)
       {
