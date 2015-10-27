@@ -37,7 +37,7 @@ namespace Control
     //! %Task arguments.
     struct Arguments
     {
-      double m_Delta_x;
+      double m_Delta_y;
       double m_Delta_z;
     };
 
@@ -75,10 +75,10 @@ namespace Control
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Control::BasicUAVAutopilot(name,ctx, c_controllable, c_required)
       {
-        param("Delta X", m_args.m_Delta_x)
+        param("Delta X", m_args.m_Delta_y)
         .defaultValue("1.0")
         .units(Units::Meter)
-        .description("Look-a-head distance LOS x-direction");
+        .description("Look-a-head distance LOS y-direction");
 
         param("Delta Z", m_args.m_Delta_z)
         .defaultValue("1.0")
@@ -152,14 +152,14 @@ namespace Control
         m_initialized = true;
 
         //Testing
-        /*
+        /*       
         if (m_initialized)
         {
           Matrix position = Matrix(3,1,0);
           Matrix u = getDesiredVelocity(position);
           sendDesiredVelocity(u);
         } 
-        */       
+        */      
       }
 
       void 
@@ -209,8 +209,8 @@ namespace Control
 
         Matrix eps = transpose(Rzyx(0,-m_theta_k,m_alpha_k))*(position-WP_start);
 
-        double theta_d = 0;
-        double psi_d = 0;
+        double theta_d = m_theta_k + atan2(-eps(2),m_args.m_Delta_z);
+        double psi_d = m_alpha_k + atan2(-eps(1),m_args.m_Delta_y);
 
         Matrix u_d_n = Rzyx(0,-theta_d,psi_d)*u_d_p;
 
