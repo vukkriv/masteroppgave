@@ -75,7 +75,7 @@ namespace Control
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Control::BasicUAVAutopilot(name,ctx, c_controllable, c_required)
       {
-        param("Delta X", m_args.m_Delta_y)
+        param("Delta Y", m_args.m_Delta_y)
         .defaultValue("1.0")
         .units(Units::Meter)
         .description("Look-a-head distance LOS y-direction");
@@ -159,7 +159,7 @@ namespace Control
           Matrix u = getDesiredVelocity(position);
           sendDesiredVelocity(u);
         } 
-        */      
+        */       
       }
 
       void 
