@@ -66,7 +66,8 @@ namespace Maneuver
       double m_ud_impact;
       //! Desired time to accelerate to desired velocity of net at impact
       double m_td_acc;
-
+      //! Desired collision radius
+      double m_coll_r;
       //! Vehicle list
       std::vector<std::string> m_vehicles;
     };
@@ -175,12 +176,17 @@ namespace Maneuver
         .units(Units::Meter);
 
         param("Desired net-vel catch", m_args.m_ud_impact)
-        .defaultValue("10.0")
-        .units(Units::Meter);
+        .defaultValue("10.0");
 
         param("Desired acceleration time", m_args.m_td_acc)
         .defaultValue("10.0")
+        .units(Units::Second);
+
+        param("Desired collision radius", m_args.m_coll_r)
+        .defaultValue("100.0")
         .units(Units::Meter);
+
+
 
         // Bind incoming IMC messages
         bind<IMC::EstimatedState>(this);
@@ -277,6 +283,9 @@ namespace Maneuver
           }
           case STANDBY_RUNW:
           {
+            double v_a = 0;
+            double r_impact = 100;
+            m_startCatch_radius = updateStartRadius(v_a,0, m_args.m_ud_impact, m_args.m_td_acc, r_impact);
             checkPositionsAtRunway(); //requires that the net is standby at the start of the runway
             //test
             m_curr_state = EN_CATCH;
@@ -285,7 +294,7 @@ namespace Maneuver
           case EN_CATCH:
           {
             m_ud = getPathVelocity(0, m_args.m_ud_impact, m_args.m_td_acc, true);
-            //checkAbortCondition();    //requires that the net is along the runway
+            //checkAbortCondition();  
             break;
           }                            
           case END_RUNW:
@@ -339,9 +348,6 @@ namespace Maneuver
                             &m_WP_next(0), &m_WP_next(1));
         m_WP_next(2) = m_args.WP2(2);
 
-
-        // TODO: calculate the desired net-catch radius
-        m_startCatch_radius = updateStartRadius();
         // TEMP: set current end WP as end of runway
         m_WP_radius = m_args.m_endCatch_radius;
         // For now: set the state directly to standby at runway
@@ -497,11 +503,11 @@ namespace Maneuver
       }
 
       double 
-      getPathVelocity(double v0, double v_inf, double deltaT, bool active_ramp)
+      getPathVelocity(double v0, double v_ref, double deltaT, bool active_ramp)
       {
         static bool rampEnabled = false;
         static double startTime = -1;
-        static double deltaV = (v_inf-v0)/deltaT;
+        static double deltaV = (v_ref-v0)/deltaT;
         //when starting net-catch operation, this should be a ramp in velocity
         if (active_ramp)
             rampEnabled = true;
@@ -514,7 +520,7 @@ namespace Maneuver
           if (deltaTime < deltaT)
             vel = v0 + deltaV*deltaTime;
           else
-            vel = v_inf;
+            vel = v_ref;
         }
         else
         {
@@ -525,12 +531,21 @@ namespace Maneuver
       }
 
       double
-      updateStartRadius()
+      updateStartRadius(double v_a, double v0_n, double v_ref_n, double deltaT_n, double r_impact)
       {
         // calculate the radius which the net-catch maneuver should start, based on the mean velocity of the airplane
         // and the ramp reference velocity and max velocity
-        double r = 100;
-        return r;
+        double a_n = (v_ref_n-v0_n)/deltaT_n;
+        double r_n_delta_t = (std::pow(v_ref_n, 2),std::pow(v0_n, 2))/(2*a_n);
+        double Delta_r_impact = r_impact - r_n_delta_t;
+        
+        if (Delta_r_impact < 0)
+        {
+          err("Desired impact position should be at least %f m from the start of the runway",r_n_delta_t);
+          Delta_r_impact = 0;          
+        }
+        double r_start = abs(r_impact - v_a*(deltaT_n + Delta_r_impact/v_ref_n));
+        return r_start;
       }
       //! Main loop.
       void
