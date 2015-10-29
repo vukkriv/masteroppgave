@@ -29,6 +29,7 @@
 #include <DUNE/DUNE.hpp>
 
 #include <vector>
+#include <queue>
 
 namespace Maneuver
 {
@@ -85,6 +86,8 @@ namespace Maneuver
 
       //! Vehicles initialized
       std::vector<bool> m_initialized;
+      //! Task ready to receive messages
+      bool m_initializedCoord;
 
       //! Last Estimated State received
       std::vector<IMC::EstimatedState> m_estate;
@@ -96,9 +99,11 @@ namespace Maneuver
       
       //! Cross track errors
       std::vector<Matrix> m_cross_track;
+      std::vector<std::queue<Matrix> > m_cross_track_window;
       std::vector<Matrix> m_cross_track_mean;
       //! Cross track errors derivative
       std::vector<Matrix> m_cross_track_d;
+      std::vector<std::queue<Matrix> > m_cross_track_d_window;
       std::vector<Matrix> m_cross_track_d_mean;
 
       //! Position difference along path
@@ -134,7 +139,8 @@ namespace Maneuver
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Task(name, ctx),
         m_WP(0),
-        m_ud(0)
+        m_ud(0),
+        m_initializedCoord(false)
       {
         param("Coordinated Catch", m_args.enable_coord)
         .defaultValue("false")
@@ -233,6 +239,9 @@ namespace Maneuver
       void
       consume(const IMC::EstimatedState* estate)
       {
+        if (!m_initializedCoord)
+          return;
+
         trace("Got EstimatedState \nfrom '%s' at '%s'",
              resolveEntity(estate->getSourceEntity()).c_str(),
              resolveSystemId(estate->getSource()));
@@ -256,7 +265,6 @@ namespace Maneuver
         m_initialized[s] = true;
         m_estate[s]       = *estate;
         calcPathErrors(m_estate[s], s);          
-        updateMeanValues(s);
         trace("Curr state: %d",static_cast<int>(m_curr_state));
 
 
@@ -283,9 +291,10 @@ namespace Maneuver
           }
           case STANDBY_RUNW:
           {
+            updateMeanValues(s);
+
             double v_a = 0;
-            double r_impact = 100;
-            m_startCatch_radius = updateStartRadius(v_a,0, m_args.m_ud_impact, m_args.m_td_acc, r_impact);
+            m_startCatch_radius = updateStartRadius(v_a,0, m_args.m_ud_impact, m_args.m_td_acc, m_args.m_coll_r);
             checkPositionsAtRunway(); //requires that the net is standby at the start of the runway
             //test
             m_curr_state = EN_CATCH;
@@ -293,6 +302,7 @@ namespace Maneuver
           }
           case EN_CATCH:
           {
+            updateMeanValues(s);
             m_ud = getPathVelocity(0, m_args.m_ud_impact, m_args.m_td_acc, true);
             //checkAbortCondition();  
             break;
@@ -311,6 +321,9 @@ namespace Maneuver
       void
       initCoordinator()
       {
+        if (m_initializedCoord)
+          return;
+
         unsigned int no_vehicles = m_args.m_vehicles.size();
 
         debug("# Vehicles: %d",no_vehicles); 
@@ -319,10 +332,12 @@ namespace Maneuver
         m_p             = std::vector<Matrix>(no_vehicles);
         m_v             = std::vector<Matrix>(no_vehicles);
 
-        m_cross_track   = std::vector<Matrix>(no_vehicles);
-        m_cross_track_d = std::vector<Matrix>(no_vehicles);
+        m_cross_track          = std::vector<Matrix>(no_vehicles);
+        m_cross_track_d        = std::vector<Matrix>(no_vehicles);
         m_cross_track_mean   = std::vector<Matrix>(no_vehicles);
         m_cross_track_d_mean = std::vector<Matrix>(no_vehicles);
+        m_cross_track_window   = std::vector<std::queue<Matrix> >(no_vehicles);
+        m_cross_track_d_window = std::vector<std::queue<Matrix> >(no_vehicles);
         m_initialized = std::vector<bool>(no_vehicles);
 
         for (unsigned int i=0; i<no_vehicles; i++) {
@@ -332,9 +347,20 @@ namespace Maneuver
           m_cross_track_d[i] = Matrix(2,1,0);
           m_cross_track_mean[i]   = Matrix(2,1,0);
           m_cross_track_d_mean[i] = Matrix(2,1,0);
+          debug("m_cross_track[%d]: Rows: %d, Cols: %d",i,m_cross_track[i].rows(),m_cross_track[i].columns());
+          debug("m_cross_track_d[%d]: Rows: %d, Cols: %d",i,m_cross_track_d[i].rows(),m_cross_track_d[i].columns());
+          debug("m_cross_track_mean[%d]: Rows: %d, Cols: %d",i,m_cross_track_mean[i].rows(),m_cross_track_mean[i].columns());
+          debug("m_cross_track_d_mean[%d]: Rows: %d, Cols: %d",i,m_cross_track_d_mean[i].rows(),m_cross_track_d_mean[i].columns());
+
+          m_cross_track_window[i]   = std::queue<Matrix>();
+          m_cross_track_d_window[i] = std::queue<Matrix>();
+          for (unsigned int j=0; j < m_args.mean_ws; j++)
+          {
+            m_cross_track_window[i].push(Matrix(2,1,0));
+            m_cross_track_d_window[i].push(Matrix(2,1,0));
+          }
           m_initialized[i] = false;
         }
-
         m_WP_curr = Matrix(3,1,0);
         m_WP_next = Matrix(3,1,0);
 
@@ -352,6 +378,7 @@ namespace Maneuver
         m_WP_radius = m_args.m_endCatch_radius;
         // For now: set the state directly to standby at runway
         m_curr_state = INIT;
+        m_initializedCoord = true;
       }
 
       void
@@ -406,9 +433,42 @@ namespace Maneuver
       void
       updateMeanValues(int s)
       {
-        // should use a ring-buffer to calculate the mean value based on the last value in the buffer
-        m_cross_track_mean[s]   = m_cross_track[s];
-        m_cross_track_d_mean[s] = m_cross_track_d[s];
+        inf("Update mean values");
+        if (m_cross_track_window[s].size() == 0)
+        {
+          inf("Mean window queue empty");
+          return;
+        }
+        Matrix weightedAvg      = m_cross_track[s]/=m_args.mean_ws;
+        Matrix firstWeightedAvg = m_cross_track_window[s].front();
+
+        debug("weightedAvg: Rows: %d, Cols: %d",weightedAvg.rows(),weightedAvg.columns());
+        debug("firstWeightedAvg: Rows: %d, Cols: %d",firstWeightedAvg.rows(),firstWeightedAvg.columns());
+        debug("m_cross_track_mean[%d]: Rows: %d, Cols: %d",s,m_cross_track_mean[s].rows(),m_cross_track_mean[s].columns());
+        
+        debug("oldMean: [%f,%f]",m_cross_track_mean[s](0),m_cross_track_mean[s](1));
+        Matrix newMean = m_cross_track_mean[s] + weightedAvg - firstWeightedAvg;
+        debug("newMean: [%f,%f]",newMean(0),newMean(1));
+        m_cross_track_mean[s] = newMean;
+        m_cross_track_window[s].pop();
+        m_cross_track_window[s].push(weightedAvg);
+        if (m_cross_track_d_window[s].size() == 0)
+        {
+          inf("Mean window d queue empty");
+          return;
+        }
+
+        Matrix weightedAvg_d      = m_cross_track_d[s]/=m_args.mean_ws;
+        Matrix firstWeightedAvg_d = m_cross_track_d_window[s].front();
+        Matrix newMean_d = m_cross_track_d_mean[s] + weightedAvg_d - firstWeightedAvg_d;
+        m_cross_track_d_mean[s]   = newMean_d;
+        
+        
+        m_cross_track_d_window[s].pop();
+        m_cross_track_d_window[s].push(weightedAvg_d);
+
+        //m_cross_track_mean[s]   = m_cross_track[s];
+        //m_cross_track_d_mean[s] = m_cross_track_d[s];
         delta_p_path_x_mean = delta_p_path_x;
         delta_v_path_x_mean = delta_v_path_x;
       }
