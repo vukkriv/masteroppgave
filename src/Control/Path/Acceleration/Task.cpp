@@ -152,7 +152,8 @@ namespace Control
           A(9,9, 0.0),
           B(9,3, 0.0),
           x(9,1, 0.0),
-          a_out(3,1, 0.0)
+          a_out(3,1, 0.0),
+          prefilterState(3,1, 0.0)
       {
           /* Intentionally Empty */
       }
@@ -186,6 +187,7 @@ namespace Control
         Matrix B;
         Matrix x;
         Matrix a_out;
+        Matrix prefilterState;
       };
 
       class Reference
@@ -755,6 +757,11 @@ namespace Control
             m_refmodel.a_out(0) = 0.0;
             m_refmodel.a_out(1) = 0.0;
             m_refmodel.a_out(2) = 0.0;
+
+            m_refmodel.prefilterState(0) = m_refmodel.x(0);
+            m_refmodel.prefilterState(1) = m_refmodel.x(1);
+            m_refmodel.prefilterState(2) = m_refmodel.x(2);
+
             // Consider using last setpoint as acc startup
             if (Clock::get() - m_timestamp_prev_step < 2.0)
             {
@@ -877,11 +884,13 @@ namespace Control
           trace("x_d:\t [%1.2f, %1.2f, %1.2f]",
               x_d(0), x_d(1), x_d(2));
 
+          double T = 0.1;
+          m_refmodel.prefilterState += ts.delta * (-1/T*m_refmodel.prefilterState + 1/T*x_d);
 
           Matrix old_pos = m_refmodel.getPos();
           Matrix old_vel = m_refmodel.getVel();
           // Update reference
-          m_refmodel.x += ts.delta * (m_refmodel.A * m_refmodel.x + m_refmodel.B * x_d);
+          m_refmodel.x += ts.delta * (m_refmodel.A * m_refmodel.x + m_refmodel.B * m_refmodel.prefilterState);
 
           // Saturate reference velocity
           Matrix vel = m_refmodel.getVel();
