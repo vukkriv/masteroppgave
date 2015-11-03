@@ -875,8 +875,11 @@ namespace Control
           TrackingState::Coord targetPosition = ts.end;
 
           if (m_args.enable_hold_position)
+          {
             targetPosition = ts.start;
-
+            // Hack
+            targetPosition.z = -targetPosition.z;
+          }
           Matrix x_d = Matrix(3, 1, 0.0);
           x_d(0) = targetPosition.x;
           x_d(1) = targetPosition.y;
