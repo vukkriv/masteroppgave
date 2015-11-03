@@ -69,6 +69,13 @@ namespace Control
         int tau_d_extra_ms;
         double Gd_extra;
         bool reset_to_state;
+        bool enable_input_shaping;
+        bool enable_delayed_feedback;
+        bool enable_slung_control;
+        bool enable_hold_position;
+        bool enable_mass_division;
+        double ctrl_omega_b;
+        double ctrl_xi;
       };
 
       static const std::string c_parcel_names[] = {DTR_RT("PID"), DTR_RT("Beta-X"),
@@ -137,17 +144,114 @@ namespace Control
         LoadAngleHistoryContainer(LoadAngle angle_, double timestamp_): angle(angle_), timestamp(timestamp_) {};
       };
 
+      class ReferenceModel
+      {
+      public:
+
+        ReferenceModel():
+          A(9,9, 0.0),
+          B(9,3, 0.0),
+          x(9,1, 0.0)
+      {
+          /* Intentionally Empty */
+      }
+        Matrix
+        getPos(void) { return x.get(0,2, 0,0); }
+
+        Matrix
+        getVel(void) { return x.get(3,5, 0,0); }
+
+        Matrix
+        getAcc(void) { return x.get(6,8, 0,0); }
+
+        void
+        setPos(Matrix& pos) { x.put(0,0, pos); }
+
+        void
+        setVel(Matrix& vel) { x.put(3,0, vel); }
+
+        void
+        setAcc(Matrix& acc) { x.put(6,0, acc); }
+
+
+      public:
+        Matrix A;
+        Matrix B;
+        Matrix x;
+      };
+
+      class Reference
+      {
+      public:
+        Reference():
+          x(9,1, 0.0)
+        {
+
+        }
+
+        Matrix
+        getPos(void) const { return x.get(0,2, 0,0); }
+
+        Matrix
+        getVel(void) { return x.get(3,5, 0,0); }
+
+        Matrix
+        getAcc(void) { return x.get(6,8, 0,0); }
+
+        void
+        setPos(Matrix& pos) { x.put(0,0, pos); }
+
+        void
+        setVel(Matrix& vel) { x.put(3,0, vel); }
+
+        void
+        setAcc(Matrix& acc) { x.put(6,0, acc); }
+
+        void
+        setReference(Matrix& x_new) { x.put(0,0, x_new); }
+
+      public:
+
+        Matrix x;
+      };
+
+
+      class DelayedFeedbackState
+      {
+      public:
+
+        DelayedFeedbackState():
+          addPos(3,1, 0.0),
+          addVel(3,1, 0.0),
+          addAcc(3,1, 0.0)
+          {
+          /* Intentionally Empty */
+          }
+
+        Matrix addPos;
+        Matrix addVel;
+        Matrix addAcc;
+      };
+
+      class InputShapingFilterState
+      {
+      public:
+        InputShapingFilterState():
+          filteredRef(9, 1, 0.0)
+        {
+          /* Intentionally Empty */
+        }
+
+        Matrix filteredRef;
+      };
+
       struct Task: public DUNE::Control::PathController
       {
         IMC::DesiredControl m_desired_control;
         //! Task arguments.
         Arguments m_args;
-        //! Reference model state
-        Matrix m_refmodel_x;
-        //! Reference model trans.matrix
-        Matrix m_refmodel_A;
-        //! Reference model input matrix
-        Matrix m_refmodel_B;
+        //! Reference Model
+        ReferenceModel m_refmodel;
         //! Desired speed profile
         double m_desired_speed;
         //! Current autopilot mode
@@ -163,7 +267,7 @@ namespace Control
         //! Input shaper preferences
         InputFilterConfig m_input_cfg;
         //! Translational setpoint for logging
-        IMC::TranslationalSetpoint m_setpoint_log;
+        IMC::LinearSetpoint m_setpoint_log;
         //! Previous controller output
         Matrix m_prev_controller_output;
         //! Last Estimated State received
@@ -183,6 +287,12 @@ namespace Control
         //! AngleHistory
         deque<LoadAngleHistoryContainer> m_anglehistory;
         Matrix m_delayed_feedback_desired_pos;
+        //! Delayed Feedback State
+        DelayedFeedbackState m_delayed_feedback_state;
+        //! Shaping Filter State
+        InputShapingFilterState m_input_shaping_state;
+        //! The current reference
+        Reference m_reference;
 
 
 
@@ -221,25 +331,29 @@ namespace Control
           .description("Max acceleration of the vehicle");
 
           param("Reference Model - Max Speed", m_args.refmodel_max_speed)
-          .defaultValue("3.0")
+          .defaultValue("1.5")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Max speed of the reference model.");
 
           param("Reference Model - Max Acceleration", m_args.refmodel_max_acc)
           .defaultValue("1.5")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Max acceleration of the reference model.");
 
           param("Reference Model - Natural Frequency",m_args.refmodel_omega_n)
           .units(Units::RadianPerSecond)
-          .defaultValue("1")
+          .defaultValue("0.5")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Natural frequency for the speed reference model");
 
           param("Reference Model - Relative Damping", m_args.refmodel_xi)
           .units(Units::None)
           .defaultValue("0.9")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Relative Damping Factor of the speed reference model");
 
           param("Acceleration Controller - Kp", m_args.Kp)
@@ -271,7 +385,7 @@ namespace Control
           .description("Choose whether to disable heave flag. In turn, this will utilize new rate controller on some targets");
 
           param("Reset integrator on path activation", m_args.reset_integral_on_path_activation)
-          .defaultValue("true")
+          .defaultValue("false")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Choose whether to reset the integrator in a path activation. ");
@@ -282,7 +396,7 @@ namespace Control
           .description("Max integral value");
 
           param("Copter Mass", m_args.copter_mass_kg)
-          .defaultValue("2.3")
+          .defaultValue("2.5")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .units(Units::Kilogram)
           .description("Mass of the copter");
@@ -346,6 +460,46 @@ namespace Control
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Set to reset to state rather than previus ref_pos on change");
 
+          param("Enable Input Shaping", m_args.enable_input_shaping)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Enable or disable input shaping on reference signal");
+
+          param("Enable Delayed Feedback", m_args.enable_delayed_feedback)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Enable or disable delayed feedback for slung angle minimization");
+
+          param("Enable Slung Control", m_args.enable_slung_control)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Enable or disable slung control compensation");
+
+          param("Enable Hold Position", m_args.enable_hold_position)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Enable or disable hold current position functionality");
+
+          param("Enable Output Division By Mass", m_args.enable_mass_division)
+          .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Enable or disable division by copter mass in final output");
+
+          param("Acceleration Controller Bandwidth", m_args.ctrl_omega_b)
+          .defaultValue("0.7")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Controller bandwidth");
+
+          param("Acceleration Controller Relative Damping", m_args.ctrl_xi)
+          .defaultValue("1.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Controller damping");
 
 
           bind<IMC::EulerAngles>(this);
@@ -358,7 +512,7 @@ namespace Control
             m_coreolisMatrix[i] = 0.0;
           }
 
-          m_refmodel_x = Matrix(9, 1, 0.0);
+
         }
 
         void
@@ -394,6 +548,47 @@ namespace Control
           m_input_cfg.A2 = input_K/(1 + input_K);
           m_input_cfg.t1 = 0.0;
           m_input_cfg.t2 = Td/2;
+
+          // Controller variables
+          if (paramChanged(m_args.ctrl_omega_b) || paramChanged(m_args.ctrl_xi))
+          {
+            // Update controller parameters!
+            double ctrl_omega_n = m_args.ctrl_omega_b/0.64;
+
+            double vKp = m_args.copter_mass_kg * pow(ctrl_omega_n, 2);
+            double vKd = 2.0 * m_args.ctrl_xi * ctrl_omega_n * m_args.copter_mass_kg;
+            double vKi = (ctrl_omega_n / 10.0) * m_args.Kp;
+
+
+
+            IMC::EntityParameter Kp, Kd, Ki;
+            Kp.name = "Acceleration Controller - Kp";
+            Kd.name = "Acceleration Controller - Kd";
+            Ki.name = "Acceleration Controller - Ki";
+
+            char buffer[32];
+
+            snprintf(buffer, sizeof(buffer), "%g", vKp);
+            Kp.value = std::string(buffer);
+
+            snprintf(buffer, sizeof(buffer), "%g", vKd);
+            Kd.value = std::string(buffer);
+
+            snprintf(buffer, sizeof(buffer), "%g", vKi);
+            Ki.value = std::string(buffer);
+
+            MessageList<IMC::EntityParameter> msgList;
+            msgList.push_back(Kp);
+            msgList.push_back(Kd);
+            msgList.push_back(Ki);
+
+            IMC::SetEntityParameters toSet;
+            toSet.name = getEntityLabel();
+            toSet.params = msgList;
+
+            dispatch(toSet, DF_LOOP_BACK);
+
+          }
 
 
         }
@@ -536,25 +731,25 @@ namespace Control
           // Restart refmodel
           if (m_args.reset_to_state || Clock::get() - m_timestamp_prev_step > 2.0)
           {
-            m_refmodel_x = Matrix(9, 1, 0.0);
-            m_refmodel_x(0) = state.x;
-            m_refmodel_x(1) = state.y;
-            m_refmodel_x(2) = state.z;
+            m_refmodel.x = Matrix(9, 1, 0.0);
+            m_refmodel.x(0) = state.x;
+            m_refmodel.x(1) = state.y;
+            m_refmodel.x(2) = state.z;
 
-            m_refmodel_x(3) = state.vx;
-            m_refmodel_x(4) = state.vy;
-            m_refmodel_x(5) = state.vz;
+            m_refmodel.x(3) = state.vx;
+            m_refmodel.x(4) = state.vy;
+            m_refmodel.x(5) = state.vz;
 
-            m_refmodel_x(6) = 0.0;
-            m_refmodel_x(7) = 0.0;
-            m_refmodel_x(8) = 0.0;
+            m_refmodel.x(6) = 0.0;
+            m_refmodel.x(7) = 0.0;
+            m_refmodel.x(8) = 0.0;
 
             // Consider using last setpoint as acc startup
             if (Clock::get() - m_timestamp_prev_step < 2.0)
             {
-              m_refmodel_x(6) = m_prev_controller_output(0);
-              m_refmodel_x(7) = m_prev_controller_output(1);
-              m_refmodel_x(8) = m_prev_controller_output(2);
+              m_refmodel.x(6) = m_prev_controller_output(0);
+              m_refmodel.x(7) = m_prev_controller_output(1);
+              m_refmodel.x(8) = m_prev_controller_output(2);
             }
           }
 
@@ -580,9 +775,9 @@ namespace Control
           Matrix A_2 = A_21.horzCat(A_22.horzCat(A_23));
           Matrix A_3 = A_31.horzCat(A_32.horzCat(A_33));
 
-          m_refmodel_A = A_1.vertCat(A_2.vertCat(A_3));
+          m_refmodel.A = A_1.vertCat(A_2.vertCat(A_3));
 
-          m_refmodel_B = Matrix(6,3, 0.0).vertCat(eye) * pow(m_args.refmodel_omega_n,3);
+          m_refmodel.B = Matrix(6,3, 0.0).vertCat(eye) * pow(m_args.refmodel_omega_n,3);
 
         }
 
@@ -650,59 +845,34 @@ namespace Control
 
         }
 
-        // Helpers
-        Matrix
-        getRefPos(void)
-        {
-          return m_refmodel_x.get(0,2, 0,0);
-        }
-        Matrix
-        getRefVel(void)
-        {
-          return m_refmodel_x.get(3,5, 0,0);
-        }
-        Matrix
-        getRefAcc(void)
-        {
-          return m_refmodel_x.get(6,8, 0,0);
-        }
 
-        void
-        setRefPos(Matrix& pos)
-        {
-          m_refmodel_x.put(0,0,pos);
-        }
-        void
-        setRefVel(Matrix& vel)
-        {
-          m_refmodel_x.put(3,0,vel);
-        }
-        void
-        setRefAcc(Matrix& acc)
-        {
-          m_refmodel_x.put(6,0,acc);
-        }
 
         void
         stepRefModel(const IMC::EstimatedState& state, const TrackingState& ts)
         {
           (void) state;
 
+
           // Get target position
+          TrackingState::Coord targetPosition = ts.end;
+
+          if (m_args.enable_hold_position)
+            targetPosition = ts.start;
+
           Matrix x_d = Matrix(3, 1, 0.0);
-          x_d(0) = ts.end.x;
-          x_d(1) = ts.end.y;
-          x_d(2) = -ts.end.z - state.height; // z is received as height. For copters, state.height will usually be zero.
+          x_d(0) = targetPosition.x;
+          x_d(1) = targetPosition.y;
+          x_d(2) = -targetPosition.z - state.height; // z is received as height. For copters, state.height will usually be zero.
           trace("x_d:\t [%1.2f, %1.2f, %1.2f]",
               x_d(0), x_d(1), x_d(2));
 
 
           // Update reference
-          m_refmodel_x += ts.delta * (m_refmodel_A * m_refmodel_x + m_refmodel_B * x_d);
+          m_refmodel.x += ts.delta * (m_refmodel.A * m_refmodel.x + m_refmodel.B * x_d);
 
           // Saturate reference velocity
-          Matrix vel = getRefVel();
-          Matrix acc = getRefAcc();
+          Matrix vel = m_refmodel.getVel();
+          Matrix acc = m_refmodel.getAcc();
 
           // Set heave to 0 if not controlling altitude
           if (!m_args.use_altitude)
@@ -715,28 +885,198 @@ namespace Control
           if (vel.norm_2() > m_args.refmodel_max_speed)
           {
             vel = m_args.refmodel_max_speed * vel / vel.norm_2();
-            setRefVel(vel);
+            m_refmodel.setVel(vel);
           }
 
           if (acc.norm_2() > m_args.refmodel_max_acc)
           {
             acc = m_args.refmodel_max_acc * acc / acc.norm_2();
-            setRefAcc(acc);
+            m_refmodel.setAcc(acc);
           }
 
 
-          m_setpoint_log.x = m_refmodel_x(0);
-          m_setpoint_log.y = m_refmodel_x(1);
-          m_setpoint_log.z = m_refmodel_x(2);
-          m_setpoint_log.u = m_refmodel_x(3);
-          m_setpoint_log.v = m_refmodel_x(4);
-          m_setpoint_log.w = m_refmodel_x(5);
+          m_setpoint_log.x = m_refmodel.x(0);
+          m_setpoint_log.y = m_refmodel.x(1);
+          m_setpoint_log.z = m_refmodel.x(2);
+          m_setpoint_log.vx = m_refmodel.x(3);
+          m_setpoint_log.vy = m_refmodel.x(4);
+          m_setpoint_log.vz = m_refmodel.x(5);
+          m_setpoint_log.ax = m_refmodel.x(6);
+          m_setpoint_log.ay = m_refmodel.x(7);
+          m_setpoint_log.az = m_refmodel.x(8);
 
           // Print reference pos and vel
           trace("x_r:\t [%1.2f, %1.2f, %1.2f]",
-              m_refmodel_x(0), m_refmodel_x(1), m_refmodel_x(2));
+              m_refmodel.x(0), m_refmodel.x(1), m_refmodel.x(2));
           trace("v_r:\t [%1.2f, %1.2f, %1.2f]",
-              m_refmodel_x(3), m_refmodel_x(4), m_refmodel_x(5));
+              m_refmodel.x(3), m_refmodel.x(4), m_refmodel.x(5));
+        }
+
+        void
+        updateDelayedFeedbackState(double now)
+        {
+          // This function uses the angle-history to update the current additions to the reference signal
+
+          // To be able to continiously update the parameters, they are re-calculated each step.
+          double pd =  0.001;
+          double omega_n = std::sqrt(Math::c_gravity/m_args.suspended_rope_length);
+          double xi = pd/(2*omega_n*(m_args.suspended_load_mass_g/1000.0));
+          double omega_d = omega_n*std::sqrt(1 - std::pow(xi,2));
+          double Td = 2*Math::c_pi/omega_d;
+          double tau_d = 0.325*Td + m_args.tau_d_extra_ms / 1000.0;
+          double Gd    = 0.325 * m_args.Gd_extra;
+
+          double pL = m_args.suspended_rope_length;
+
+          debug("Angle history size: %lu", m_anglehistory.size());
+
+
+
+
+          // check if we have angles far enough back
+          while ( m_anglehistory.size() >=1 && now - m_anglehistory.front().timestamp >= tau_d)
+          {
+
+            LoadAngle oldAngle = m_anglehistory.front().angle;
+
+
+            m_delayed_feedback_state.addPos(0)     =  sin(oldAngle.theta);
+            m_delayed_feedback_state.addPos(1)     = -sin(oldAngle.phi);
+
+
+            m_delayed_feedback_state.addVel(0)     =  cos(oldAngle.theta) * oldAngle.dtheta;
+            m_delayed_feedback_state.addVel(1)     = -cos(oldAngle.phi)   * oldAngle.dphi;
+
+
+            m_delayed_feedback_state.addAcc(0)     = -sin(oldAngle.theta) * oldAngle.dtheta;
+            m_delayed_feedback_state.addAcc(1)     =  sin(oldAngle.phi)   * oldAngle.dphi;
+
+            m_delayed_feedback_state.addPos = Gd*pL*m_delayed_feedback_state.addPos;
+            m_delayed_feedback_state.addVel = Gd*pL*m_delayed_feedback_state.addVel;
+            m_delayed_feedback_state.addAcc = Gd*pL*m_delayed_feedback_state.addAcc;
+
+
+            trace("Delayed: Calculating");
+
+            // if the next one is also valid, it is ok to delete this one. And we continue the loop
+            if ( m_anglehistory.size() >= 2 && (now - m_anglehistory.at(1).timestamp >= tau_d))
+            {
+              m_anglehistory.pop_front();
+            }
+            else
+              break;
+
+
+
+
+          }
+
+          // log
+          m_parcels[PC_DELAYED_X].p = m_delayed_feedback_state.addPos(0);
+          m_parcels[PC_DELAYED_X].d = m_delayed_feedback_state.addVel(0);
+          m_parcels[PC_DELAYED_X].i = m_delayed_feedback_state.addAcc(0);
+
+          m_parcels[PC_DELAYED_Y].p = m_delayed_feedback_state.addPos(1);
+          m_parcels[PC_DELAYED_Y].d = m_delayed_feedback_state.addVel(1);
+          m_parcels[PC_DELAYED_Y].i = m_delayed_feedback_state.addAcc(1);
+
+          dispatch(m_parcels[PC_DELAYED_X]);
+          dispatch(m_parcels[PC_DELAYED_Y]);
+
+        }
+
+        void
+        clearDelayedFeedbackState()
+        {
+          // Nop for now
+        }
+
+        void
+        updateInputShapingState(double now)
+        {
+          // Store current history
+          m_refhistory.push(ReferenceHistoryContainer(m_refmodel.x, now));
+
+          Matrix t2Ref = Matrix(9, 1, 0.0);
+          Matrix new_ref = Matrix(9, 1, 0.0);
+          // Peek first, to see if we have one far enough back in time
+          if (now - m_refhistory.front().timestamp >= m_input_cfg.t2)
+          {
+            t2Ref = m_refhistory.front().state;
+            m_refhistory.pop();
+
+            new_ref = m_refmodel.x * m_input_cfg.A1 + t2Ref * m_input_cfg.A2;
+          }
+          else
+          {
+            // Use only the first refmodel
+            new_ref = m_refhistory.front().state;
+          }
+
+          m_input_shaping_state.filteredRef = new_ref;
+        }
+
+        void
+        clearInputShapingState()
+        {
+          // Nop for now
+        }
+
+        void
+        updateReference(const IMC::EstimatedState& state, const TrackingState& ts, double now)
+        {
+          // Updates the reference model, and checks which modules are enabled.
+
+          stepRefModel(state, ts);
+
+          // Set reference from reference model
+          m_reference.setReference(m_refmodel.x);
+
+
+          if (m_args.enable_input_shaping)
+          {
+            // Update input shaping
+            updateInputShapingState(now);
+
+            m_reference.setReference(m_input_shaping_state.filteredRef);
+          }
+
+          if (m_args.enable_delayed_feedback)
+          {
+            // Update delayed feedback state
+            updateDelayedFeedbackState(now);
+
+            // Add new states
+            Matrix newPos = m_reference.getPos() + m_delayed_feedback_state.addPos;
+            Matrix newVel = m_reference.getVel() + m_delayed_feedback_state.addVel;
+            Matrix newAcc = m_reference.getAcc() + m_delayed_feedback_state.addAcc;
+            m_reference.setPos(newPos);
+            m_reference.setVel(newVel);
+            m_reference.setAcc(newAcc);
+
+
+          }
+
+          // Log
+          m_setpoint_log.x = m_reference.x(0);
+          m_setpoint_log.y = m_reference.x(1);
+          m_setpoint_log.z = m_reference.x(2);
+          m_setpoint_log.vx = m_reference.x(3);
+          m_setpoint_log.vy = m_reference.x(4);
+          m_setpoint_log.vz = m_reference.x(5);
+          m_setpoint_log.ax = m_reference.x(6);
+          m_setpoint_log.ay = m_reference.x(7);
+          m_setpoint_log.az = m_reference.x(8);
+
+          dispatch(m_setpoint_log);
+        }
+
+        void
+        clearReferenceStates()
+        {
+          // Resets the reference states
+          clearDelayedFeedbackState();
+          clearInputShapingState();
         }
 
         void
@@ -762,26 +1102,166 @@ namespace Control
           curVel(1) = state.vy;
           curVel(2) = state.vz;
 
-          // Step the internal reference model
-          stepRefModel(state, ts);
+          // Update reference mechanism
+          updateReference(state, ts, now);
 
           // Prepare main controller container
           Matrix desiredAcc = Matrix(3,1, 0.0);
 
-          // stuff for delayed controller
-          Matrix addPos = Matrix(3,1, 0.0);
-          Matrix addVel = Matrix(3,1, 0.0);
-          Matrix addAcc = Matrix(3,1, 0.0);
+          // Main PID controller part
+          // Define error signals
+          Matrix error_p = m_reference.getPos() - curPos;
+          Matrix error_d = m_reference.getVel() - curVel;
+          Matrix refAcc  = m_reference.getAcc();
 
+          // Integral effect
+          m_integrator_value += ts.delta * error_p;
+          // Negate altitude
+          if (!m_args.use_altitude)
+            m_integrator_value(2) = 0.0;
+
+          // Constrain
+          if (m_integrator_value.norm_2() > m_args.max_integral)
+            m_integrator_value = m_args.max_integral * m_integrator_value / m_integrator_value.norm_2();
+
+          desiredAcc = refAcc + m_args.Kd * error_d + m_args.Kp * error_p + m_args.Ki * m_integrator_value;
+
+
+
+          // Dispatch debug parcels
+          IMC::ControlParcel parcel = m_parcels[PC_PID];
+          Matrix parcel_p = m_args.Kp * error_p;
+          Matrix parcel_d = m_args.Kd * error_d;
+          Matrix parcel_i = m_args.Ki * m_integrator_value;
+
+          if (!m_args.use_altitude)
+          {
+            parcel_p(2) = 0.0;
+            parcel_d(2) = 0.0;
+            parcel_i(2) = 0.0;
+          }
+
+          parcel.p = parcel_p.norm_2();
+          parcel.d = parcel_d.norm_2();
+          parcel.i = parcel_i.norm_2();
+
+          // Dispatch normed parcel
+          dispatch(parcel);
+
+          // Dispatch individual parcels
+          for (int i = 0; i < 3; i++)
+          {
+            m_parcels[PC_PID_X + i].p = parcel_p(i);
+            m_parcels[PC_PID_X + i].d = parcel_d(i);
+            m_parcels[PC_PID_X + i].i = parcel_i(i);
+            dispatch(m_parcels[PC_PID_X + i]);
+          }
+
+          if (m_args.enable_slung_control )
+          {
+            Matrix beta = Matrix(3, 1, 0.0);
+            Matrix dalpha_45 = Matrix(2, 1, 0.0);
+
+            double k2 = m_args.ks[1];
+            double k1 = m_args.ks[0];
+            double pd = m_args.pd;
+            try{
+              Matrix dTheta = Matrix(2,1, 0.0);
+              dTheta(0) = m_loadAngle.dphi;
+              dTheta(1) = m_loadAngle.dtheta;
+
+
+              dalpha_45 = -pd *m_alpha_45 - C22()*m_alpha_45 -G2() + k2 * (dTheta - m_alpha_45) - M21() *( refAcc - k1*(error_d));
+              dalpha_45 = M22_inv() * dalpha_45;
+
+
+            }
+            catch(...)
+            {
+              // don't do anything.
+              war("Error when calculating dalpha_45");
+            }
+
+            // Add to normal output
+            beta = C12() * m_alpha_45 + M12() * dalpha_45;
+
+            // Store for logs
+            for (int i = 0; i < 3; i++)
+            {
+              m_parcels[PC_BETA_X + i].p = beta(i);
+              m_parcels[PC_BETA_X + i].d = desiredAcc(i);
+              m_parcels[PC_BETA_X + i].i = m_args.Ki*m_integrator_value(i);
+              dispatch(m_parcels[PC_BETA_X + i]);
+            }
+
+            desiredAcc = desiredAcc + m_args.ks[2] * beta;
+
+            // integrate
+            // and store
+            m_parcels[PC_ALPHA45_PHI].p = m_alpha_45(0);
+            m_parcels[PC_ALPHA45_PHI].d = dalpha_45(0);
+
+            m_parcels[PC_ALPHA45_THETA].p = m_alpha_45(1);
+            m_parcels[PC_ALPHA45_THETA].d = dalpha_45(1);
+
+            m_alpha_45 = m_alpha_45 + ts.delta * dalpha_45;
+
+            dispatch(m_parcels[PC_ALPHA45_PHI]);
+            dispatch(m_parcels[PC_ALPHA45_THETA]);
+          }
+
+          // Divide by mass
+          if (m_args.enable_mass_division)
+            desiredAcc = desiredAcc / m_args.copter_mass_kg;
+
+
+          // Set heave to 0 if not controlling altitude
+          if (!m_args.use_altitude)
+          {
+            desiredAcc(2) = 0;
+          }
+
+          // Saturate acceleration
+          if( desiredAcc.norm_2() > m_args.max_acc )
+          {
+            desiredAcc = m_args.max_acc * desiredAcc / desiredAcc.norm_2();
+          }
+
+          // store
+          m_prev_controller_output = desiredAcc;
+
+          m_desired_control.x = desiredAcc(0);
+          m_desired_control.y = desiredAcc(1);
+          m_desired_control.z = desiredAcc(2);
+
+
+          m_desired_control.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y | IMC::DesiredControl::FL_Z;
+
+          if(m_args.disable_heave || !m_args.use_altitude)
+            m_desired_control.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y;
+
+
+          dispatch(m_desired_control);
+
+          // Dispatch linear setpoint for logging
+          dispatch(m_setpoint_log);
+
+
+          spew("Sent acc data.");
+
+          // Update step-time
+          m_timestamp_prev_step = Clock::get();
+
+
+
+
+/*
           //if (m_controllerType == CT_PID || m_controllerType == CT_PID_INPUT || )
           // always run baseline PID controller for now.
           if (true)
           {
 
-            // Define error signals
-            Matrix error_p = getRefPos() - curPos;
-            Matrix error_d = getRefVel() - curVel;
-            Matrix refAcc  = getRefAcc();
+
 
             // if using delayed, we are staying put and using sstart coordinates
             if (m_args.activate_delayed_feedback)
@@ -864,9 +1344,9 @@ namespace Control
               m_setpoint_log.x = newPosRef(0);
               m_setpoint_log.y = newPosRef(1);
               m_setpoint_log.z = newPosRef(2);
-              m_setpoint_log.u = addVel(0);
-              m_setpoint_log.v = addVel(1);
-              m_setpoint_log.w = addVel(2);
+              m_setpoint_log.vx = addVel(0);
+              m_setpoint_log.vy = addVel(1);
+              m_setpoint_log.vz = addVel(2);
 
               dispatch(m_parcels[PC_DELAYED_X]);
               dispatch(m_parcels[PC_DELAYED_Y]);
@@ -877,7 +1357,7 @@ namespace Control
             {
 
               // Store current history
-              m_refhistory.push(ReferenceHistoryContainer(m_refmodel_x, now));
+              m_refhistory.push(ReferenceHistoryContainer(m_refmodel.x, now));
 
               Matrix t2Ref = Matrix(9, 1, 0.0);
               Matrix new_ref = Matrix(9, 1, 0.0);
@@ -887,7 +1367,7 @@ namespace Control
                 t2Ref = m_refhistory.front().state;
                 m_refhistory.pop();
 
-                new_ref = m_refmodel_x * m_input_cfg.A1 + t2Ref * m_input_cfg.A2;
+                new_ref = m_refmodel.x * m_input_cfg.A1 + t2Ref * m_input_cfg.A2;
               }
               else
               {
@@ -898,16 +1378,16 @@ namespace Control
               // Calculate new reference state
 
               // Actually disable input-shaping
-              new_ref = m_refmodel_x;
+              new_ref = m_refmodel.x;
 
 
               // New setpoint for logging
               m_setpoint_log.x = new_ref(0) + addPos(0);
               m_setpoint_log.y = new_ref(1) + addPos(1);
               m_setpoint_log.z = new_ref(2) + addPos(2);
-              m_setpoint_log.u = new_ref(3) + addVel(0);
-              m_setpoint_log.v = new_ref(4) + addVel(1);
-              m_setpoint_log.w = new_ref(5) + addVel(2);
+              m_setpoint_log.vx = new_ref(3) + addVel(0);
+              m_setpoint_log.vy = new_ref(4) + addVel(1);
+              m_setpoint_log.vz = new_ref(5) + addVel(2);
 
               // Calculate new error states
               error_p = new_ref.get(0,2, 0,0) - curPos + addPos;
@@ -916,142 +1396,17 @@ namespace Control
 
             }
 
-            // Integral effect
-            m_integrator_value += ts.delta * error_p;
-            // Negate altitude
-            if (!m_args.use_altitude)
-              m_integrator_value(2) = 0.0;
-
-            // Constrain
-            if (m_integrator_value.norm_2() > m_args.max_integral)
-              m_integrator_value = m_args.max_integral * m_integrator_value / m_integrator_value.norm_2();
-
-            desiredAcc = refAcc + m_args.Kd * error_d + m_args.Kp * error_p + m_args.Ki * m_integrator_value;
-
-
-
-            // Dispatch debug parcels
-            IMC::ControlParcel parcel = m_parcels[PC_PID];
-            Matrix parcel_p = m_args.Kp * error_p;
-            Matrix parcel_d = m_args.Kd * error_d;
-            Matrix parcel_i = m_args.Ki * m_integrator_value;
-
-            if (!m_args.use_altitude)
-            {
-              parcel_p(2) = 0.0;
-              parcel_d(2) = 0.0;
-              parcel_i(2) = 0.0;
-            }
-
-            parcel.p = parcel_p.norm_2();
-            parcel.d = parcel_d.norm_2();
-            parcel.i = parcel_i.norm_2();
-
-            dispatch(parcel);
-
-            for (int i = 0; i < 3; i++)
-            {
-              m_parcels[PC_PID_X + i].p = parcel_p(i);
-              m_parcels[PC_PID_X + i].d = parcel_d(i);
-              m_parcels[PC_PID_X + i].i = parcel_i(i);
-              dispatch(m_parcels[PC_PID_X + i]);
-            }
 
           }
 
           if(m_controllerType == CT_SUSPENDED || m_controllerType == CT_SUSPENDED_INPUT)
           {
-            Matrix beta = Matrix(3, 1, 0.0);
-            Matrix dalpha_45 = Matrix(2, 1, 0.0);
 
-            double k2 = m_args.ks[1];
-            double k1 = m_args.ks[0];
-            double pd = m_args.pd;
-            try{
-              Matrix dTheta = Matrix(2,1, 0.0);
-              dTheta(0) = m_loadAngle.dphi;
-              dTheta(1) = m_loadAngle.dtheta;
-              Matrix refAcc = getRefAcc();
-              Matrix error_d = getRefVel() - curVel;
-
-              dalpha_45 = -pd *m_alpha_45 - C22()*m_alpha_45 -G2() + k2 * (dTheta - m_alpha_45) - M21() *( refAcc - k1*(error_d));
-              dalpha_45 = M22_inv() * dalpha_45;
-
-
-            }
-            catch(...)
-            {
-              // don't do anything.
-              war("Error when calculating dalpha_45");
-            }
-
-            // Add to normal output
-            beta = C12() * m_alpha_45 + M12() * dalpha_45;
-
-            // Store for logs
-            for (int i = 0; i < 3; i++)
-            {
-              m_parcels[PC_BETA_X + i].p = beta(i);
-              m_parcels[PC_BETA_X + i].d = desiredAcc(i);
-              m_parcels[PC_BETA_X + i].i = m_args.Ki*m_integrator_value(i);
-              dispatch(m_parcels[PC_BETA_X + i]);
-            }
-
-            desiredAcc = desiredAcc + m_args.ks[2] * beta;
-
-            // integrate
-            // and store
-            m_parcels[PC_ALPHA45_PHI].p = m_alpha_45(0);
-            m_parcels[PC_ALPHA45_PHI].d = dalpha_45(0);
-
-            m_parcels[PC_ALPHA45_THETA].p = m_alpha_45(1);
-            m_parcels[PC_ALPHA45_THETA].d = dalpha_45(1);
-
-            m_alpha_45 = m_alpha_45 + ts.delta * dalpha_45;
-
-            dispatch(m_parcels[PC_ALPHA45_PHI]);
-            dispatch(m_parcels[PC_ALPHA45_THETA]);
           }
+  */
 
 
 
-          // Set heave to 0 if not controlling altitude
-          if (!m_args.use_altitude)
-          {
-            desiredAcc(2) = 0;
-          }
-
-          // Saturate acceleration
-          if( desiredAcc.norm_2() > m_args.max_acc )
-          {
-            desiredAcc = m_args.max_acc * desiredAcc / desiredAcc.norm_2();
-          }
-
-          // store
-          m_prev_controller_output = desiredAcc;
-
-          m_desired_control.x = desiredAcc(0);
-          m_desired_control.y = desiredAcc(1);
-          m_desired_control.z = desiredAcc(2);
-
-
-          m_desired_control.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y | IMC::DesiredControl::FL_Z;
-
-          if(m_args.disable_heave || !m_args.use_altitude)
-            m_desired_control.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y;
-
-
-          dispatch(m_desired_control);
-
-          // Dispatch linear setpoint for logging
-
-          dispatch(m_setpoint_log);
-
-
-          spew("Sent acc data.");
-
-          // Update step-time
-          m_timestamp_prev_step = Clock::get();
         }
         Matrix MassMatrix()
         {
