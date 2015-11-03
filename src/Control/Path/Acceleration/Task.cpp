@@ -1279,6 +1279,27 @@ namespace Control
             m_desired_control.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y;
 
 
+          // Hack test the transient of arducopter
+          Matrix newDesiredAcc = Matrix(3, 1, 0.0);
+
+          for (int i = 0; i < 1; ++i)
+          {
+            newDesiredAcc(i) = 1*copysign(1.0, -state.x + ts.end.x) + state.vx*9.81/15;
+          }
+          m_desired_control.x = desiredAcc(0)+ state.vx*9.81/15;
+          m_desired_control.y = desiredAcc(1)+ state.vy*9.81/15;
+          m_desired_control.z = desiredAcc(2)+ state.vz*9.81/15;
+
+          desiredAcc(0)+= state.vx*9.81/15;
+          desiredAcc(1)+= state.vy*9.81/15;
+          desiredAcc(2)+= state.vz*9.81/15;
+
+          m_desired_control.x = desiredAcc(0);
+          m_desired_control.y = desiredAcc(1);
+          m_desired_control.z = desiredAcc(2);
+
+          m_prev_controller_output = desiredAcc;
+
           dispatch(m_desired_control);
 
           // Dispatch linear setpoint for logging
