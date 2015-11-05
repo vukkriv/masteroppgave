@@ -269,6 +269,7 @@ namespace Maneuver
         m_initialized[s] = true;
         m_estate[s]       = *estate;
         calcPathErrors(m_estate[s], s);          
+        updateMeanValues(s);
         trace("Curr state: %d",static_cast<int>(m_curr_state));
 
 
@@ -298,7 +299,8 @@ namespace Maneuver
             updateMeanValues(s);
 
             double v_a = 0;
-            m_startCatch_radius = updateStartRadius(v_a,0, m_args.m_ud_impact, m_args.m_td_acc, m_args.m_coll_r);
+            double r_impact = 100;
+            m_startCatch_radius = updateStartRadius(v_a,0, m_args.m_ud_impact, m_args.m_td_acc, r_impact);
             checkPositionsAtRunway(); //requires that the net is standby at the start of the runway
             //test
             m_curr_state = EN_CATCH;
@@ -365,6 +367,7 @@ namespace Maneuver
           }
           m_initialized[i] = false;
         }
+
         m_WP_curr = Matrix(3,1,0);
         m_WP_next = Matrix(3,1,0);
 
