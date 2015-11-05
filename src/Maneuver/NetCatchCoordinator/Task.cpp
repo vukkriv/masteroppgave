@@ -133,6 +133,9 @@ namespace Maneuver
       //! Desired along-track velocity
       double m_ud;
 
+      //! Control loops last reference
+      uint32_t m_scope_ref;
+
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
@@ -140,7 +143,8 @@ namespace Maneuver
         DUNE::Tasks::Task(name, ctx),
         m_WP(0),
         m_ud(0),
-        m_initializedCoord(false)
+        m_initializedCoord(false),
+        m_scope_ref(0)
       {
         param("Coordinated Catch", m_args.enable_coord)
         .defaultValue("false")
@@ -379,6 +383,8 @@ namespace Maneuver
         // For now: set the state directly to standby at runway
         m_curr_state = INIT;
         m_initializedCoord = true;
+
+        enablePathController();
       }
 
       void
@@ -606,6 +612,18 @@ namespace Maneuver
         }
         double r_start = abs(r_impact - v_a*(deltaT_n + Delta_r_impact/v_ref_n));
         return r_start;
+      }
+
+      void
+      enablePathController()
+      {
+    	  //activate path controller
+    	  IMC::ControlLoops m_cloops;
+          m_cloops.enable = IMC::ControlLoops::CL_ENABLE;
+          m_cloops.mask = IMC::CL_PATH;
+          m_cloops.scope_ref = m_scope_ref;
+          dispatch(m_cloops);
+          inf("Path controller activated from coordinator");
       }
       //! Main loop.
       void

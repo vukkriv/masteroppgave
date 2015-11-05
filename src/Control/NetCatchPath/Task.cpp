@@ -37,14 +37,15 @@ namespace Control
     //! %Task arguments.
     struct Arguments
     {
+      bool use_controller;
       double m_Delta_y;
       double m_Delta_z;
     };
 
     //! Controllable loops.
-    static const uint32_t c_controllable = 1;
+    static const uint32_t c_controllable = IMC::CL_PATH;
     //! Required loops.
-    static const uint32_t c_required = 1;
+    static const uint32_t c_required = IMC::CL_SPEED;
 
     struct Task: public DUNE::Control::BasicUAVAutopilot
     {
@@ -75,6 +76,10 @@ namespace Control
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Control::BasicUAVAutopilot(name,ctx, c_controllable, c_required)
       {
+  		param("Path Controller", m_args.use_controller)
+  		.defaultValue("false")
+  		.description("Enable Path Controller");
+
         param("Delta Y", m_args.m_Delta_y)
         .defaultValue("1.0")
         .units(Units::Meter)
@@ -235,7 +240,7 @@ namespace Control
           //assume IMC::EstimatedState* msg gives the state of the net?
           // or should we calculate the net position here?
 
-          trace("Timestep: %f",timestep);
+          //("Timestep: %f",timestep);
           if (m_initialized)
           {
             Matrix position = getPositionOfNet(msg);
