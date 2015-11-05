@@ -58,6 +58,8 @@ namespace Control
     //! %Task arguments.
     struct Arguments
     {
+      bool use_controller;
+
       PID_Kp Kp;
       PID_Ki Ki;
       PID_Kd Kd;  
@@ -72,9 +74,9 @@ namespace Control
     };
 
     //! Controllable loops.
-    static const uint32_t c_controllable = 1;
+    static const uint32_t c_controllable = IMC::CL_SPEED;
     //! Required loops.
-    static const uint32_t c_required = 1;
+    static const uint32_t c_required = IMC::CL_FORCE;
 
     struct Task: public DUNE::Control::BasicUAVAutopilot
     {
@@ -105,6 +107,10 @@ namespace Control
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Control::BasicUAVAutopilot(name,ctx, c_controllable, c_required)
       {
+		param("Velocity Controller", m_args.use_controller)
+		.defaultValue("false")
+		.description("Enable Velocity Controller");
+
         param("Kp - X", m_args.Kp.x)
         .defaultValue("1.0")
         .description("PID Kp x");
@@ -251,6 +257,7 @@ namespace Control
       onEstimatedState(const double timestep, const IMC::EstimatedState* msg)
       {
           //calculate desired inertial force, input to coordinated control
+    	  debug("Timestep: %f",timestep);
           if (m_initialized)
           {
             m_f.x = m_PID_vx.step(timestep, m_dv.u - msg->vx);
