@@ -69,12 +69,15 @@ namespace Maneuver
       double m_td_acc;
       //! Desired collision radius
       double m_coll_r;
-      //! Vehicle list
-      std::vector<std::string> m_vehicles;
+
+      //! Vehicles
+      std::string m_copter_id;
+      std::string m_aircraft_id;
     };
     
     //! % Coordinator states
     enum CoordState {INIT=0, GOTO_RUNW, STANDBY_RUNW, EN_CATCH, END_RUNW, CATCH_ABORT};
+    enum Vehicle {AIRCRAFT=0, COPTER, INVALID=-1};
 
     struct Task: public DUNE::Tasks::Task
     {
@@ -179,7 +182,8 @@ namespace Maneuver
         param("Maximum Cross-Track Error Net", m_args.eps_ct_n)
         .units(Units::Meter);
 
-        param("Vehicles", m_args.m_vehicles);
+        param("Copter", m_args.m_copter_id);
+        param("Aircraft", m_args.m_aircraft_id);
 
         param("Radius end-of runway", m_args.m_endCatch_radius)
         .defaultValue("10.0")
@@ -249,28 +253,23 @@ namespace Maneuver
         trace("Got EstimatedState \nfrom '%s' at '%s'",
              resolveEntity(estate->getSourceEntity()).c_str(),
              resolveSystemId(estate->getSource()));
-        
-        debug("Target producer: %s",m_args.m_trg_prod.c_str());
-        // Ignored if sent by self
-        //if (estate->getSource() == getSystemId())
-        //  return;
 
-        debug("Alpha: %f",alpha_runway);
-        debug("Theta: %f",theta_runway);
+        //debug("Alpha: %f",alpha_runway);
+        //debug("Theta: %f",theta_runway);
 
-        std::string trg_prod  = resolveEntity(estate->getSourceEntity());
-        int s = getVehicle(trg_prod);
+        std::string vh_id  = resolveSystemId(estate->getSource());
+        int s = getVehicle(vh_id);
         
-        debug("s: %d",s);
+        trace("s: %d",s);
         
-        if (s == -1)  //invalid vehicle
+        if (s == INVALID)  //invalid vehicle
           return;
 
         m_initialized[s] = true;
         m_estate[s]       = *estate;
         calcPathErrors(m_estate[s], s);          
         updateMeanValues(s);
-        trace("Curr state: %d",static_cast<int>(m_curr_state));
+        //trace("Curr state: %d",static_cast<int>(m_curr_state));
 
 
         if (changeWP(m_p[s]))
@@ -279,6 +278,7 @@ namespace Maneuver
         // should be called only when waypoint/velocity update
         sendDesiredPath(m_args.WP1,m_args.WP2, m_ud);
 
+        CoordState last_state = m_curr_state;
         switch(m_curr_state)
         {
           case INIT:
@@ -322,6 +322,10 @@ namespace Maneuver
             break;
           }                            
         }        
+
+        if (last_state != m_curr_state)
+        	trace("Curr state: %d",static_cast<int>(m_curr_state));
+
       }
 
       void
@@ -330,9 +334,7 @@ namespace Maneuver
         if (m_initializedCoord)
           return;
 
-        unsigned int no_vehicles = m_args.m_vehicles.size();
-
-        debug("# Vehicles: %d",no_vehicles); 
+        unsigned int no_vehicles = 2;
         
         m_estate        = std::vector<IMC::EstimatedState>(no_vehicles);
         m_p             = std::vector<Matrix>(no_vehicles);
@@ -423,20 +425,23 @@ namespace Maneuver
 
           m_cross_track[s]    = eps.get(1,2,0,0); 
           m_cross_track_d[s]  = eps_dot.get(1,2,0,0); 
+          /*
           debug("Cross-track e_a:   [%f,%f]",m_cross_track[0](0),m_cross_track[0](1));
           debug("Cross-track e_c1:  [%f,%f]",m_cross_track[1](0),m_cross_track[1](1));
           debug("Cross-track_d e_a:   [%f,%f]",m_cross_track_d[0](0),m_cross_track_d[0](1));
           debug("Cross-track_d e_c1:  [%f,%f]",m_cross_track_d[1](0),m_cross_track_d[1](1));
 
           debug("Position in NED from '%d': [%f,%f,%f]",s,estate.x,estate.y,estate.z);
-
+		  */
           Matrix delta_p_path = R*(m_p[1]-m_p[0]);
           Matrix delta_v_path = R*(m_v[1]-m_v[0]);
 
           delta_p_path_x = delta_p_path(0);
           delta_v_path_x = delta_v_path(0);
+          /*
           debug("delta_p_path_x = %f",delta_p_path_x);
           debug("delta_v_path_x = %f",delta_v_path_x);
+          */
       }
 
       void
@@ -451,13 +456,15 @@ namespace Maneuver
         Matrix weightedAvg      = m_cross_track[s]/=m_args.mean_ws;
         Matrix firstWeightedAvg = m_cross_track_window[s].front();
 
+        /*
         debug("weightedAvg: Rows: %d, Cols: %d",weightedAvg.rows(),weightedAvg.columns());
         debug("firstWeightedAvg: Rows: %d, Cols: %d",firstWeightedAvg.rows(),firstWeightedAvg.columns());
         debug("m_cross_track_mean[%d]: Rows: %d, Cols: %d",s,m_cross_track_mean[s].rows(),m_cross_track_mean[s].columns());
+        */
         
-        debug("oldMean: [%f,%f]",m_cross_track_mean[s](0),m_cross_track_mean[s](1));
+        //debug("oldMean: [%f,%f]",m_cross_track_mean[s](0),m_cross_track_mean[s](1));
         Matrix newMean = m_cross_track_mean[s] + weightedAvg - firstWeightedAvg;
-        debug("newMean: [%f,%f]",newMean(0),newMean(1));
+        //debug("newMean: [%f,%f]",newMean(0),newMean(1));
         m_cross_track_mean[s] = newMean;
         m_cross_track_window[s].pop();
         m_cross_track_window[s].push(weightedAvg);
@@ -517,18 +524,21 @@ namespace Maneuver
         return false;
       }
 
-      int
+      Vehicle
       getVehicle(std::string src_entity)
       {
-        for(unsigned int i=0; i < m_args.m_vehicles.size(); i++) 
-        {
-          //compare 
-          if ( m_args.m_vehicles[i] == src_entity )
-          {
-            return i;
-          }
-        }
-        return -1;
+    	  if (src_entity == m_args.m_copter_id)
+    	  {
+    		  return COPTER;
+    	  }
+    	  else if (src_entity == m_args.m_aircraft_id)
+    	  {
+    		  return AIRCRAFT;
+    	  }
+    	  else
+    	  {
+    		  return INVALID;
+    	  }
       }
 
       bool
