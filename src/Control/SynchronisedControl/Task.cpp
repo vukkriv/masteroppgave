@@ -134,7 +134,7 @@ namespace Control
 		  pos_est(1) = state->y;
 		  pos_est(2) = state->z;
 
-          Matrix eps = transpose(Rzyx(0,-m_theta_k,m_alpha_k))*(pos_est-m_WP1);
+          Matrix eps = transpose(Rzyx(m_alpha_k,-m_theta_k,0))*(pos_est-m_WP1);
 
           double theta_d = m_theta_k + atan2(-eps(2),m_args.delta(1));
           double psi_d = m_alpha_k + atan2(-eps(1),m_args.delta(0));
@@ -142,21 +142,46 @@ namespace Control
 		  Matrix u_d_p(3,1,0.0);
 		  u_d_p(0) = m_path.speed;
 
-          Matrix v_des = Rzyx(0,-theta_d,psi_d)*u_d_p;
+          Matrix v_des = Rzyx(psi_d,-theta_d,0)*u_d_p;
           sendDesiredVelocity(v_des);
 
           std::cout << "speed_des= " << u_d_p(0) << "\n";
           std::cout << "x_WP1= " << m_WP1(0) << "\tx_WP2= " << m_WP2(0) << "\tx_est= " << pos_est(0) << "\tvx_des= " << v_des(0) << "\n";
           std::cout << "y_WP1= " << m_WP1(1) << "\ty_WP2= " << m_WP2(1) << "\ty_est= " << pos_est(1) << "\tvy_des= " << v_des(1) << "\n";
           std::cout << "z_WP1= " << m_WP1(2) << "\tz_WP2= " << m_WP2(2) << "\tz_est= " << pos_est(2) << "\tvz_des= " << v_des(2) << "\n\n";
+
+
+
+		  double l_box = 50;
+    	  double w_box = 15;
+		  double h_box = 15;
+
+		  double psi(Angles::radians(10));
+		  double theta(Angles::radians(-30));
+
+		  Matrix l_NED = Matrix(3,1,0.0);
+		  Matrix w_NED = Matrix(3,1,0.0);
+		  Matrix h_NED = Matrix(3,1,0.0);
+
+		  double xh_NED[] = {1,0,0};
+		  double yh_NED[] = {0,1,0};
+		  double zh_NED[] = {0,0,1};
+
+		  l_NED = Rzyx(psi, theta, 0)*(Matrix(xh_NED,3,1)*l_box);
+		  w_NED = Rzyx(psi, theta, 0)*(Matrix(yh_NED,3,1)*w_box);
+		  h_NED = Rzyx(psi, theta, 0)*(Matrix(zh_NED,3,1)*h_box);
+
+		  std::cout << "l " << l_NED(0) << " " << l_NED(1) << " " << l_NED(2) <<"\n";
+		  std::cout << "w " << w_NED(0) << " " << w_NED(1) << " " << w_NED(2) <<"\n";
+		  std::cout << "h " << h_NED(0) << " " << h_NED(1) << " " << h_NED(2) <<"\n\n";
       }
 
       //Return Rotation matrix.
-      Matrix Rzyx(double phi, double theta, double psi) const
+      Matrix Rzyx(double psi, double theta, double phi) const
       {
-        double R_en_elements[] = {cos(psi)*cos(theta), (-sin(psi)*cos(phi))+(cos(psi)*sin(theta)*sin(psi)), (sin(psi)*sin(phi))+(cos(psi)*cos(phi)*sin(theta)),
-        						  sin(psi)*cos(theta), (cos(psi)*cos(phi))+(sin(phi)*sin(theta)*sin(psi)), (-cos(psi)*sin(phi))+(sin(theta)*sin(psi)*cos(phi)),
-								 -sin(theta), cos(theta)*sin(phi), cos(theta)*cos(phi)};
+        double R_en_elements[] = {cos(psi)*cos(theta), (-sin(psi)*cos(phi))+(cos(psi)*sin(theta)*sin(phi)),  (sin(psi)*sin(phi))+(cos(psi)*cos(phi)*sin(theta)),
+        						  sin(psi)*cos(theta),  (cos(psi)*cos(phi))+(sin(phi)*sin(theta)*sin(psi)), (-cos(psi)*sin(phi))+(sin(theta)*sin(psi)*cos(phi)),
+								 -sin(theta),            cos(theta)*sin(phi),                                 cos(theta)*cos(phi)};
 
         return Matrix(R_en_elements,3,3);
       }
