@@ -28,9 +28,9 @@
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 #include <DUNE/Control/DiscretePID.hpp>
+#include <DUNE/Control/BasicAutopilot.hpp>
 
 // Local headers.
-#include "/home/uavlab/uavlab/dune/src/DUNE/Control/BasicAutopilot.hpp"
 #include <cmath>
 
 namespace Control
