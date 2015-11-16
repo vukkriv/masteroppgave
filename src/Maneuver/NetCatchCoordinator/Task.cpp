@@ -53,8 +53,13 @@ namespace Maneuver
       //! Maximum cross-track error net
       Matrix eps_ct_n;
 
-      //! NED origin
-      Matrix NED_origin;
+      //! Reference latitude
+      double ref_lat;
+      //! Reference longitude
+      double ref_lon;
+      //! Reference height (above elipsoid)
+      double ref_hae;
+
       //! WP 1 Runway llh
       Matrix WP1;
       //! WP 2 Runway llh
@@ -74,7 +79,7 @@ namespace Maneuver
       std::string m_copter_id;
       std::string m_aircraft_id;
     };
-    
+
     //! % Coordinator states
     enum CoordState {INIT=0, GOTO_RUNW, STANDBY_RUNW, EN_CATCH, END_RUNW, CATCH_ABORT};
     enum Vehicle {AIRCRAFT=0, COPTER, INVALID=-1};
@@ -83,17 +88,20 @@ namespace Maneuver
     {
       //! Task arguments.
       Arguments m_args;
-      
       //! Current state
       CoordState m_curr_state;
+  	  //! Localization origin (WGS-84)
+  	  fp64_t m_ref_lat, m_ref_lon;
+  	  fp32_t m_ref_hae;
+      bool m_ref_valid;
 
       //! Vehicles initialized
       std::vector<bool> m_initialized;
       //! Task ready to receive messages
       bool m_initializedCoord;
 
-      //! Last Estimated State received
-      std::vector<IMC::EstimatedState> m_estate;
+      //! Last FormPos received
+      std::vector<IMC::FormPos> m_estate;
       
       //! Last position in NED
       std::vector<Matrix> m_p;
@@ -147,20 +155,30 @@ namespace Maneuver
         m_WP(0),
         m_ud(0),
         m_initializedCoord(false),
-        m_scope_ref(0)
+        m_scope_ref(0),
+        m_ref_lat(0.0),
+		m_ref_lon(0.0),
+		m_ref_hae(0.0),
+        m_ref_valid(false)
       {
         param("Coordinated Catch", m_args.enable_coord)
         .defaultValue("false")
         .description("Flag to enable net catch with two multicopters");
 
-        param("Target Producer", m_args.m_trg_prod)
-        .defaultValue("test")
-        .description("Producer to read from");
+        param("Latitude", m_args.ref_lat)
+        .defaultValue("-999.0")
+        .units(Units::Degree)
+        .description("Reference Latitude");
 
-        param("NED origin", m_args.NED_origin)
-        .defaultValue("0.0, 0.0, 0.0")
+        param("Longitude", m_args.ref_lon)
+        .defaultValue("0.0")
+        .units(Units::Degree)
+        .description("Reference Longitude");
+
+        param("Height", m_args.ref_hae)
+        .defaultValue("0.0")
         .units(Units::Meter)
-        .description("Origin of NED in llh");
+        .description("Reference Height (above elipsoid)");
 
         param("WP runway 1 llh", m_args.WP1)
         .defaultValue("0.0, 0.0, 0.0")
@@ -201,7 +219,8 @@ namespace Maneuver
 
 
         // Bind incoming IMC messages
-        bind<IMC::EstimatedState>(this);
+        //bind<IMC::EstimatedState>(this);
+        bind<IMC::FormPos>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -226,8 +245,7 @@ namespace Maneuver
       void
       onResourceAcquisition(void)
       {
-        initCoordinator();
-        initRunwayPath(m_WP_curr, m_WP_next);
+
       }
 
       //! Initialize resources.
@@ -243,12 +261,20 @@ namespace Maneuver
       }
 
       void
-      consume(const IMC::EstimatedState* estate)
+      consume(const IMC::FormPos* estate)
       {
         if (!m_initializedCoord)
+        {
+   		  m_ref_lat = m_args.ref_lat;
+		  m_ref_lon = m_args.ref_lon;
+		  m_ref_hae = m_args.ref_hae;
+          m_ref_valid = true;
+          initCoordinator();
+          initRunwayPath(m_WP_curr, m_WP_next);
           return;
+        }
 
-        trace("Got EstimatedState \nfrom '%s' at '%s'",
+        spew("Got FormPos \nfrom '%s' at '%s'",
              resolveEntity(estate->getSourceEntity()).c_str(),
              resolveSystemId(estate->getSource()));
 
@@ -256,8 +282,11 @@ namespace Maneuver
         //debug("Theta: %f",theta_runway);
 
         std::string vh_id  = resolveSystemId(estate->getSource());
+        //trace("System ID: '%s'",vh_id);
         int s = getVehicle(vh_id);
         
+        inf("Position NED: [%f,%f,%f]",estate->x,estate->y,estate->z);
+
         trace("s: %d",s);
         
         if (s == INVALID)  //invalid vehicle
@@ -342,7 +371,7 @@ namespace Maneuver
 
         unsigned int no_vehicles = 2;
         
-        m_estate        = std::vector<IMC::EstimatedState>(no_vehicles);
+        m_estate        = std::vector<IMC::FormPos>(no_vehicles);
         m_p             = std::vector<Matrix>(no_vehicles);
         m_v             = std::vector<Matrix>(no_vehicles);
 
@@ -379,12 +408,12 @@ namespace Maneuver
         m_WP_curr = Matrix(3,1,0);
         m_WP_next = Matrix(3,1,0);
 
-        WGS84::displacement(Angles::radians(m_args.NED_origin(0)), Angles::radians(m_args.NED_origin(1)), 0,
+        WGS84::displacement(m_ref_lat, m_ref_lon, 0,
         		Angles::radians(m_args.WP1(0)), Angles::radians(m_args.WP1(1)), 0,
                     &m_WP_curr(0), &m_WP_curr(1));
         m_WP_curr(2) = m_args.WP1(2);
 
-        WGS84::displacement(Angles::radians(m_args.NED_origin(0)), Angles::radians(m_args.NED_origin(1)), 0,
+        WGS84::displacement(m_ref_lat, m_ref_lon, 0,
         		Angles::radians(m_args.WP2(0)), Angles::radians(m_args.WP2(1)), 0,
                             &m_WP_next(0), &m_WP_next(1));
         m_WP_next(2) = m_args.WP2(2);
@@ -410,17 +439,20 @@ namespace Maneuver
       }
 
       void
-      calcPathErrors(const IMC::EstimatedState estate, int s)
+      calcPathErrors(const IMC::FormPos estate, int s)
       {
           Matrix p = Matrix(3,1,0); //position in NED
           Matrix v = Matrix(3,1,0); //velocity in NED
 
           //Calculate position based on the current global position and the reference point
 
-          WGS84::displacement(Angles::radians(m_args.NED_origin(0)), Angles::radians(m_args.NED_origin(1)), 0,
-        		  	  	  	  estate.lat, estate.lon, 0,
-        		  	  	  	  &p(0), &p(1));
-          p(2) = m_args.WP1(2);
+          //WGS84::displacement(Angles::radians(m_args.NED_origin(0)), Angles::radians(m_args.NED_origin(1)), 0,
+          //		  	  	  	  estate.lat, estate.lon, 0,
+          //		  	  	  	  &p(0), &p(1));
+          // p(2) = m_args.WP1(2);
+          p(0) = estate.x;
+          p(1) = estate.y;
+          p(2) = estate.z;
           m_p[s] = p;
           /*
           p(0) = estate.x;
