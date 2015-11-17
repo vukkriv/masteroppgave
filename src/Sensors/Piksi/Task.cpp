@@ -526,7 +526,7 @@ namespace Sensors
       Matrix
       lowPassSmoothing(Matrix output, Matrix input, double dt, double RC)
       {
-        if (output.isZeroSized())
+        if (output.isEmpty())
           return input;
 
         // Check valid inputs
