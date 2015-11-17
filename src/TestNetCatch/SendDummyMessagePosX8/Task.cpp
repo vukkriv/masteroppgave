@@ -85,10 +85,19 @@ namespace TestNetCatch
       onMain(void)
       {
     	  IMC::NavigationData msg;   // use NavigationData message from IMC
+
+    	  //1 = x8, 0 = Copter
+    	  double x8orCopter = 1;
+    	  msg.cog = x8orCopter;
+
     	  //position x8 in NED;
     	  msg.custom_x = -9;
     	  msg.custom_y = -11;
     	  msg.custom_z = -20.5;
+
+    	  //desired speed along path
+    	  double speed_des = 2;
+    	  msg.cyaw = speed_des;
 
     	  double err_x = 2;
     	  double err_y = -2;
@@ -107,7 +116,7 @@ namespace TestNetCatch
 			  dispatch(msg);       // Dispatch the value to the message bus
 			  Delay::wait(5);    // Wait doing nothing.
 		  }
-      }
+       }
 
     };
   }
