@@ -174,9 +174,13 @@ namespace Transports
       void
       consume(const IMC::EstimatedState* msg)
       {
-        spew("Got Estimated State from system '%s' and entity '%s'.",
-             resolveSystemId(msg->getSource()),
-             resolveEntity(msg->getSourceEntity()).c_str());
+  	    //Message should be from this vehicle
+	    if ( msg->getSource() != getSystemId() )
+		  return;
+
+	    spew("Got Estimated State from system '%s' and entity '%s'.",
+		   resolveSystemId(msg->getSource()),
+		   resolveEntity(msg->getSourceEntity()).c_str());
 
         if (m_type == ESTATE)
         {
@@ -201,14 +205,15 @@ namespace Transports
           m_form_pos.vz = msg->vz;
 
 
-          spew("ES: Height = %1.1f, z = %1.1f",
-              msg->height, msg->z);
+          spew("ES: Height = %1.1f, z = %1.1f, New Z = %1.1f",
+              msg->height, msg->z,m_form_pos.z);
 
           // Keep source entity and source ID
-          m_form_pos.setSource(msg->getSource());
-          m_form_pos.setSourceEntity(msg->getSourceEntity());
-          dispatch(m_form_pos, DF_KEEP_SRC_EID);
+          //m_form_pos.setSource(msg->getSource());
+          //m_form_pos.setSourceEntity(msg->getSourceEntity());
+          //dispatch(m_form_pos, DF_KEEP_SRC_EID);
 
+          dispatch(m_form_pos);
 
           spew("Sent FormPos State");
         }
