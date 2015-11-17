@@ -63,7 +63,7 @@ namespace Sensors
       //! GPS Fix message.
       IMC::GpsFix m_fix;
       //! RTK Fix message.
-      IMC::GpsFixRtk m_rtkfix;
+      IMC::RtkFix m_rtkfix;
       //! Task arguments.
       Arguments m_args;
       //! Input watchdog.
@@ -292,7 +292,7 @@ namespace Sensors
 
 		  if(m_llh_output)
 		  {
-			//setGpsFix(parts);
+			setGpsFix(parts);
 		  }
 		  else if(m_ned_output)
 		  {
