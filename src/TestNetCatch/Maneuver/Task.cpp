@@ -37,6 +37,7 @@ namespace TestNetCatch
     //! %Task arguments.
     struct Arguments
     {
+    	double 	m_start;
     	uint16_t 	m_timeout;
     	fp64_t 		m_slat;
     	fp64_t 		m_slon;
@@ -51,20 +52,25 @@ namespace TestNetCatch
     	fp32_t		m_zoff;
     };
 
-    struct Task: public DUNE::Tasks::Task
+    struct Task: public DUNE::Tasks::Periodic
     {
       //! Task arguments.
       Arguments m_args;
       bool maneuver_enabled;
+      double m_timestamp_start;
 
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Task(name, ctx),
-        maneuver_enabled(false)
+        DUNE::Tasks::Periodic(name, ctx),
+        maneuver_enabled(false),
+        m_timestamp_start(0.0)
       {
-          param("Timeout", m_args.m_timeout)
+          param("Start time", m_args.m_start)
+          .defaultValue("0.0");
+
+    	  param("Timeout", m_args.m_timeout)
           .defaultValue("0.0");
 
           param("StartLat", m_args.m_slat)
@@ -162,16 +168,24 @@ namespace TestNetCatch
       }
 
 
-      //! Main loop.
       void
-      onMain(void)
+      task(void)
       {
-        while (!stopping())
-        {
-          waitForMessages(1.0);
-          if (!maneuver_enabled)
-        	  sendManeuver();
-        }
+    	  if (m_timestamp_start == 0.0)
+    	  {
+    		  m_timestamp_start = Clock::get();
+    		  inf("Timestamp: %f",m_timestamp_start);
+    	  }
+    	  double timeSinceStart =  Clock::get() - m_timestamp_start;
+    	  if (!maneuver_enabled)
+
+    		  war("Countdown (net recovery maneuver): %d", static_cast<int>(m_args.m_start - timeSinceStart + 0.5));
+
+    	  if (timeSinceStart > m_args.m_start)
+    	  {
+			  if (!maneuver_enabled)
+				  sendManeuver();
+    	  }
       }
     };
   }
