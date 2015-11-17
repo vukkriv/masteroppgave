@@ -28,9 +28,8 @@
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 #include <DUNE/Control/DiscretePID.hpp>
+#include <DUNE/Control/BasicAutopilot.hpp>
 
-// Local headers.
-#include "/home/uavlab/uavlab/dune/src/DUNE/Control/BasicAutopilot.hpp"
 #include <cmath>
 
 namespace Control
@@ -66,12 +65,14 @@ namespace Control
       Arguments m_args;
 
       //! Desired velocity
-      IMC::TranslationalSetpoint m_desired_velocity;
+      IMC::DesiredVelocity m_desired_velocity;
       //! DesiredPath
       IMC::DesiredPath m_path;
 
       //! Dummy position x8
       Matrix m_pos_est_x8 = Matrix(3,1,0.0);
+      //! Dummy desired speed
+      double m_des_speed;
 
       //! initialization done
       bool m_initialized_path = false;
@@ -147,19 +148,32 @@ namespace Control
     	  m_initialized_path = false;
       }
 
+      //!todo:above should become:
+/*	  void
+ 	  consume(cont IMC::NetCatchManeuver* msg)
+ 	  {
+ 	  	  m_maneuver = *msg;
+ 	  	  m_initialized_path = false;
+ 	  }*/
+
       //! Consume Navigation Data
       void
 	  consume(const IMC::NavigationData* msg)
       {
-    	  m_pos_est_x8(0) = msg->custom_x;
-    	  m_pos_est_x8(1) = msg->custom_y;
-    	  m_pos_est_x8(2) = msg->custom_z;
+    	  if (msg->cog == 1) //todo change this into a proper vehicle check
+    	  {
+			  m_pos_est_x8(0) = msg->custom_x;
+			  m_pos_est_x8(1) = msg->custom_y;
+			  m_pos_est_x8(2) = msg->custom_z;
+
+			  m_des_speed = msg->cyaw;
+    	  }
 
     	  std::cout << "-->x8 position NED: " << m_pos_est_x8(0) << " " << m_pos_est_x8(1)<< " " << m_pos_est_x8(2) << "\n\n";
  	  }
 
       void
-	  initpath(IMC::EstimatedState state)
+	  initpath(IMC::EstimatedState state) //in consume??
       {
     	  (void)state;
 
@@ -182,7 +196,7 @@ namespace Control
 		  m_alpha_k =  atan2(deltaWP(1),deltaWP(0));
 		  m_theta_k = -atan2(deltaWP_NE,deltaWP(2)) + Angles::radians(90);*/
 
-		  //Dimension box
+		  //Dimension box todo: this info in maneuver msg
 		  double l_box = 50;
 		  double w_box = 15;
 		  double h_box = 15;
@@ -226,7 +240,7 @@ namespace Control
           return v_des_path;*/
 
 		  Matrix v_des_path_body = Matrix(3,1,0.0);
-		  v_des_path_body(0) = m_path.speed;
+		  v_des_path_body(0) = m_des_speed;
 
 		  return v_des_path_body;
       }
@@ -332,7 +346,7 @@ namespace Control
 		  Matrix v_des = Rzyx(m_psi, m_theta, 0)*v_des_body;
           sendDesiredVelocity(v_des);
 
-		  std::cout << "speed_des= " << m_path.speed << "\n";
+		  std::cout << "speed_des= " << m_des_speed << "\n";
           std::cout << "x_est= " << pos_est(0) << " \tvx_des= " << v_des(0) << " \tvx_des_body= " << v_des_body(0) << "\n";
           std::cout << "y_est= " << pos_est(1) << " \tvy_des= " << v_des(1) << " \tvy_des_body= " << v_des_body(1) << "\n";
           std::cout << "z_est= " << pos_est(2) << " \tvz_des= " << v_des(2) << " \tvz_des_body= " << v_des_body(2) << "\n\n";
