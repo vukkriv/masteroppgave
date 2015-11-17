@@ -45,6 +45,9 @@ namespace Maneuver
 
       //! Enable coordinated catch
       bool enable_coord;
+
+      //! Enable catch-state
+      bool enable_catch;
       //! Moving mean window size
       double mean_ws;
       
@@ -89,7 +92,6 @@ namespace Maneuver
   	  fp64_t m_ref_lat, m_ref_lon;
   	  fp32_t m_ref_hae;
       bool m_ref_valid;
-
 
       bool m_maneuverEnabled;
 
@@ -137,10 +139,17 @@ namespace Maneuver
       unsigned int m_WP;
 
       //! Radius to start net-catch (calculate based on net-acceleration)
-      unsigned int m_startCatch_radius;
+      double m_startCatch_radius;
 
+      //! Timeout for operation
+      uint16_t m_timeout;
+      //! Along-track velocity reference value
+      fp32_t m_u_ref;
       //! Desired along-track velocity
-      double m_ud;
+      fp32_t m_ud;
+      //! Desired along-track acceleration
+      fp32_t m_ad;
+
 
       //! Control loops last reference
       uint32_t m_scope_ref;
@@ -158,11 +167,17 @@ namespace Maneuver
 		m_ref_lon(0.0),
 		m_ref_hae(0.0),
         m_ref_valid(false),
-        m_maneuverEnabled(false)
+        m_maneuverEnabled(false),
+        m_u_ref(0.0),
+        m_ad(0.0)
       {
         param("Coordinated Catch", m_args.enable_coord)
         .defaultValue("false")
         .description("Flag to enable net catch with two multicopters");
+
+        param("Enable Catch", m_args.enable_catch)
+        .defaultValue("false")
+        .description("Flag to enable catch state of the state-machine");
 
         param("Latitude", m_args.ref_lat)
         .defaultValue("-999.0")
@@ -281,6 +296,10 @@ namespace Maneuver
                             &m_WP_end(0), &m_WP_end(1));
         m_WP_end(2) = msg->z + msg->z_off;
 
+        m_u_ref   = msg->speed;
+        m_ad 	  = msg->max_acc;
+        m_timeout = msg->timeout;
+
         initCoordinator();
         initRunwayPath(m_WP_start, m_WP_end);
 
@@ -372,14 +391,27 @@ namespace Maneuver
           {
             updateMeanValues(s);
 
-            double v_a = 20;
-            m_startCatch_radius = updateStartRadius(v_a,0, m_args.m_ud_impact, m_args.m_td_acc, m_args.m_coll_r);
-            spew("StartCatch radius: %d",m_startCatch_radius);
+            // TODO: keep track of the velocity of the aircraft somehow
+            // extract the mean value
+            // Rotate m_v[AIRCRAFT] to the path frame and extract the x-value -> m_cross_track_d[AIRCRAFT](0) = eps_dot[AIRCRAFT](0)
+
+            double v_a = m_cross_track_d[AIRCRAFT](0);
+            //double v_a = 20;
+
+            // should use the desired acceleration instead
+            m_startCatch_radius = updateStartRadius(v_a,0, m_u_ref, m_args.m_td_acc, m_args.m_coll_r);
+            if (m_startCatch_radius == -1)
+            {
+            	err("Unable to calculate the desired start-radius");
+            	return;
+            }
+            spew("StartCatch radius: %f",m_startCatch_radius);
             spew("Delta_p_x: %f",delta_p_path_x);
             checkPositionsAtRunway(); //requires that the net is standby at the start of the runway
 
-            //test
-            m_curr_state = EN_CATCH;
+            if (!m_args.enable_catch)
+            	m_curr_state = STANDBY_RUNW;
+
             break;
           }
           case EN_CATCH:
@@ -673,11 +705,14 @@ namespace Maneuver
       }
 
       double
-      updateStartRadius(double v_a, double v0_n, double v_ref_n, double deltaT_n, double r_impact)
+      updateStartRadius(double v_a, double v0_n, double v_ref_n, double a_n, double r_impact)
       {
         // calculate the radius which the net-catch maneuver should start, based on the mean velocity of the airplane
         // and the ramp reference velocity and max velocity
-        double a_n = (v_ref_n-v0_n)/deltaT_n;
+    	if (a_n == 0.0)
+    		return -1;
+
+        double deltaT_n = (v_ref_n-v0_n)/a_n;
         double r_n_delta_t = (std::pow(v_ref_n, 2),std::pow(v0_n, 2))/(2*a_n);
         double Delta_r_impact = r_impact - r_n_delta_t;
         inf("Delta_r_impact=%f",Delta_r_impact);
