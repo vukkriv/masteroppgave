@@ -373,7 +373,7 @@ namespace Maneuver
           m_WP += m_WP;
 */
         // should be called only when waypoint/velocity update
-        //sendDesiredPath(m_args.WP1,m_args.WP2, m_ud);
+
 
         CoordState last_state = m_curr_state;
         switch(m_curr_state)
@@ -388,6 +388,7 @@ namespace Maneuver
           }
           case GOTO_RUNW:
           {
+        	//sendDesiredPath(m_WP_start,m_WP_end, m_ud);
             m_curr_state = STANDBY_RUNW;
             break;
           }
@@ -429,6 +430,9 @@ namespace Maneuver
             //spew("v_a: %f",v_a);
             checkPositionsAtRunway(); //requires that the net is standby at the start of the runway
 
+            Matrix empty = Matrix(3,1,0);
+            sendDesiredPath(empty,m_WP_start, m_args.m_ud_impact);
+
             if (!m_args.enable_catch)
             	m_curr_state = STANDBY_RUNW;
 
@@ -436,8 +440,10 @@ namespace Maneuver
           }
           case EN_CATCH:
           {
+        	sendDesiredPath(m_WP_start,m_WP_end, m_ud);
             updateMeanValues(s);
             m_ud = getPathVelocity(0, m_args.m_ud_impact, m_args.m_td_acc, true);
+            sendDesiredPath(m_WP_start,m_WP_end, m_ud);
             //checkAbortCondition();
             //test
             //m_curr_state = STANDBY_RUNW;
