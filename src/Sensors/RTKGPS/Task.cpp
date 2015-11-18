@@ -124,6 +124,7 @@ namespace Sensors
         }
         catch (...)
         {
+          err("Restart due to Resource Acquisition.");
           throw RestartNeeded(DTR(Status::getString(CODE_COM_ERROR)), 5);
         }
       }
@@ -204,7 +205,10 @@ namespace Sensors
           return;
 
         if (msg->type == IMC::IoEvent::IOV_TYPE_INPUT_ERROR)
+        {
+          err("Restart due to IOEvent Input Error");
         	throw RestartNeeded(msg->error, 5);
+        }
       }
 
       void
@@ -381,11 +385,11 @@ namespace Sensors
     		  {
     			  if(Q == 1) // FIX
     			  {
-    				  m_rtkfix.type = 1;
+    				  m_rtkfix.type = IMC::RtkFix::RTK_FIXED;
     			  }
     			  else if(Q == 2) // FLOAT
     			  {
-    				  m_rtkfix.type = 0;
+    				  m_rtkfix.type = IMC::RtkFix::RTK_FLOAT;
     			  }
 
     		  }
@@ -393,7 +397,8 @@ namespace Sensors
 		  if (readDecimal(parts[3], m_rtkfix.n)
 					  && readDecimal(parts[2], m_rtkfix.e)
 					  && readDecimal(parts[4], m_rtkfix.d)
-					  && readDecimal(parts[6],m_rtkfix.satellites))
+					  && readDecimal(parts[6],m_rtkfix.satellites)
+		        && readDecimal(parts[14], m_rtkfix.iar_ratio))
 		  {
 			  // Invert Z axis
 			  m_rtkfix.d = -m_rtkfix.d;
@@ -413,6 +418,7 @@ namespace Sensors
           if (m_wdog.overflow())
           {
             setEntityState(IMC::EntityState::ESTA_ERROR, Status::CODE_COM_ERROR);
+            err("Restart due to watchdog overflow");
             throw RestartNeeded(DTR(Status::getString(CODE_COM_ERROR)), 5);
           }
         }
