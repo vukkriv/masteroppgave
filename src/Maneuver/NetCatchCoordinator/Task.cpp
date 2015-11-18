@@ -278,14 +278,17 @@ namespace Maneuver
   	    if (!m_initializedCoord)
         {
   	      inf("Intialize coordinator");
-   		  m_ref_lat = m_args.ref_lat;
-		  m_ref_lon = m_args.ref_lon;
-		  m_ref_hae = m_args.ref_hae;
+   		  m_ref_lat = Angles::radians(m_args.ref_lat);
+		  m_ref_lon = Angles::radians(m_args.ref_lon);
+		  m_ref_hae = Angles::radians(m_args.ref_hae);
           m_ref_valid = true;
           initCoordinator();
         }
 
 
+  	    debug("Reference point: [%f,%f,%f]",m_ref_lat,m_ref_lon,m_ref_hae);
+  	    debug("Starting point: [%f,%f]",msg->start_lat,msg->start_lon);
+  	  	debug("End point: [%f,%f]",msg->end_lat,msg->end_lon);
         WGS84::displacement(m_ref_lat, m_ref_lon, 0,
         					msg->start_lat, msg->start_lon, 0,
         					&m_WP_start(0), &m_WP_start(1));
@@ -309,28 +312,29 @@ namespace Maneuver
       }
 
       void
+
       consume(const IMC::FormPos* estate)
       {
         if (!m_initializedCoord)
         {
-   		  m_ref_lat = m_args.ref_lat;
-		  m_ref_lon = m_args.ref_lon;
-		  m_ref_hae = m_args.ref_hae;
+   		  m_ref_lat = Angles::radians(m_args.ref_lat);
+		  m_ref_lon = Angles::radians(m_args.ref_lon);
+		  m_ref_hae = Angles::radians(m_args.ref_hae);
           m_ref_valid = true;
           initCoordinator();
           return;
         }
 
-        spew("Got FormPos \nfrom '%s' at '%s'",
-             resolveEntity(estate->getSourceEntity()).c_str(),
-             resolveSystemId(estate->getSource()));
+        //spew("Got FormPos \nfrom '%s' at '%s'",
+        //     resolveEntity(estate->getSourceEntity()).c_str(),
+        //     resolveSystemId(estate->getSource()));
 
         std::string vh_id  = resolveSystemId(estate->getSource());
         int s = getVehicle(vh_id);
         
-        spew("Position NED: [%f,%f,%f]",estate->x,estate->y,estate->z);
+        //debug("Position NED: [%f,%f,%f]",estate->x,estate->y,estate->z);
 
-        trace("s: %d",s);
+        //trace("s: %d",s);
         
         if (s == INVALID)  //invalid vehicle
           return;
@@ -349,14 +353,14 @@ namespace Maneuver
         m_v[s] = v;
 
         m_initialized[s] = true;
+        m_estate[s]       = *estate;
 
-        spew("Position aircraft NED: [%f,%f,%f]",m_p[AIRCRAFT](0),m_p[AIRCRAFT](1),m_p[AIRCRAFT](2));
-        spew("Position copter NED: [%f,%f,%f]",m_p[COPTER](0),m_p[COPTER](1),m_p[COPTER](2));
+        //spew("Position aircraft NED: [%f,%f,%f]",m_p[AIRCRAFT](0),m_p[AIRCRAFT](1),m_p[AIRCRAFT](2));
+        //spew("Position copter NED: [%f,%f,%f]",m_p[COPTER](0),m_p[COPTER](1),m_p[COPTER](2));
 
         if (!m_maneuverEnabled)
         	return;
 
-        m_estate[s]       = *estate;
         calcPathErrors(p, v, s);
 
 
@@ -395,8 +399,7 @@ namespace Maneuver
             // extract the mean value
             // Rotate m_v[AIRCRAFT] to the path frame and extract the x-value -> m_cross_track_d[AIRCRAFT](0) = eps_dot[AIRCRAFT](0)
 
-            double v_a = m_cross_track_d[AIRCRAFT](0);
-            //double v_a = 20;
+            double v_a = abs(m_cross_track_d[AIRCRAFT](0));
 
             // should use the desired acceleration instead
             m_startCatch_radius = updateStartRadius(v_a,0, m_u_ref, m_args.m_td_acc, m_args.m_coll_r);
@@ -405,8 +408,25 @@ namespace Maneuver
             	err("Unable to calculate the desired start-radius");
             	return;
             }
-            spew("StartCatch radius: %f",m_startCatch_radius);
-            spew("Delta_p_x: %f",delta_p_path_x);
+            if (s==AIRCRAFT)
+            {
+            	spew("v_a: %f",v_a);
+            	spew("p[%d]: [%f,%f,%f]",s,p(0),p(1),p(2));
+                spew("v[%d]: [%f,%f,%f]",s,v(0),v(1),v(2));
+                spew("m_WP_start[%d]: [%f,%f,%f]",s,m_WP_start(0),m_WP_start(1),m_WP_start(2));
+                spew("m_WP_end[%d]: [%f,%f,%f]",s,m_WP_end(0),m_WP_end(1),m_WP_end(2));
+				spew("m_cross_track[%d]: [%f,%f,%f]",s,m_cross_track[s](0),m_cross_track[s](1),m_cross_track[s](2));
+				spew("m_cross_track_d[%d]: [%f,%f,%f]",s,m_cross_track_d[s](0),m_cross_track_d[s](1),m_cross_track_d[s](2));
+				spew("m_cross_track_mean[%d]: [%f,%f,%f]",s,m_cross_track_mean[s](0),m_cross_track_mean[s](1),m_cross_track_mean[s](2));
+				spew("m_cross_track_d_mean[%d]: [%f,%f,%f]",s,m_cross_track_d_mean[s](0),m_cross_track_d_mean[s](1),m_cross_track_d_mean[s](2));
+		        spew("delta_p_path_x = %f",delta_p_path_x);
+		        spew("delta_v_path_x = %f",delta_v_path_x);
+		        spew("StartCatch radius: %f",m_startCatch_radius);
+				spew("\n\n");
+            }
+            //spew("StartCatch radius: %f",m_startCatch_radius);
+            //spew("Delta_p_x: %f",delta_p_path_x);
+            //spew("v_a: %f",v_a);
             checkPositionsAtRunway(); //requires that the net is standby at the start of the runway
 
             if (!m_args.enable_catch)
@@ -461,21 +481,20 @@ namespace Maneuver
         for (unsigned int i=0; i<no_vehicles; i++) {
           m_p[i] = Matrix(3,1,0);
           m_v[i] = Matrix(3,1,0);
-          m_cross_track[i]   = Matrix(2,1,0);
-          m_cross_track_d[i] = Matrix(2,1,0);
-          m_cross_track_mean[i]   = Matrix(2,1,0);
-          m_cross_track_d_mean[i] = Matrix(2,1,0);
+          m_cross_track[i]   = Matrix(3,1,0);
+          m_cross_track_d[i] = Matrix(3,1,0);
+          m_cross_track_mean[i]   = Matrix(3,1,0);
+          m_cross_track_d_mean[i] = Matrix(3,1,0);
           debug("m_cross_track[%d]: Rows: %d, Cols: %d",i,m_cross_track[i].rows(),m_cross_track[i].columns());
           debug("m_cross_track_d[%d]: Rows: %d, Cols: %d",i,m_cross_track_d[i].rows(),m_cross_track_d[i].columns());
           debug("m_cross_track_mean[%d]: Rows: %d, Cols: %d",i,m_cross_track_mean[i].rows(),m_cross_track_mean[i].columns());
           debug("m_cross_track_d_mean[%d]: Rows: %d, Cols: %d",i,m_cross_track_d_mean[i].rows(),m_cross_track_d_mean[i].columns());
-
           m_cross_track_window[i]   = std::queue<Matrix>();
           m_cross_track_d_window[i] = std::queue<Matrix>();
           for (unsigned int j=0; j < m_args.mean_ws; j++)
           {
-            m_cross_track_window[i].push(Matrix(2,1,0));
-            m_cross_track_d_window[i].push(Matrix(2,1,0));
+            m_cross_track_window[i].push(Matrix(3,1,0));
+            m_cross_track_d_window[i].push(Matrix(3,1,0));
           }
           m_initialized[i] = false;
         }
@@ -514,17 +533,33 @@ namespace Maneuver
 
 
           Matrix R       = transpose(Rzyx(0.0, -theta_runway, alpha_runway));
+          //spew("p[%d]: [%f,%f,%f]",s,p(0),p(1),p(2));
+          //spew("m_WP_start[%d]: [%f,%f,%f]",s,m_WP_start(0),m_WP_start(1),m_WP_start(2));
+          //spew("m_WP_end[%d]: [%f,%f,%f]",s,m_WP_end(0),m_WP_end(1),m_WP_end(2));
           Matrix eps     = R*(p-m_WP_start);
           Matrix eps_dot = R*v;
 
-          m_cross_track[s]    = eps.get(1,2,0,0); 
-          m_cross_track_d[s]  = eps_dot.get(1,2,0,0); 
+          //spew("eps: [%f,%f,%f]",eps(0),eps(1),eps(2));
+          //spew("eps_dot: [%f,%f,%f]",eps_dot(0),eps_dot(1),eps_dot(2));
 
+          m_cross_track[s] = eps;
+          m_cross_track_d[s] = eps_dot;
+          /*if (s==AIRCRAFT)
+          {
+              spew("eps[%d]: [%f,%f,%f]",s,eps(0),eps(1),eps(2));
+              spew("eps_dot[%d]: [%f,%f,%f]",s,eps_dot(0),eps_dot(1),eps_dot(2));
+				spew("m_cross_track[%d]: [%f,%f,%f]",s,m_cross_track[s](0),m_cross_track[s](1),m_cross_track[s](2));
+				spew("m_cross_track_d[%d]: [%f,%f,%f]",s,m_cross_track_d[s](0),m_cross_track_d[s](1),m_cross_track_d[s](2));
+          }*/
+          //m_cross_track[s]    = eps.get(1,2,0,0);
+          //m_cross_track_d[s]  = eps_dot.get(1,2,0,0);
+
+          /*
           debug("Cross-track e_a:   [%f,%f]",m_cross_track[AIRCRAFT](0),m_cross_track[AIRCRAFT](1));
           debug("Cross-track e_c1:  [%f,%f]",m_cross_track[COPTER](0),m_cross_track[COPTER](1));
           debug("Cross-track_d e_a:   [%f,%f]",m_cross_track_d[AIRCRAFT](0),m_cross_track_d[AIRCRAFT](1));
           debug("Cross-track_d e_c1:  [%f,%f]",m_cross_track_d[COPTER](0),m_cross_track_d[COPTER](1));
-
+		  */
           //debug("Position in NED from '%d': [%f,%f,%f]",s,p(0),p(1),p(2));
 
           Matrix delta_p_path = R*(m_p[COPTER]-m_p[AIRCRAFT]);
@@ -533,21 +568,21 @@ namespace Maneuver
           delta_p_path_x = delta_p_path(0);
           delta_v_path_x = delta_v_path(0);
 
-          debug("delta_p_path_x = %f",delta_p_path_x);
-          debug("delta_v_path_x = %f",delta_v_path_x);
+          //debug("delta_p_path_x = %f",delta_p_path_x);
+          //debug("delta_v_path_x = %f",delta_v_path_x);
 
       }
 
       void
       updateMeanValues(int s)
       {
-        debug("Update mean values");
+        //debug("Update mean values");
         if (m_cross_track_window[s].size() == 0)
         {
-          debug("Mean window queue empty");
+          err("Mean window queue empty");
           return;
         }
-        Matrix weightedAvg      = m_cross_track[s]/=m_args.mean_ws;
+        Matrix weightedAvg      = m_cross_track[s]/m_args.mean_ws;
         Matrix firstWeightedAvg = m_cross_track_window[s].front();
 
         /*
@@ -568,7 +603,7 @@ namespace Maneuver
           return;
         }
 
-        Matrix weightedAvg_d      = m_cross_track_d[s]/=m_args.mean_ws;
+        Matrix weightedAvg_d      = m_cross_track_d[s]/m_args.mean_ws;
         Matrix firstWeightedAvg_d = m_cross_track_d_window[s].front();
         Matrix newMean_d = m_cross_track_d_mean[s] + weightedAvg_d - firstWeightedAvg_d;
         m_cross_track_d_mean[s]   = newMean_d;
@@ -593,13 +628,13 @@ namespace Maneuver
         //TODO: use a string enumeration to get position of vehicle in the vector lists  
         bool aircraftOff = false;
         bool netOff = false;
-        if (abs(m_cross_track_mean[AIRCRAFT](0))  >= m_args.eps_ct_a(0) ||
-            abs(m_cross_track_mean[AIRCRAFT](1))  >= m_args.eps_ct_a(1) )
+        if (abs(m_cross_track_mean[AIRCRAFT](1))  >= m_args.eps_ct_a(0) ||
+            abs(m_cross_track_mean[AIRCRAFT](2))  >= m_args.eps_ct_a(1) )
         {
           aircraftOff = true;
         }
-        if (abs(m_cross_track_mean[COPTER](0))  >= m_args.eps_ct_n(0) ||
-            abs(m_cross_track_mean[COPTER](1))  >= m_args.eps_ct_n(1) )
+        if (abs(m_cross_track_mean[COPTER](1))  >= m_args.eps_ct_n(0) ||
+            abs(m_cross_track_mean[COPTER](2))  >= m_args.eps_ct_n(1) )
         {
           netOff = true;
         }
@@ -652,9 +687,9 @@ namespace Maneuver
         //monitor the path-along distance between the net and the aircraft
           // when at a given boundary, start the net-catch mission
         // this requires that the net are stand-by at the first WP at the runway
-        if (abs(delta_p_path_x_mean) <= m_startCatch_radius)
+        if (abs(delta_p_path_x_mean) <= m_startCatch_radius && m_cross_track_d[AIRCRAFT](0) > 0)
         {
-          inf("Start net-catch mission: delta_p_path_x_mean=%f", delta_p_path_x_mean);
+          //inf("Start net-catch mission: delta_p_path_x_mean=%f", delta_p_path_x_mean);
           m_curr_state = EN_CATCH;
         }
       }
@@ -715,7 +750,7 @@ namespace Maneuver
         double deltaT_n = (v_ref_n-v0_n)/a_n;
         double r_n_delta_t = (std::pow(v_ref_n, 2),std::pow(v0_n, 2))/(2*a_n);
         double Delta_r_impact = r_impact - r_n_delta_t;
-        inf("Delta_r_impact=%f",Delta_r_impact);
+        //inf("Delta_r_impact=%f",Delta_r_impact);
         if (Delta_r_impact < 0)
         {
           err("Desired impact position should be at least %f m from the start of the runway",r_n_delta_t);
