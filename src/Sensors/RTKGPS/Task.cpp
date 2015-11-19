@@ -53,7 +53,7 @@ namespace Sensors
       float inp_tout;
       //! Solution Format.
       std::string sol_format;
-      bool ned_velocity;
+      bool ned_velocity_available;
 
     };
 
@@ -104,9 +104,9 @@ namespace Sensors
         .defaultValue("llh")
         .description("Output Solution Format - llh or ned");
 
-	param("Ned Velocity Output", m_args.ned_velocity)
+        param("Rtk Velocity Available", m_args.ned_velocity_available)
         .defaultValue("False")
-        .description("Ned Velocity Output - True or False");
+        .description("True if an edited version of RTKlib is used, which also outputs velocity information. ");
 
         // Initialize messages.
         clearMessages();
@@ -281,9 +281,9 @@ namespace Sensors
 		   * parts[13]	Age of Differential
 		   * parts[14]	Ambiguity Ratio
 		   * if enu is the output format from rtklib
-		   * parts[15] u (m/s)
-		   * parts[16] v (m/s)
-		   * parts[17] w (m/s)
+		   * parts[15] v_e (m/s)
+		   * parts[16] v_n (m/s)
+		   * parts[17] v_u (m/s)
 		   */
 
 		  // Ignore Init Sentence from RTKLIB
@@ -329,13 +329,12 @@ namespace Sensors
 
 			  if(Q == 1)
 			  {
-				  m_fix.type = 1; // Differential = FIX
+            m_fix.type = IMC::GpsFix::GFT_DIFFERENTIAL; // Differential = FIX
 			  }
 			  else if(Q == 2)
 			  {
-			  	  m_fix.type = 2; // Dead-reckoning = FLOAT
+            m_fix.type = IMC::GpsFix::GFT_DEAD_RECKONING; // Dead-reckoning = FLOAT
 			  }
-
 		  }
 
 		  //Set UTC Year Month Day
@@ -400,6 +399,10 @@ namespace Sensors
     			  {
     				  m_rtkfix.type = IMC::RtkFix::RTK_FLOAT;
     			  }
+          else
+          {
+            m_rtkfix.type = IMC::RtkFix::RTK_NONE;
+          }
 
     		  }
     	  // Set North,East and Down and set number of satellites
@@ -412,11 +415,11 @@ namespace Sensors
 			  // Invert Z axis
 			  m_rtkfix.d = -m_rtkfix.d;
 		  }
-	// Set North,East and Down velcity
-		if (m_args.ned_velocity 
+        // Set North,East and Down velocity
+        if (m_args.ned_velocity_available
 			&& readDecimal(parts[16], m_rtkfix.v_n)
 			&& readDecimal(parts[15], m_rtkfix.v_e)
-			&& readDecimal(parts[16], m_rtkfix.v_d))
+            && readDecimal(parts[17], m_rtkfix.v_d))
 		{
 			//Invert Z axis
 			m_rtkfix.v_d = -m_rtkfix.v_d;
