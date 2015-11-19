@@ -42,13 +42,10 @@ namespace Control
     //! Controllable loops.
     static const uint32_t c_controllable = IMC::CL_PATH;
     //! Required loops.
-    static const uint32_t c_required = IMC::CL_SPEED;
+    static const uint32_t c_required = IMC::CL_FORCE;
 
     struct Arguments
     {
-      //!Delta is the tuning parameter of the LOS controller in xy and z direction
-//    Matrix delta;
-
       //!PID syn controller parameters:
       Matrix Kp;
       Matrix Ki;
@@ -56,8 +53,8 @@ namespace Control
       Matrix maxV;
       Matrix maxInt;
 
-      //! Disable heave flag, this will utilize new rate controller on some targets
-      bool disable_heave;
+      //! Disable Z flag, this will utilize new rate controller on some targets
+      bool disable_Z;
     };
 
     struct Task: public BasicUAVAutopilot
@@ -65,52 +62,37 @@ namespace Control
       //! Task arguments
       Arguments m_args;
 
-      //! Desired velocity
-      IMC::DesiredVelocity m_desired_velocity;
-      //! DesiredPath
-      IMC::DesiredPath m_path;
-
-      //! Dummy position x8
-      Matrix m_pos_est_x8 = Matrix(3,1,0.0);
-      //! Dummy desired speed
-      double m_des_speed;
+      //! m_NetRecovery
+      IMC::NetRecovery m_NetRecovery;
+      //! Desired force
+      IMC::DesiredControl m_desired_force;
+      //! NaviagationData x8
+      IMC::NavigationData m_NavigationData;
 
       //! initialization done
-      bool m_initialized_path = false;
-      bool m_initialized_PID = false;
+      bool m_initialized_path;
 
+      //! integration values PID controllers
+      double m_v_int_value;
+      Matrix m_pos_int_value;
+
+      //! angles of orientation path
       double m_psi;
       double m_theta;
-
-      //! Waypoint Matrices
-//	  Matrix m_WP1 = Matrix(3,1,0.0);
-//	  Matrix m_WP2 = Matrix(3,1,0.0);
-
-//	  double m_alpha_k;
-//	  double m_theta_k;
-
-      //! Discrete velocity PID control x-direction
-      DiscretePID m_PID_vx;
-      //! Discrete velocity PID control y-direction
-      DiscretePID m_PID_vy;
-      //! Discrete velocity PID control z-direction
-      DiscretePID m_PID_vz;
 
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        BasicUAVAutopilot(name, ctx, c_controllable, c_required)
+        BasicUAVAutopilot(name, ctx, c_controllable, c_required),
+        m_initialized_path(false),
+		m_v_int_value(0.0),
+		m_pos_int_value(3,1,0.0)
       {
-/*        param("Delta", m_args.delta)
-          .defaultValue("10,10")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Delta is the tuning parameter of the LOS controller in y and z direction");*/
-
-          param("Disable Heave flag", m_args.disable_heave)
+          param("Disable Z flag", m_args.disable_Z)
           .defaultValue("false")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Choose whether to disable heave flag. In turn, this will utilize new rate controller on some targets");
+          .description("Choose whether to disable Z flag. In turn, this will utilize new rate controller on some targets");
 
           param("Kp", m_args.Kp)
           .defaultValue("1.0, 1.0, 1.0")
@@ -137,158 +119,90 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Maximum integral y-direction");
 
-          bind<IMC::DesiredPath>(this);
+          bind<IMC::NetRecovery>(this);
           bind<IMC::NavigationData>(this);
       }
 
-      //! Consume Desired Path
+      //! Consume NetRecovery
       void
-	  consume(const IMC::DesiredPath* msg)
+	  consume(const IMC::NetRecovery* msg)
       {
-    	  m_path = *msg;
+    	  m_NetRecovery = *msg;
+
     	  m_initialized_path = false;
       }
 
-      //!todo:above should become:
-/*	  void
- 	  consume(cont IMC::NetCatchManeuver* msg)
- 	  {
- 	  	  m_maneuver = *msg;
- 	  	  m_initialized_path = false;
- 	  }*/
-
+	  //! todo: needs to become msg from coordinator
       //! Consume Navigation Data
       void
 	  consume(const IMC::NavigationData* msg)
       {
     	  if (msg->cog == 1) //todo change this into a proper vehicle check
     	  {
-			  m_pos_est_x8(0) = msg->custom_x;
-			  m_pos_est_x8(1) = msg->custom_y;
-			  m_pos_est_x8(2) = msg->custom_z;
-
-			  m_des_speed = msg->cyaw;
+			  m_NavigationData = *msg;
     	  }
-
-    	  std::cout << "-->x8 position NED: " << m_pos_est_x8(0) << " " << m_pos_est_x8(1)<< " " << m_pos_est_x8(2) << "\n\n";
  	  }
 
       void
-	  initpath(IMC::EstimatedState state) //in consume??
-      {
-    	  (void)state;
+	  initpath(IMC::EstimatedState state)
+	   {
+    	  //start and end waypoints
+		  Matrix WP1 = Matrix(3,1,0.0);
+		  Matrix WP2 = Matrix(3,1,0.0);
 
-    	  //todo: get this info from netcatch maneuver in Neptus
-		  m_psi = Angles::radians(45); //right hand rotation around z
+		  //Way Point 1
+		  WGS84::displacement(state.lat, state.lon, 0, m_NetRecovery.start_lat, m_NetRecovery.start_lon, 0, &WP1(0), &WP1(1));
+		  WP1(2) = m_NetRecovery.z+m_NetRecovery.z_off;
+
+		  //Way Point 2
+		  WGS84::displacement(state.lat, state.lon, 0, m_NetRecovery.end_lat, m_NetRecovery.end_lon, 0, &WP2(0), &WP2(1));
+		  WP2(2) = m_NetRecovery.z+m_NetRecovery.z_off;
+
+		  m_psi = atan2(WP2(1)-WP1(1), WP2(0)-WP1(0)); //right hand rotation around z
 		  m_theta = Angles::radians(0); //right hand rotation around y'
-
-/* 		  //Way Point 1
-		  WGS84::displacement(state.lat, state.lon, 0, m_path.end_lat, m_path.end_lon, 0, &m_WP1(0), &m_WP1(1));
-		  m_WP1(2) = -m_path.end_z;
-
-		  //Way point 2
-		  m_WP2(0) = m_WP1(0)+100*cos(m_psi);
-		  m_WP2(1) = m_WP1(1)+100*sin(m_psi);
-		  m_WP2(2) = m_WP1(2)+0;
-
-		  Matrix deltaWP = m_WP2 - m_WP1;
-		  double deltaWP_NE = deltaWP.get(0,1,0,0).norm_2();
-
-		  m_alpha_k =  atan2(deltaWP(1),deltaWP(0));
-		  m_theta_k = -atan2(deltaWP_NE,deltaWP(2)) + Angles::radians(90);*/
-
-		  //Dimension box todo: this info in maneuver msg
-		  double l_box = 50;
-		  double w_box = 15;
-		  double h_box = 15;
-
-		  //unit vectors body frame box
-		  double xh_body[] = {1,0,0};
-		  double yh_body[] = {0,1,0};
-		  double zh_body[] = {0,0,1};
-
-		  Matrix l_NED = Matrix(3,1,0.0);
-		  Matrix w_NED = Matrix(3,1,0.0);
-		  Matrix h_NED = Matrix(3,1,0.0);
-
-		  l_NED = Rzyx(m_psi, m_theta, 0)*(Matrix(xh_body,3,1)*l_box);
-		  w_NED = Rzyx(m_psi, m_theta, 0)*(Matrix(yh_body,3,1)*w_box);
-		  h_NED = Rzyx(m_psi, m_theta, 0)*(Matrix(zh_body,3,1)*h_box);
-
-/*		  std::cout << "l " << l_NED(0) << " " << l_NED(1) << " " << l_NED(2) <<"\n";
-		  std::cout << "w " << w_NED(0) << " " << w_NED(1) << " " << w_NED(2) <<"\n";
-		  std::cout << "h " << h_NED(0) << " " << h_NED(1) << " " << h_NED(2) <<"\n";*/
 
 		  m_initialized_path = true;
 		  inf("Finished path initialization");
-      }
+	   }
 
+	  //! todo: implement speedlimit
       Matrix
-	  path_follow(Matrix pos_est)
+	  path_follow(double timestep, Matrix v_est, double des_speed)
       {
-    	  (void)pos_est;
+		  Matrix v_est_path = transpose(Rzyx(m_psi, m_theta, 0))*v_est;
 
-          /*Matrix eps = transpose(Rzyx(m_alpha_k,-m_theta_k,0))*(pos_est-m_WP1);
+		  m_v_int_value = m_v_int_value + (des_speed-v_est_path(0))*timestep;
 
-          double theta_d = m_theta_k + atan2(-eps(2),m_args.delta(1));
-          double psi_d = m_alpha_k + atan2(-eps(1),m_args.delta(0));
+		  Matrix F_des_path_path = Matrix(3,1,0.0);
+		  F_des_path_path(0) = m_args.Kp(0)*(des_speed-v_est_path(0)) + m_args.Ki(0)*m_v_int_value;
 
-		  Matrix u_d_p(3,1,0.0);
-		  u_d_p(0) = m_path.speed;
+		  debug("   speed des   : %f", des_speed);
+		  debug("  v est path   : %f; %f; %f", v_est_path(0), v_est_path(1), v_est_path(2));
 
-          Matrix v_des_path = Rzyx(psi_d,-theta_d,0)*u_d_p;
-
-          return v_des_path;*/
-
-		  Matrix v_des_path_body = Matrix(3,1,0.0);
-		  v_des_path_body(0) = m_des_speed;
-
-		  return v_des_path_body;
+		  return F_des_path_path;
       }
 
-      void
-      initPID()
-      {
-		m_PID_vy.setOutputLimits(-m_args.maxV(1), m_args.maxV(1));
-		m_PID_vz.setOutputLimits(-m_args.maxV(2), m_args.maxV(2));
 
-		m_PID_vy.setIntegralLimits(m_args.maxInt(1));
-		m_PID_vz.setIntegralLimits(m_args.maxInt(2));
-
-		m_PID_vy.setProportionalGain(m_args.Kp(1));
-		m_PID_vz.setProportionalGain(m_args.Kp(2));
-
-		m_PID_vy.setIntegralGain(m_args.Ki(1));
-		m_PID_vz.setIntegralGain(m_args.Ki(2));
-
-		m_PID_vy.setDerivativeGain(m_args.Kd(1));
-		m_PID_vz.setDerivativeGain(m_args.Kd(2));
-
-		m_initialized_PID = true;
-		inf("Finished PID initialization");
-      }
-
+	  //! todo: implement boundries
       Matrix
-	  syn_x8(double timestep, Matrix pos_est)
+	  syn_x8(double timestep, Matrix pos_est, Matrix pos_est_x8, Matrix v_est, Matrix v_est_x8)
       {
-		  Matrix pos_est_x8_body = transpose(Rzyx(m_psi, m_theta, 0))*m_pos_est_x8;
-		  Matrix pos_est_body = transpose(Rzyx(m_psi, m_theta, 0))*pos_est;
+		  Matrix pos_est_path = transpose(Rzyx(m_psi, m_theta, 0))*pos_est;
+		  Matrix pos_est_x8_path = transpose(Rzyx(m_psi, m_theta, 0))*pos_est_x8;
 
-/*		  double Kp1 = 1.0;
-		  double Kp2 = 1.0;
+		  Matrix v_est_path = transpose(Rzyx(m_psi, m_theta, 0))*v_est;
+		  Matrix v_est_x8_path = transpose(Rzyx(m_psi, m_theta, 0))*v_est_x8;
 
-		  Matrix v_des_syn_body = Matrix(3,1,0.0);
-		  v_des_syn_body(1) = (pos_est_x8_body(1)-pos_est_body(1))*Kp1;
-		  v_des_syn_body(2) = (pos_est_x8_body(2)-pos_est_body(2))*Kp2;*/
+		  m_pos_int_value = m_pos_int_value + (pos_est_x8_path-pos_est_path)*timestep;
 
-    	  Matrix v_des_syn_body = Matrix(3,1,0.0);
-          v_des_syn_body(1) = m_PID_vy.step(timestep, pos_est_x8_body(1) - pos_est_body(1));
-          v_des_syn_body(2) = m_PID_vz.step(timestep, pos_est_x8_body(2) - pos_est_body(2));
+		  Matrix F_des_syn_path = Matrix(3,1,0.0);
+          F_des_syn_path(1) = m_args.Kp(1)*(pos_est_x8_path(1)-pos_est_path(1)) + m_args.Ki(1)*m_pos_int_value(1) + m_args.Kd(1)*(v_est_x8_path(1)-v_est_path(1));
+          F_des_syn_path(2) = m_args.Kp(2)*(pos_est_x8_path(2)-pos_est_path(2)) + m_args.Ki(2)*m_pos_int_value(2) + m_args.Kd(2)*(v_est_x8_path(2)-v_est_path(2));
 
-		  std::cout << "-->   position body: " << pos_est_body(0) << " " << pos_est_body(1)<< " " << pos_est_body(2) << "\n";
-    	  std::cout << "-->x8 position body: " << pos_est_x8_body(0) << " " << pos_est_x8_body(1)<< " " << pos_est_x8_body(2) << "\n\n";
+          debug("pos est path x8: %f; %f; %f", pos_est_x8_path(0), pos_est_x8_path(1), pos_est_x8_path(2));
+		  debug("pos est path   : %f; %f; %f\n", pos_est_path(0), pos_est_path(1), pos_est_path(2));
 
-		  return v_des_syn_body;
+		  return F_des_syn_path;
       }
 
       //!Return Rotation matrix Rzx'y''.
@@ -300,21 +214,21 @@ namespace Control
         return Matrix(R_en_elements,3,3);
       }
 
-      //! Dispatch desired velocity
+      //! Dispatch desired force
       void
-      sendDesiredVelocity(Matrix v_des)
+      sendDesiredForce(Matrix F_des)
       {
-    	m_desired_velocity.u = v_des(0);
-        m_desired_velocity.v = v_des(1);
-        m_desired_velocity.w = v_des(2);
+    	m_desired_force.x =  F_des(0);
+        m_desired_force.y =  F_des(1);
+        m_desired_force.z =  F_des(2);
 
-        if (m_args.disable_heave)
-          m_desired_velocity.flags = IMC::TranslationalSetpoint::FL_SURGE | IMC::TranslationalSetpoint::FL_SWAY;
+        if (m_args.disable_Z)
+          m_desired_force.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y;
         else
-          m_desired_velocity.flags = IMC::TranslationalSetpoint::FL_SURGE | IMC::TranslationalSetpoint::FL_SWAY | IMC::TranslationalSetpoint::FL_HEAVE;
+          m_desired_force.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y | IMC::DesiredControl::FL_Z;
 
-        m_desired_velocity.setSourceEntity(getEntityId());
-        dispatch(m_desired_velocity);
+        m_desired_force.setSourceEntity(getEntityId());
+        dispatch(m_desired_force);
       }
 
       virtual void
@@ -325,32 +239,45 @@ namespace Control
     		  initpath(*state);
     	  }
 
-    	  if (m_initialized_PID == false)
-    	  {
-			  initPID();
-	      }
-
 		  //current estimated NED position
 		  Matrix pos_est(3, 1, 0.0);
 		  pos_est(0) = state->x;
 		  pos_est(1) = state->y;
 		  pos_est(2) = state->z;
 
-		  Matrix v_des_path_body = path_follow(pos_est);
-		  Matrix v_des_syn_body = syn_x8(timestep, pos_est);
+		  //current estimated NED velocity
+		  Matrix v_est(3, 1, 0.0);
+		  v_est(0) = state->vx;
+		  v_est(1) = state->vy;
+		  v_est(2) = state->vz;
 
-		  Matrix v_des_body(3,1, 0.0);
-		  v_des_body(0) = v_des_path_body(0);
-		  v_des_body(1) = v_des_syn_body(1);
-		  v_des_body(2) = v_des_syn_body(2);
+		  //position x8
+		  Matrix pos_est_x8(3, 1, 0.0);
+		  pos_est_x8(0) = m_NavigationData.custom_x;
+		  pos_est_x8(1) = m_NavigationData.custom_y;
+		  pos_est_x8(2) = m_NavigationData.custom_z;
 
-		  Matrix v_des = Rzyx(m_psi, m_theta, 0)*v_des_body;
-          sendDesiredVelocity(v_des);
+		  //desired speed x
+		  double des_speed = m_NavigationData.cyaw;
+		  //current velocity x8 x y
+		  Matrix v_est_x8(3, 1, 0.0);
+		  v_est_x8(0) = m_NavigationData.bias_psi;
+		  v_est_x8(1) = m_NavigationData.bias_r;
 
-		  std::cout << "speed_des= " << m_des_speed << "\n";
-          std::cout << "x_est= " << pos_est(0) << " \tvx_des= " << v_des(0) << " \tvx_des_body= " << v_des_body(0) << "\n";
-          std::cout << "y_est= " << pos_est(1) << " \tvy_des= " << v_des(1) << " \tvy_des_body= " << v_des_body(1) << "\n";
-          std::cout << "z_est= " << pos_est(2) << " \tvz_des= " << v_des(2) << " \tvz_des_body= " << v_des_body(2) << "\n\n";
+		  Matrix F_des_path_path = path_follow(timestep, v_est, des_speed);
+		  Matrix F_des_syn_path = syn_x8(timestep, pos_est, pos_est_x8, v_est, v_est_x8);
+
+		  Matrix F_des_path(3,1, 0.0);
+		  F_des_path(0) = F_des_path_path(0);
+		  F_des_path(1) = F_des_syn_path(1);
+		  F_des_path(2) = F_des_syn_path(2);
+
+		  Matrix F_des = Rzyx(m_psi, m_theta, 0)*F_des_path;
+          sendDesiredForce(F_des);
+
+		  debug("angle path: %f", m_psi); 
+		  debug("pos est x8: %f; %f; %f", pos_est_x8(0), pos_est_x8(1), pos_est_x8(2));
+		  debug("pos est   : %f; %f; %f\n", pos_est(0), pos_est(1), pos_est(2));
 	  }
 
       //! Update internal state with new parameter values.
