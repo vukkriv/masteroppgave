@@ -53,6 +53,16 @@ namespace Control
       Matrix maxV;
       Matrix maxInt;
 
+      std::string m_copter_id;
+      std::string m_aircraft_id;
+
+      //! Reference latitude
+      fp64_t ref_lat;
+      //! Reference longitude
+      fp64_t ref_lon;
+      //! Reference height (above elipsoid)
+      fp32_t ref_hae;
+
       //! Disable Z flag, this will utilize new rate controller on some targets
       bool disable_Z;
     };
@@ -66,9 +76,10 @@ namespace Control
       IMC::NetRecovery m_NetRecovery;
       //! Desired force
       IMC::DesiredControl m_desired_force;
-      //! NaviagationData x8
-      IMC::NavigationData m_NavigationData;
 
+      IMC::FormPos m_FormPosAircraft;
+      IMC::FormPos m_FormPosCopter;
+      IMC::DesiredPath m_path;
       //! initialization done
       bool m_initialized_path;
 
@@ -89,6 +100,21 @@ namespace Control
 		m_v_int_value(0.0),
 		m_pos_int_value(3,1,0.0)
       {
+          param("Latitude", m_args.ref_lat)
+          .defaultValue("-999.0")
+          .units(Units::Degree)
+          .description("Reference Latitude");
+
+          param("Longitude", m_args.ref_lon)
+          .defaultValue("0.0")
+          .units(Units::Degree)
+          .description("Reference Longitude");
+
+          param("Height", m_args.ref_hae)
+          .defaultValue("0.0")
+          .units(Units::Meter)
+          .description("Reference Height (above elipsoid)");
+
           param("Disable Z flag", m_args.disable_Z)
           .defaultValue("false")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -119,44 +145,74 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Maximum integral y-direction");
 
+          param("Copter", m_args.m_copter_id);
+          param("Aircraft", m_args.m_aircraft_id);
+
           bind<IMC::NetRecovery>(this);
-          bind<IMC::NavigationData>(this);
+          bind<IMC::DesiredPath>(this);
+          bind<IMC::FormPos>(this);
       }
 
       //! Consume NetRecovery
       void
 	  consume(const IMC::NetRecovery* msg)
       {
+          inf("Got NetRecovery \nfrom '%s' at '%s'",
+               resolveEntity(msg->getSourceEntity()).c_str(),
+               resolveSystemId(msg->getSource()));
+
     	  m_NetRecovery = *msg;
 
     	  m_initialized_path = false;
       }
 
-	  //! todo: needs to become msg from coordinator
-      //! Consume Navigation Data
       void
-	  consume(const IMC::NavigationData* msg)
+	  consume(const IMC::FormPos* msg)
       {
-    	  if (msg->cog == 1) //todo change this into a proper vehicle check
-    	  {
-			  m_NavigationData = *msg;
-    	  }
+          /*inf("Got FormPos \nfrom '%s' at '%s'",
+               resolveEntity(msg->getSourceEntity()).c_str(),
+               resolveSystemId(msg->getSource()));
+		  */
+		  std::string src_entity  = resolveSystemId(msg->getSource());
+		  if (src_entity == m_args.m_copter_id)
+		  {
+			  m_FormPosCopter = *msg;
+		  }
+		  else if (src_entity == m_args.m_aircraft_id)
+		  {
+			  m_FormPosAircraft = *msg;
+		  }
  	  }
 
+      //! Consume DesiredPath, contains the desired along-path velocity
       void
-	  initpath(IMC::EstimatedState state)
+	  consume(const IMC::DesiredPath* msg)
+      {
+          /*inf("Got DesiredPath \nfrom '%s' at '%s'",
+               resolveEntity(msg->getSourceEntity()).c_str(),
+               resolveSystemId(msg->getSource()));
+          */
+    	  m_path = *msg;
+      }
+
+
+      void
+	  initpath(void)
 	   {
     	  //start and end waypoints
 		  Matrix WP1 = Matrix(3,1,0.0);
 		  Matrix WP2 = Matrix(3,1,0.0);
 
 		  //Way Point 1
-		  WGS84::displacement(state.lat, state.lon, 0, m_NetRecovery.start_lat, m_NetRecovery.start_lon, 0, &WP1(0), &WP1(1));
-		  WP1(2) = m_NetRecovery.z+m_NetRecovery.z_off;
+		  WGS84::displacement(Angles::radians(m_args.ref_lat), Angles::radians(m_args.ref_lon), 0, m_NetRecovery.start_lat, m_NetRecovery.start_lon, 0, &WP1(0), &WP1(1));
+		  WP1(2) = m_NetRecovery.z;
 
 		  //Way Point 2
-		  WGS84::displacement(state.lat, state.lon, 0, m_NetRecovery.end_lat, m_NetRecovery.end_lon, 0, &WP2(0), &WP2(1));
-		  WP2(2) = m_NetRecovery.z+m_NetRecovery.z_off;
+		  WGS84::displacement(Angles::radians(m_args.ref_lat), Angles::radians(m_args.ref_lon), 0, m_NetRecovery.end_lat, m_NetRecovery.end_lon, 0, &WP2(0), &WP2(1));
+		  WP2(2) = m_NetRecovery.z;
+
+		  debug("WP_start: [%f,%f,%f]",WP1(0),WP1(1),WP1(2));
+		  debug("WP_end: [%f,%f,%f]",WP2(0),WP2(1),WP2(2));
 
 		  m_psi = atan2(WP2(1)-WP1(1), WP2(0)-WP1(0)); //right hand rotation around z
 		  m_theta = Angles::radians(0); //right hand rotation around y'
@@ -189,6 +245,8 @@ namespace Control
       {
 		  Matrix pos_est_path = transpose(Rzyx(m_psi, m_theta, 0))*pos_est;
 		  Matrix pos_est_x8_path = transpose(Rzyx(m_psi, m_theta, 0))*pos_est_x8;
+
+		  pos_est_x8_path(2) = pos_est_x8_path(2)+m_NetRecovery.z_off;
 
 		  Matrix v_est_path = transpose(Rzyx(m_psi, m_theta, 0))*v_est;
 		  Matrix v_est_x8_path = transpose(Rzyx(m_psi, m_theta, 0))*v_est_x8;
@@ -236,33 +294,33 @@ namespace Control
       {
     	  if (m_initialized_path == false)
     	  {
-    		  initpath(*state);
+    		  initpath();
     	  }
 
 		  //current estimated NED position
 		  Matrix pos_est(3, 1, 0.0);
-		  pos_est(0) = state->x;
-		  pos_est(1) = state->y;
-		  pos_est(2) = state->z;
+		  pos_est(0) = m_FormPosCopter.x;
+		  pos_est(1) = m_FormPosCopter.y;
+		  pos_est(2) = m_FormPosCopter.z;
 
 		  //current estimated NED velocity
 		  Matrix v_est(3, 1, 0.0);
-		  v_est(0) = state->vx;
-		  v_est(1) = state->vy;
-		  v_est(2) = state->vz;
+		  v_est(0) = m_FormPosCopter.vx;
+		  v_est(1) = m_FormPosCopter.vy;
+		  v_est(2) = m_FormPosCopter.vz;
 
 		  //position x8
 		  Matrix pos_est_x8(3, 1, 0.0);
-		  pos_est_x8(0) = m_NavigationData.custom_x;
-		  pos_est_x8(1) = m_NavigationData.custom_y;
-		  pos_est_x8(2) = m_NavigationData.custom_z;
+		  pos_est_x8(0) = m_FormPosAircraft.x;
+		  pos_est_x8(1) = m_FormPosAircraft.y;
+		  pos_est_x8(2) = m_FormPosAircraft.z;
 
 		  //desired speed x
-		  double des_speed = m_NavigationData.cyaw;
+		  double des_speed = m_path.speed;
 		  //current velocity x8 x y
 		  Matrix v_est_x8(3, 1, 0.0);
-		  v_est_x8(0) = m_NavigationData.bias_psi;
-		  v_est_x8(1) = m_NavigationData.bias_r;
+		  v_est_x8(0) = m_FormPosAircraft.vx;
+		  v_est_x8(1) = m_FormPosAircraft.vy;
 
 		  Matrix F_des_path_path = path_follow(timestep, v_est, des_speed);
 		  Matrix F_des_syn_path = syn_x8(timestep, pos_est, pos_est_x8, v_est, v_est_x8);
