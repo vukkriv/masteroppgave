@@ -91,30 +91,35 @@ namespace TestNetCatch
     	  msg.cog = x8orCopter;
 
     	  //position x8 in NED;
-    	  msg.custom_x = -9;
-    	  msg.custom_y = -11;
-    	  msg.custom_z = -20.5;
+    	  msg.custom_x = -10;
+    	  msg.custom_y = -10;
+    	  msg.custom_z = -20;
 
     	  //desired speed along path
     	  double speed_des = 2;
     	  msg.cyaw = speed_des;
+    	  //velocity x8 in NED:
+    	  msg.bias_psi = 0; //xvel
+    	  msg.bias_r = 0; //yvel
 
-    	  double err_x = 2;
-    	  double err_y = -2;
+    	  double err_x = 1;
+    	  double err_y = -1;
     	  double err_z = -1;
 
 		  while (!stopping())
 		  {
+			  dispatch(msg);       // Dispatch the value to the message bus
+	          debug("pos est x8: %f; %f; %f\n", msg.custom_x, msg.custom_y, msg.custom_z);
+
+			  Delay::wait(40);    // Wait doing nothing.
+
 			  err_x = err_x*-1;
 			  err_y = err_y*-1;
 			  err_z = err_z*-1;
 
 	    	  msg.custom_x = msg.custom_x+err_x;
-	    	  msg.custom_y = msg.custom_x+err_y;
+	    	  msg.custom_y = msg.custom_y+err_y;
 	    	  msg.custom_z = msg.custom_z+err_z;
-
-			  dispatch(msg);       // Dispatch the value to the message bus
-			  Delay::wait(5);    // Wait doing nothing.
 		  }
        }
 
