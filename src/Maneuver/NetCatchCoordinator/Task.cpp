@@ -427,7 +427,7 @@ namespace Maneuver
             checkPositionsAtRunway(); //requires that the net is standby at the start of the runway
 
             Matrix empty = Matrix(3,1,0);
-            sendDesiredPath(empty,m_WP_start, m_args.m_ud_impact);
+            //sendDesiredPath(empty,m_WP_start, m_args.m_ud_impact);
 
             if (!m_args.enable_catch)
             	m_curr_state = STANDBY_RUNW;
