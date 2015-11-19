@@ -53,6 +53,7 @@ namespace Sensors
       float inp_tout;
       //! Solution Format.
       std::string sol_format;
+      bool ned_velocity;
 
     };
 
@@ -102,6 +103,10 @@ namespace Sensors
         param("Output Solution Format", m_args.sol_format)
         .defaultValue("llh")
         .description("Output Solution Format - llh or ned");
+
+	param("Ned Velocity Output", m_args.ned_velocity)
+        .defaultValue("False")
+        .description("Ned Velocity Output - True or False");
 
         // Initialize messages.
         clearMessages();
@@ -275,6 +280,10 @@ namespace Sensors
 		   * parts[12]	sdzx(m)
 		   * parts[13]	Age of Differential
 		   * parts[14]	Ambiguity Ratio
+		   * if enu is the output format from rtklib
+		   * parts[15] u (m/s)
+		   * parts[16] v (m/s)
+		   * parts[17] w (m/s)
 		   */
 
 		  // Ignore Init Sentence from RTKLIB
@@ -403,6 +412,15 @@ namespace Sensors
 			  // Invert Z axis
 			  m_rtkfix.d = -m_rtkfix.d;
 		  }
+	// Set North,East and Down velcity
+		if (m_args.ned_velocity 
+			&& readDecimal(parts[16], m_rtkfix.v_n)
+			&& readDecimal(parts[15], m_rtkfix.v_e)
+			&& readDecimal(parts[16], m_rtkfix.v_d))
+		{
+			//Invert Z axis
+			m_rtkfix.v_d = -m_rtkfix.v_d;
+		}
     	  m_wdog.reset();
 		  dispatch(m_rtkfix);
     	  war("RtkFix Message Dispatched!");
