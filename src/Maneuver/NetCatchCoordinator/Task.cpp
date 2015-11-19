@@ -214,10 +214,6 @@ namespace Maneuver
         param("Desired net-vel catch", m_args.m_ud_impact)
         .defaultValue("10.0");
 
-        param("Desired acceleration time", m_args.m_td_acc)
-        .defaultValue("10.0")
-        .units(Units::Second);
-
         param("Desired collision radius", m_args.m_coll_r)
         .defaultValue("100.0")
         .units(Units::Meter);
@@ -403,7 +399,7 @@ namespace Maneuver
             double v_a = abs(m_cross_track_d[AIRCRAFT](0));
 
             // should use the desired acceleration instead
-            m_startCatch_radius = updateStartRadius(v_a,0, m_u_ref, m_args.m_td_acc, m_args.m_coll_r);
+            m_startCatch_radius = updateStartRadius(v_a,0, m_u_ref, m_ad, m_args.m_coll_r);
             if (m_startCatch_radius == -1)
             {
             	err("Unable to calculate the desired start-radius");
@@ -442,7 +438,7 @@ namespace Maneuver
           {
         	sendDesiredPath(m_WP_start,m_WP_end, m_ud);
             updateMeanValues(s);
-            m_ud = getPathVelocity(0, m_args.m_ud_impact, m_args.m_td_acc, true);
+            m_ud = getPathVelocity(0, m_args.m_ud_impact, m_ad, true);
             sendDesiredPath(m_WP_start,m_WP_end, m_ud);
             //checkAbortCondition();
             //test
@@ -718,8 +714,9 @@ namespace Maneuver
       }
 
       double 
-      getPathVelocity(double v0, double v_ref, double deltaT, bool active_ramp)
+      getPathVelocity(double v0, double v_ref, double a_n, bool active_ramp)
       {
+    	double deltaT = (v_ref-v0)/a_n;
         static bool rampEnabled = false;
         static double startTime = -1;
         static double deltaV = (v_ref-v0)/deltaT;
@@ -775,7 +772,7 @@ namespace Maneuver
           m_cloops.mask = IMC::CL_PATH;
           m_cloops.scope_ref = m_scope_ref;
           dispatch(m_cloops);
-          trace("Path controller activated from coordinator");
+          inf("Path controller activated from coordinator");
       }
       //! Main loop.
       void
