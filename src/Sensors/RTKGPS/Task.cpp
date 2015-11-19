@@ -53,7 +53,7 @@ namespace Sensors
       float inp_tout;
       //! Solution Format.
       std::string sol_format;
-      bool ned_velocity;
+      bool ned_velocity_available;
 
     };
 
@@ -81,8 +81,8 @@ namespace Sensors
       Task(const std::string& name, Tasks::Context& ctx):
         Tasks::Task(name, ctx),
         m_handle(NULL),
-		m_llh_output(false),
-		m_ned_output(false),
+        m_llh_output(false),
+        m_ned_output(false),
         m_reader(NULL)
       {
         // Define configuration parameters.
@@ -104,9 +104,9 @@ namespace Sensors
         .defaultValue("llh")
         .description("Output Solution Format - llh or ned");
 
-	param("Ned Velocity Output", m_args.ned_velocity)
+        param("Rtk Velocity Available", m_args.ned_velocity_available)
         .defaultValue("False")
-        .description("Ned Velocity Output - True or False");
+        .description("True if an edited version of RTKlib is used, which also outputs velocity information. ");
 
         // Initialize messages.
         clearMessages();
@@ -281,39 +281,39 @@ namespace Sensors
 		   * parts[13]	Age of Differential
 		   * parts[14]	Ambiguity Ratio
 		   * if enu is the output format from rtklib
-		   * parts[15] u (m/s)
-		   * parts[16] v (m/s)
-		   * parts[17] w (m/s)
+		   * parts[15] v_e (m/s)
+		   * parts[16] v_n (m/s)
+		   * parts[17] v_u (m/s)
 		   */
 
 		  // Ignore Init Sentence from RTKLIB
 		  if(parts[0] == "%")
 		  {
-			 // std::cout << "Initial Sentence Ignored \n";
-			  return;
+		    // std::cout << "Initial Sentence Ignored \n";
+		    return;
 		  }
 		  // Remove Empty Cells in parts vector
 		  size_t i = 0;
 		  for(i = 0; i < parts.size(); i++)
 		  {
-			  if(parts[i].empty() )
-			  {
-					parts.erase(parts.begin()+i);
-					i = i-1;
-			  }
+		    if(parts[i].empty() )
+		    {
+		      parts.erase(parts.begin()+i);
+		      i = i-1;
+		    }
 		  }
 
 		  if(m_llh_output)
 		  {
-			setGpsFix(parts);
+		    setGpsFix(parts);
 		  }
 		  else if(m_ned_output)
 		  {
-			setRtkFix(parts);
+		    setRtkFix(parts);
 		  }
 		  else
 		  {
-			  err("No Solution Format Set");
+		    err("No Solution Format Set");
 		  }
 
 
@@ -321,110 +321,113 @@ namespace Sensors
       void setGpsFix(std::vector<std::string>& parts)
       {
 
-		  //Set Type of Fix
-		  int Q;
-		  if(readNumber(parts[5], Q) )
-		  {
-			  //RTK Fix and Float flags not implemented in GpsFix
+        //Set Type of Fix
+        int Q;
+        if(readNumber(parts[5], Q) )
+        {
+          //RTK Fix and Float flags not implemented in GpsFix
 
-			  if(Q == 1)
-			  {
-				  m_fix.type = 1; // Differential = FIX
-			  }
-			  else if(Q == 2)
-			  {
-			  	  m_fix.type = 2; // Dead-reckoning = FLOAT
-			  }
+          if(Q == 1)
+          {
+            m_fix.type = IMC::GpsFix::GFT_DIFFERENTIAL; // Differential = FIX
+          }
+          else if(Q == 2)
+          {
+            m_fix.type = IMC::GpsFix::GFT_DEAD_RECKONING; // Dead-reckoning = FLOAT
+          }
+        }
 
-		  }
+        //Set UTC Year Month Day
+        std::vector<std::string> UTC_YMD;
+        String::split(parts[0], "/", UTC_YMD);
 
-		  //Set UTC Year Month Day
-		  std::vector<std::string> UTC_YMD;
-		  String::split(parts[0], "/", UTC_YMD);
+        if(readNumber(UTC_YMD[0],m_fix.utc_year)
+            && readDecimal(UTC_YMD[1],m_fix.utc_month)
+            && readDecimal(UTC_YMD[2],m_fix.utc_day) )
+        {
+          //inf("%d / %d / %d", m_fix.utc_year, m_fix.utc_month, m_fix.utc_day);
+          m_fix.validity |= IMC::GpsFix::GFV_VALID_DATE;
 
-		  if(readNumber(UTC_YMD[0],m_fix.utc_year)
-				  && readDecimal(UTC_YMD[1],m_fix.utc_month)
-				  && readDecimal(UTC_YMD[2],m_fix.utc_day) )
-		  {
-			  //inf("%d / %d / %d", m_fix.utc_year, m_fix.utc_month, m_fix.utc_day);
-			  m_fix.validity |= IMC::GpsFix::GFV_VALID_DATE;
+        }
 
-		  }
+        //Set UTC time
+        std::vector<std::string> UTC_Time;
+        String::split(parts[1], ":", UTC_Time);
+        fp32_t h;
+        fp32_t m;
+        fp32_t s;
 
-		  //Set UTC time
-		  std::vector<std::string> UTC_Time;
-		  String::split(parts[1], ":", UTC_Time);
-		  fp32_t h;
-		  fp32_t m;
-		  fp32_t s;
+        // [HH|MM|SS.FFF] UTC_Time
 
-		  // [HH|MM|SS.FFF] UTC_Time
+        if(readDecimal(UTC_Time[0],h)
+            && readDecimal(UTC_Time[1],m)
+            && readDecimal(UTC_Time[2],s))
+        {
 
-		  if(readDecimal(UTC_Time[0],h)
-				  && readDecimal(UTC_Time[1],m)
-				  && readDecimal(UTC_Time[2],s))
-		  {
+          m_fix.utc_time = (3600*h) + (60*m)+ s;
+          m_fix.validity |= IMC::GpsFix::GFV_VALID_TIME;
+        }
 
-			  m_fix.utc_time = (3600*h) + (60*m)+ s;
-			  m_fix.validity |= IMC::GpsFix::GFV_VALID_TIME;
-		  }
+        // Set Longitude,Latitude and Height and set number of satellites
+        if (readDecimal(parts[2], m_fix.lat)
+            && readDecimal(parts[3], m_fix.lon)
+            && readDecimal(parts[4], m_fix.height)
+            && readDecimal(parts[6],m_fix.satellites))
+        {
+          // Convert coordinates to radians.
+          m_fix.lat = Angles::radians(m_fix.lat);
+          m_fix.lon = Angles::radians(m_fix.lon);
+          m_fix.validity |= IMC::GpsFix::GFV_VALID_POS;
+        }
 
-		  // Set Longitude,Latitude and Height and set number of satellites
-		  if (readDecimal(parts[2], m_fix.lat)
-		              && readDecimal(parts[3], m_fix.lon)
-		              && readDecimal(parts[4], m_fix.height)
-					  && readDecimal(parts[6],m_fix.satellites))
-		  {
-			  // Convert coordinates to radians.
-			  m_fix.lat = Angles::radians(m_fix.lat);
-			  m_fix.lon = Angles::radians(m_fix.lon);
-			  m_fix.validity |= IMC::GpsFix::GFV_VALID_POS;
-		  }
-
-    	  m_wdog.reset();
-    	  dispatch(m_fix);
-    	  war("GpsFix Message Dispatched!");
+        m_wdog.reset();
+        dispatch(m_fix);
+        war("GpsFix Message Dispatched!");
       }
 
       void setRtkFix(std::vector<std::string>& parts)
       {
-    	  //Set Type of Fix
-    		  int Q;
-    		  if(readNumber(parts[5], Q) )
-    		  {
-    			  if(Q == 1) // FIX
-    			  {
-    				  m_rtkfix.type = IMC::RtkFix::RTK_FIXED;
-    			  }
-    			  else if(Q == 2) // FLOAT
-    			  {
-    				  m_rtkfix.type = IMC::RtkFix::RTK_FLOAT;
-    			  }
+        //Set Type of Fix
+        int Q;
+        if(readNumber(parts[5], Q) )
+        {
+          if(Q == 1) // FIX
+          {
+            m_rtkfix.type = IMC::RtkFix::RTK_FIXED;
+          }
+          else if(Q == 2) // FLOAT
+          {
+            m_rtkfix.type = IMC::RtkFix::RTK_FLOAT;
+          }
+          else
+          {
+            m_rtkfix.type = IMC::RtkFix::RTK_NONE;
+          }
 
-    		  }
-    	  // Set North,East and Down and set number of satellites
-		  if (readDecimal(parts[3], m_rtkfix.n)
-					  && readDecimal(parts[2], m_rtkfix.e)
-					  && readDecimal(parts[4], m_rtkfix.d)
-					  && readDecimal(parts[6],m_rtkfix.satellites)
-		        && readDecimal(parts[14], m_rtkfix.iar_ratio))
-		  {
-			  // Invert Z axis
-			  m_rtkfix.d = -m_rtkfix.d;
-		  }
-	// Set North,East and Down velcity
-		if (m_args.ned_velocity 
-			&& readDecimal(parts[16], m_rtkfix.v_n)
-			&& readDecimal(parts[15], m_rtkfix.v_e)
-			&& readDecimal(parts[16], m_rtkfix.v_d))
-		{
-			//Invert Z axis
-			m_rtkfix.v_d = -m_rtkfix.v_d;
-		}
-    	  m_wdog.reset();
-		  dispatch(m_rtkfix);
-    	  war("RtkFix Message Dispatched!");
-	  }
+        }
+        // Set North,East and Down and set number of satellites
+        if (readDecimal(parts[3], m_rtkfix.n)
+            && readDecimal(parts[2], m_rtkfix.e)
+            && readDecimal(parts[4], m_rtkfix.d)
+            && readDecimal(parts[6], m_rtkfix.satellites)
+            && readDecimal(parts[14], m_rtkfix.iar_ratio))
+        {
+          // Invert Z axis
+          m_rtkfix.d = -m_rtkfix.d;
+        }
+        // Set North,East and Down velocity
+        if (m_args.ned_velocity_available
+            && readDecimal(parts[16], m_rtkfix.v_n)
+            && readDecimal(parts[15], m_rtkfix.v_e)
+            && readDecimal(parts[17], m_rtkfix.v_d))
+        {
+          //Invert Z axis
+          m_rtkfix.v_d = -m_rtkfix.v_d;
+        }
+        m_wdog.reset();
+        dispatch(m_rtkfix);
+        war("RtkFix Message Dispatched!");
+      }
 
       void
       onMain(void)
