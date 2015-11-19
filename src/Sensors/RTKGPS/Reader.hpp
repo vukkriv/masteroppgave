@@ -22,109 +22,101 @@
 // language governing permissions and limitations at                        *
 // http://ec.europa.eu/idabc/eupl.html.                                     *
 //***************************************************************************
-// Author: DuneAuthor                                                       *
+// Author: Ricardo Martins                                                  *
 //***************************************************************************
+
+#ifndef SENSORS_GPS_READER_HPP_INCLUDED_
+#define SENSORS_GPS_READER_HPP_INCLUDED_
 
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 
-namespace TestNetCatch
+namespace Sensors
 {
-  namespace SendDummyMessagePosX8
+  namespace RTKGPS
   {
     using DUNE_NAMESPACES;
 
-    struct Task: public DUNE::Tasks::Task
+    //! Read buffer size.
+    static const size_t c_read_buffer_size = 4096;
+    //! Line termination character.
+    static const char c_line_term = '\n';
+
+    class Reader: public Concurrency::Thread
     {
+    public:
       //! Constructor.
-      //! @param[in] name task name.
-      //! @param[in] ctx context.
-      Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Task(name, ctx)
+      //! @param[in] task parent task.
+      //! @param[in] handle I/O handle.
+      Reader(Tasks::Task* task, IO::Handle* handle):
+        m_task(task),
+        m_handle(handle)
       {
+        m_buffer.resize(c_read_buffer_size);
       }
 
-      //! Update internal state with new parameter values.
+    private:
+      //! Parent task.
+      Tasks::Task* m_task;
+      //! I/O handle.
+      IO::Handle* m_handle;
+      //! Internal read buffer.
+      std::vector<char> m_buffer;
+      //! Current line.
+      std::string m_line;
+
       void
-      onUpdateParameters(void)
+      dispatch(IMC::Message& msg)
       {
+        msg.setDestination(m_task->getSystemId());
+        msg.setDestinationEntity(m_task->getEntityId());
+        m_task->dispatch(msg, DF_LOOP_BACK);
       }
 
-      //! Reserve entity identifiers.
       void
-      onEntityReservation(void)
+      read(void)
       {
+        if (!Poll::poll(*m_handle, 1.0))
+          return;
+
+        size_t rv = m_handle->read(&m_buffer[0], m_buffer.size());
+        if (rv == 0)
+          throw std::runtime_error(DTR("invalid read size"));
+
+        for (size_t i = 0; i < rv; ++i)
+        {
+          m_line.push_back(m_buffer[i]);
+          if (m_buffer[i] == c_line_term)
+          {
+            IMC::DevDataText line;
+            line.value = m_line;
+            dispatch(line);
+            m_line.clear();
+          }
+        }
       }
 
-      //! Resolve entity names.
       void
-      onEntityResolution(void)
+      run(void)
       {
+        while (!isStopping())
+        {
+          try
+          {
+            read();
+          }
+          catch (std::runtime_error& e)
+          {
+            IMC::IoEvent evt;
+            evt.type = IMC::IoEvent::IOV_TYPE_INPUT_ERROR;
+            evt.error = e.what();
+            dispatch(evt);
+            break;
+          }
+        }
       }
-
-      //! Acquire resources.
-      void
-      onResourceAcquisition(void)
-      {
-      }
-
-      //! Initialize resources.
-      void
-      onResourceInitialization(void)
-      {
-      }
-
-      //! Release resources.
-      void
-      onResourceRelease(void)
-      {
-      }
-
-      //! Main loop.
-      void
-      onMain(void)
-      {
-    	  IMC::NavigationData msg;   // use NavigationData message from IMC
-
-    	  //1 = x8, 0 = Copter
-    	  double x8orCopter = 1;
-    	  msg.cog = x8orCopter;
-
-    	  //position x8 in NED;
-    	  msg.custom_x = -10;
-    	  msg.custom_y = -10;
-    	  msg.custom_z = -20;
-
-    	  //desired speed along path
-    	  double speed_des = 2;
-    	  msg.cyaw = speed_des;
-    	  //velocity x8 in NED:
-    	  msg.bias_psi = 0; //xvel
-    	  msg.bias_r = 0; //yvel
-
-    	  double err_x = 1;
-    	  double err_y = -1;
-    	  double err_z = -1;
-
-		  while (!stopping())
-		  {
-			  dispatch(msg);       // Dispatch the value to the message bus
-	          debug("pos est x8: %f; %f; %f\n", msg.custom_x, msg.custom_y, msg.custom_z);
-
-			  Delay::wait(40);    // Wait doing nothing.
-
-			  err_x = err_x*-1;
-			  err_y = err_y*-1;
-			  err_z = err_z*-1;
-
-	    	  msg.custom_x = msg.custom_x+err_x;
-	    	  msg.custom_y = msg.custom_y+err_y;
-	    	  msg.custom_z = msg.custom_z+err_z;
-		  }
-       }
-
     };
   }
 }
 
-DUNE_TASK
+#endif
