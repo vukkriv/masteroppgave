@@ -43,6 +43,7 @@ namespace Maneuver
         DUNE::Maneuvers::Maneuver(name, ctx)
       {
         bindToManeuver<Task, IMC::NetRecovery>();
+        bind<IMC::NetRecoveryState>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -54,11 +55,40 @@ namespace Maneuver
       void
       consume(const IMC::NetRecovery* maneuver)
       {
+    	inf("NetRecovery maneuver received");
         // Enable control loops
         setControl(IMC::CL_PATH);
 
-        // Todo: Create the DesiredRecoveryPath message, and dispatch
+        IMC::DesiredNetRecoveryPath d_path;
+        d_path.start_lat = maneuver->start_lat;
+        d_path.start_lon = maneuver->start_lon;
+        d_path.end_lat = maneuver->end_lat;
+        d_path.end_lon = maneuver->end_lon;
+        d_path.z = maneuver->z;
+        d_path.lbox_height = maneuver->lbox_height;
+        d_path.lbox_width = maneuver->lbox_width;
+        d_path.max_acc	= maneuver->max_acc;
+        d_path.speed = maneuver->speed;
+        d_path.z_off = maneuver->z_off;
+        d_path.z_units = maneuver->z_units;
 
+        dispatch(d_path);
+        inf("DesiredNetRecoveryPath dispatched");
+      }
+
+      void
+      consume(const IMC::NetRecoveryState* state)
+      {
+    	  debug("NetRecveryState received");
+    	  if (state->flags && IMC::NetRecoveryState::NR_END)
+    	  {
+    		  inf("NetRecoveryState END of runway");
+    		  signalCompletion();
+    	  }
+    	  else
+    	  {
+
+    	  }
       }
     };
   }
