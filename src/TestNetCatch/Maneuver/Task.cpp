@@ -189,12 +189,18 @@ namespace TestNetCatch
         transition->source_man = "1";
         transition->dest_man   = "2";
 
+        IMC::PlanTransition* transition2 = new IMC::PlanTransition;
+        transition2->source_man = "2";
+        transition2->dest_man   = "1";
+
+
         plan.description = "A net recovery test plan";
         plan.plan_id = "NetRecoveryTest";
 
 
         IMC::MessageList<IMC::PlanTransition> translist;
         translist.push_back(transition);
+        translist.push_back(transition2);
 
         IMC::MessageList<IMC::PlanManeuver> manlist;
         manlist.push_back(pman1);
@@ -220,7 +226,6 @@ namespace TestNetCatch
         dispatch(planCtrl);
 
     	  //dispatch(msg);
-    	  inf("NetRecovery maneuver message dispatched");
     	  maneuver_enabled = true;
       }
 
@@ -231,7 +236,6 @@ namespace TestNetCatch
     	  if (m_timestamp_start == 0.0)
     	  {
     		  m_timestamp_start = Clock::get();
-    		  inf("Timestamp: %f",m_timestamp_start);
     	  }
     	  double timeSinceStart =  Clock::get() - m_timestamp_start;
     	  if (!maneuver_enabled)
