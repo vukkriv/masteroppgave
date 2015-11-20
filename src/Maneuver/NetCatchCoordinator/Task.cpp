@@ -760,6 +760,35 @@ namespace Maneuver
           dispatch(m_cloops);
           inf("Path controller activated from coordinator");
       }
+
+      void
+      sendCurrentState()
+      {
+    	  IMC::NetRecoveryState state;
+    	  //state.flags = m_curr_state;	Should use the IMC flags for state
+    	  state.x_n = m_cross_track[COPTER](0);
+		  state.y_n = m_cross_track[COPTER](1);
+		  state.z_n = m_cross_track[COPTER](2);
+
+    	  state.vx_n = m_cross_track_d[COPTER](0);
+		  state.vy_n = m_cross_track_d[COPTER](1);
+		  state.vz_n = m_cross_track_d[COPTER](2);
+
+    	  state.x_a = m_cross_track[AIRCRAFT](0);
+    	  state.y_a = m_cross_track[AIRCRAFT](1);
+    	  state.z_a = m_cross_track[AIRCRAFT](2);
+
+    	  state.vx_a = m_cross_track_d[AIRCRAFT](0);
+    	  state.vy_a = m_cross_track_d[AIRCRAFT](1);
+    	  state.vz_a = m_cross_track_d[AIRCRAFT](2);
+
+    	  state.delta_p  = delta_p_path_x;
+    	  state.delta_vp = delta_v_path_x;
+
+    	  state.course_error_a = 0;
+    	  state.course_error_n = 0;
+      }
+
       //! Main loop.
       void
       onMain(void)
