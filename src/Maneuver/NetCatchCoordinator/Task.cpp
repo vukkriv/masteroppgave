@@ -93,7 +93,7 @@ namespace Maneuver
   	  fp32_t m_ref_hae;
       bool m_ref_valid;
 
-      bool m_maneuverEnabled;
+      bool m_coordinatorEnabled;
 
       //! Vehicles initialized
       std::vector<bool> m_initialized;
@@ -141,8 +141,6 @@ namespace Maneuver
       //! Radius to start net-catch (calculate based on net-acceleration)
       double m_startCatch_radius;
 
-      //! Timeout for operation
-      uint16_t m_timeout;
       //! Along-track velocity reference value
       fp32_t m_u_ref;
       //! Desired along-track velocity
@@ -167,7 +165,7 @@ namespace Maneuver
 		m_ref_lon(0.0),
 		m_ref_hae(0.0),
         m_ref_valid(false),
-        m_maneuverEnabled(false),
+        m_coordinatorEnabled(false),
         m_u_ref(0.0),
         m_ad(0.0)
       {
@@ -223,7 +221,7 @@ namespace Maneuver
         // Bind incoming IMC messages
         //bind<IMC::EstimatedState>(this);
         bind<IMC::FormPos>(this);
-        bind<IMC::NetRecovery>(this);
+        bind<IMC::DesiredNetRecoveryPath>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -264,9 +262,9 @@ namespace Maneuver
       }
 
       void
-      consume(const IMC::NetRecovery* msg)
+      consume(const IMC::DesiredNetRecoveryPath* msg)
       {
-  	    inf("Got NetRecovery \nfrom '%s' at '%s'",
+  	    inf("Got DesiredNetRecovery \nfrom '%s' at '%s'",
 		     resolveEntity(msg->getSourceEntity()).c_str(),
 		     resolveSystemId(msg->getSource()));
   	    inf("Intialize net recovery maneuver");
@@ -297,12 +295,11 @@ namespace Maneuver
 
         m_u_ref   = msg->speed;
         m_ad 	  = msg->max_acc;
-        m_timeout = msg->timeout;
 
         initCoordinator();
         initRunwayPath(m_WP_start, m_WP_end);
 
-  	    m_maneuverEnabled = true;
+  	    m_coordinatorEnabled = true;
   	    inf("Maneuver enabled");
   	    enablePathController();
       }
@@ -354,22 +351,11 @@ namespace Maneuver
         //spew("Position aircraft NED: [%f,%f,%f]",m_p[AIRCRAFT](0),m_p[AIRCRAFT](1),m_p[AIRCRAFT](2));
         //spew("Position copter NED: [%f,%f,%f]",m_p[COPTER](0),m_p[COPTER](1),m_p[COPTER](2));
 
-        if (!m_maneuverEnabled)
+        if (!m_coordinatorEnabled)
         	return;
 
         calcPathErrors(p, v, s);
-
-
         updateMeanValues(s);
-        //trace("Curr state: %d",static_cast<int>(m_curr_state));
-
-/*
-        if (changeWP(m_p[s]))
-          inf("WP update");
-          m_WP += m_WP;
-*/
-        // should be called only when waypoint/velocity update
-
 
         CoordState last_state = m_curr_state;
         switch(m_curr_state)
