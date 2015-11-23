@@ -78,8 +78,19 @@ namespace Maneuver
       std::string m_aircraft_id;
     };
 
+    struct VirtualRunway
+    {
+	  fp64_t lat_start;
+	  fp64_t lon_start;
+	  fp32_t hae_start;
+
+	  fp64_t lat_end;
+	  fp64_t lon_end;
+	  fp32_t hae_end;
+    };
+
     //! % Coordinator states
-    enum CoordState {INIT=0, GOTO_RUNW, STANDBY_RUNW, EN_CATCH, END_RUNW, CATCH_ABORT};
+    //enum CoordState {INIT=0, GOTO_RUNW, STANDBY_RUNW, EN_CATCH, END_RUNW, CATCH_ABORT};
     enum Vehicle {AIRCRAFT=0, COPTER, INVALID=-1};
 
     struct Task: public DUNE::Tasks::Task
@@ -87,7 +98,11 @@ namespace Maneuver
       //! Task arguments.
       Arguments m_args;
       //! Current state
-      CoordState m_curr_state;
+      IMC::NetRecoveryState::NetRecoveryLevelEnum m_curr_state;
+      //CoordState m_curr_state;
+
+      VirtualRunway m_runway;
+
   	  //! Localization origin (WGS-84)
   	  fp64_t m_ref_lat, m_ref_lon;
   	  fp32_t m_ref_hae;
@@ -95,13 +110,14 @@ namespace Maneuver
 
       bool m_coordinatorEnabled;
 
+
       //! Vehicles initialized
       std::vector<bool> m_initialized;
       //! Task ready to receive messages
       bool m_initializedCoord;
 
       //! Last FormPos received
-      std::vector<IMC::FormPos> m_estate;
+      std::vector<IMC::EstimatedLocalState> m_estate;
       
       //! Last position in NED
       std::vector<Matrix> m_p;
@@ -141,13 +157,14 @@ namespace Maneuver
       //! Radius to start net-catch (calculate based on net-acceleration)
       double m_startCatch_radius;
 
+      //! Timeout for operation
+      uint16_t m_timeout;
       //! Along-track velocity reference value
       fp32_t m_u_ref;
       //! Desired along-track velocity
       fp32_t m_ud;
       //! Desired along-track acceleration
       fp32_t m_ad;
-
 
       //! Control loops last reference
       uint32_t m_scope_ref;
@@ -176,21 +193,6 @@ namespace Maneuver
         param("Enable Catch", m_args.enable_catch)
         .defaultValue("false")
         .description("Flag to enable catch state of the state-machine");
-
-        param("Latitude", m_args.ref_lat)
-        .defaultValue("-999.0")
-        .units(Units::Degree)
-        .description("Reference Latitude");
-
-        param("Longitude", m_args.ref_lon)
-        .defaultValue("0.0")
-        .units(Units::Degree)
-        .description("Reference Longitude");
-
-        param("Height", m_args.ref_hae)
-        .defaultValue("0.0")
-        .units(Units::Meter)
-        .description("Reference Height (above elipsoid)");
         
         param("Mean Window Size", m_args.mean_ws)
         .defaultValue("1.0")
@@ -217,10 +219,9 @@ namespace Maneuver
         .units(Units::Meter);
 
 
-
         // Bind incoming IMC messages
         //bind<IMC::EstimatedState>(this);
-        bind<IMC::FormPos>(this);
+        bind<IMC::EstimatedLocalState>(this);
         bind<IMC::DesiredNetRecoveryPath>(this);
       }
 
@@ -272,62 +273,48 @@ namespace Maneuver
   	    if (!m_initializedCoord)
         {
   	      inf("Intialize coordinator");
-   		  m_ref_lat = Angles::radians(m_args.ref_lat);
-		  m_ref_lon = Angles::radians(m_args.ref_lon);
-		  m_ref_hae = Angles::radians(m_args.ref_hae);
-          m_ref_valid = true;
           initCoordinator();
         }
 
-
-  	    debug("Reference point: [%f,%f,%f]",m_ref_lat,m_ref_lon,m_ref_hae);
-  	    debug("Starting point: [%f,%f]",msg->start_lat,msg->start_lon);
-  	  	debug("End point: [%f,%f]",msg->end_lat,msg->end_lon);
-        WGS84::displacement(m_ref_lat, m_ref_lon, 0,
-        					msg->start_lat, msg->start_lon, 0,
-        					&m_WP_start(0), &m_WP_start(1));
-        m_WP_start(2) = msg->z + msg->z_off;
-
-        WGS84::displacement(m_ref_lat, m_ref_lon, 0,
-        					msg->end_lat, msg->end_lon, 0,
-                            &m_WP_end(0), &m_WP_end(1));
-        m_WP_end(2) = msg->z + msg->z_off;
+  	    m_runway.lat_start = msg->start_lat;
+  	    m_runway.lon_start = msg->start_lon;
+  	    m_runway.hae_start = msg->z + msg->z_off;
+  	    m_runway.lon_end = msg->end_lon;
+  	    m_runway.lat_end = msg->end_lat;
+  	    m_runway.hae_end = msg->z + msg->z_off;
 
         m_u_ref   = msg->speed;
         m_ad 	  = msg->max_acc;
 
-        initCoordinator();
-        initRunwayPath(m_WP_start, m_WP_end);
-
   	    m_coordinatorEnabled = true;
   	    inf("Maneuver enabled");
-  	    enablePathController();
+  	    //enablePathController();
       }
 
       void
 
-      consume(const IMC::FormPos* estate)
+      consume(const IMC::EstimatedLocalState* estate)
       {
-        if (!m_initializedCoord)
+
+  	    m_ref_lat = estate->lat;
+		m_ref_lon = estate->lon;
+		m_ref_hae = estate->height;
+		m_ref_valid = true;
+
+    	if (!m_initializedCoord)
         {
-   		  m_ref_lat = Angles::radians(m_args.ref_lat);
-		  m_ref_lon = Angles::radians(m_args.ref_lon);
-		  m_ref_hae = Angles::radians(m_args.ref_hae);
-          m_ref_valid = true;
           initCoordinator();
-          return;
+          //return;
         }
 
-        //spew("Got FormPos \nfrom '%s' at '%s'",
+    	initRunwayPath();
+
+        //spew("Got EstimatedState \nfrom '%s' at '%s'",
         //     resolveEntity(estate->getSourceEntity()).c_str(),
         //     resolveSystemId(estate->getSource()));
 
         std::string vh_id  = resolveSystemId(estate->getSource());
         int s = getVehicle(vh_id);
-        
-        //debug("Position NED: [%f,%f,%f]",estate->x,estate->y,estate->z);
-
-        //trace("s: %d",s);
         
         if (s == INVALID)  //invalid vehicle
           return;
@@ -348,33 +335,24 @@ namespace Maneuver
         m_initialized[s] = true;
         m_estate[s]       = *estate;
 
-        //spew("Position aircraft NED: [%f,%f,%f]",m_p[AIRCRAFT](0),m_p[AIRCRAFT](1),m_p[AIRCRAFT](2));
-        //spew("Position copter NED: [%f,%f,%f]",m_p[COPTER](0),m_p[COPTER](1),m_p[COPTER](2));
-
         if (!m_coordinatorEnabled)
         	return;
 
         calcPathErrors(p, v, s);
         updateMeanValues(s);
 
-        CoordState last_state = m_curr_state;
+        IMC::NetRecoveryState::NetRecoveryLevelEnum last_state = m_curr_state;
         switch(m_curr_state)
         {
-          case INIT:
+          case IMC::NetRecoveryState::NR_INIT:
           {
             if (allInitialized())
             {
-              m_curr_state = GOTO_RUNW; 
+              m_curr_state = IMC::NetRecoveryState::NR_STANDBY;
             }
             break;
           }
-          case GOTO_RUNW:
-          {
-        	//sendDesiredPath(m_WP_start,m_WP_end, m_ud);
-            m_curr_state = STANDBY_RUNW;
-            break;
-          }
-          case STANDBY_RUNW:
+          case IMC::NetRecoveryState::NR_STANDBY:
           {
             updateMeanValues(s);
 
@@ -383,8 +361,6 @@ namespace Maneuver
             // Rotate m_v[AIRCRAFT] to the path frame and extract the x-value -> m_cross_track_d[AIRCRAFT](0) = eps_dot[AIRCRAFT](0)
 
             double v_a = abs(m_cross_track_d[AIRCRAFT](0));
-
-            // should use the desired acceleration instead
             m_startCatch_radius = updateStartRadius(v_a,0, m_u_ref, m_ad, m_args.m_coll_r);
             if (m_startCatch_radius == -1)
             {
@@ -407,40 +383,36 @@ namespace Maneuver
 		        spew("StartCatch radius: %f",m_startCatch_radius);
 				spew("\n\n");
             }
-            //spew("StartCatch radius: %f",m_startCatch_radius);
-            //spew("Delta_p_x: %f",delta_p_path_x);
-            //spew("v_a: %f",v_a);
             checkPositionsAtRunway(); //requires that the net is standby at the start of the runway
 
             Matrix empty = Matrix(3,1,0);
             //sendDesiredPath(empty,m_WP_start, m_args.m_ud_impact);
 
             if (!m_args.enable_catch)
-            	m_curr_state = STANDBY_RUNW;
+            	m_curr_state = IMC::NetRecoveryState::NR_START;
 
             break;
           }
-          case EN_CATCH:
+          case IMC::NetRecoveryState::NR_START:
           {
-        	sendDesiredPath(m_WP_start,m_WP_end, m_ud);
+        	//sendDesiredPath(m_ud);
             updateMeanValues(s);
             m_ud = getPathVelocity(0, m_args.m_ud_impact, m_ad, true);
-            sendDesiredPath(m_WP_start,m_WP_end, m_ud);
+            sendDesiredPath(m_ud);
             //checkAbortCondition();
-            //test
-            //m_curr_state = STANDBY_RUNW;
+            //m_curr_state = IMC::NetRecoveryState::NR_STANDBY;
             break;
           }                            
-          case END_RUNW:
+          case IMC::NetRecoveryState::NR_END:
           {
             break;
           }
-          case CATCH_ABORT:
+          case IMC::NetRecoveryState::NR_ABORT:
           {
             break;
           }                            
         }        
-
+        sendCurrentState();
         if (last_state != m_curr_state)
         	inf("Curr state: %d",static_cast<int>(m_curr_state));
 
@@ -454,7 +426,7 @@ namespace Maneuver
 
         unsigned int no_vehicles = 2;
         
-        m_estate        = std::vector<IMC::FormPos>(no_vehicles);
+        m_estate        = std::vector<IMC::EstimatedLocalState>(no_vehicles);
         m_p             = std::vector<Matrix>(no_vehicles);
         m_v             = std::vector<Matrix>(no_vehicles);
 
@@ -486,22 +458,32 @@ namespace Maneuver
           }
           m_initialized[i] = false;
         }
-
         m_WP_start = Matrix(3,1,0);
         m_WP_end = Matrix(3,1,0);
 
-        // TEMP: set current end WP as end of runway
         m_WP_radius = m_args.m_endCatch_radius;
-        // For now: set the state directly to standby at runway
-        m_curr_state = INIT;
+        m_curr_state = IMC::NetRecoveryState::NR_INIT;
         m_initializedCoord = true;
         inf("Coordinator initialized");
       }
 
       void
-      initRunwayPath(Matrix WP_start, Matrix WP_end)
+      initRunwayPath()
       {
-          Matrix deltaWP = WP_end - WP_start;
+    	  debug("Reference point: [%f,%f,%f]",m_ref_lat,m_ref_lon,m_ref_hae);
+    	  debug("Starting point: [%f,%f]",m_runway.lat_start,m_runway.lon_start);
+    	  debug("End point: [%f,%f]",m_runway.lat_end,m_runway.lon_end);
+          WGS84::displacement(m_ref_lat, m_ref_lon, 0,
+          				    m_runway.lat_start, m_runway.lon_start, 0,
+          					&m_WP_start(0), &m_WP_start(1));
+          m_WP_start(2) = m_runway.hae_end;
+
+          WGS84::displacement(m_ref_lat, m_ref_lon, 0,
+          					m_runway.lat_end, m_runway.lon_end, 0,
+                              &m_WP_end(0), &m_WP_end(1));
+          m_WP_end(2) = m_runway.hae_end;
+
+          Matrix deltaWP = m_WP_end - m_WP_start;
           debug("Rows: %d, Cols: %d",deltaWP.rows(),deltaWP.columns());
           double deltaWP_NE = deltaWP.get(0,1,0,0).norm_2(); 
           debug("deltaWP_NE: %f",deltaWP_NE);
@@ -512,59 +494,23 @@ namespace Maneuver
       void
       calcPathErrors(Matrix p, Matrix v, int s)
       {
-          //Calculate position based on the current global position and the reference point
-
-          //WGS84::displacement(Angles::radians(m_args.NED_origin(0)), Angles::radians(m_args.NED_origin(1)), 0,
-          //		  	  	  	  estate.lat, estate.lon, 0,
-          //		  	  	  	  &p(0), &p(1));
-          // p(2) = m_args.WP1(2);
-
-
           Matrix R       = transpose(Rzyx(0.0, -theta_runway, alpha_runway));
-          //spew("p[%d]: [%f,%f,%f]",s,p(0),p(1),p(2));
-          //spew("m_WP_start[%d]: [%f,%f,%f]",s,m_WP_start(0),m_WP_start(1),m_WP_start(2));
-          //spew("m_WP_end[%d]: [%f,%f,%f]",s,m_WP_end(0),m_WP_end(1),m_WP_end(2));
           Matrix eps     = R*(p-m_WP_start);
           Matrix eps_dot = R*v;
 
-          //spew("eps: [%f,%f,%f]",eps(0),eps(1),eps(2));
-          //spew("eps_dot: [%f,%f,%f]",eps_dot(0),eps_dot(1),eps_dot(2));
-
           m_cross_track[s] = eps;
           m_cross_track_d[s] = eps_dot;
-          /*if (s==AIRCRAFT)
-          {
-              spew("eps[%d]: [%f,%f,%f]",s,eps(0),eps(1),eps(2));
-              spew("eps_dot[%d]: [%f,%f,%f]",s,eps_dot(0),eps_dot(1),eps_dot(2));
-				spew("m_cross_track[%d]: [%f,%f,%f]",s,m_cross_track[s](0),m_cross_track[s](1),m_cross_track[s](2));
-				spew("m_cross_track_d[%d]: [%f,%f,%f]",s,m_cross_track_d[s](0),m_cross_track_d[s](1),m_cross_track_d[s](2));
-          }*/
-          //m_cross_track[s]    = eps.get(1,2,0,0);
-          //m_cross_track_d[s]  = eps_dot.get(1,2,0,0);
-
-          /*
-          debug("Cross-track e_a:   [%f,%f]",m_cross_track[AIRCRAFT](0),m_cross_track[AIRCRAFT](1));
-          debug("Cross-track e_c1:  [%f,%f]",m_cross_track[COPTER](0),m_cross_track[COPTER](1));
-          debug("Cross-track_d e_a:   [%f,%f]",m_cross_track_d[AIRCRAFT](0),m_cross_track_d[AIRCRAFT](1));
-          debug("Cross-track_d e_c1:  [%f,%f]",m_cross_track_d[COPTER](0),m_cross_track_d[COPTER](1));
-		  */
-          //debug("Position in NED from '%d': [%f,%f,%f]",s,p(0),p(1),p(2));
 
           Matrix delta_p_path = R*(m_p[COPTER]-m_p[AIRCRAFT]);
           Matrix delta_v_path = R*(m_v[COPTER]-m_v[AIRCRAFT]);
 
           delta_p_path_x = delta_p_path(0);
           delta_v_path_x = delta_v_path(0);
-
-          //debug("delta_p_path_x = %f",delta_p_path_x);
-          //debug("delta_v_path_x = %f",delta_v_path_x);
-
       }
 
       void
       updateMeanValues(int s)
       {
-        //debug("Update mean values");
         if (m_cross_track_window[s].size() == 0)
         {
           err("Mean window queue empty");
@@ -572,16 +518,8 @@ namespace Maneuver
         }
         Matrix weightedAvg      = m_cross_track[s]/m_args.mean_ws;
         Matrix firstWeightedAvg = m_cross_track_window[s].front();
-
-        /*
-        debug("weightedAvg: Rows: %d, Cols: %d",weightedAvg.rows(),weightedAvg.columns());
-        debug("firstWeightedAvg: Rows: %d, Cols: %d",firstWeightedAvg.rows(),firstWeightedAvg.columns());
-        debug("m_cross_track_mean[%d]: Rows: %d, Cols: %d",s,m_cross_track_mean[s].rows(),m_cross_track_mean[s].columns());
-        */
-        
-        //debug("oldMean: [%f,%f]",m_cross_track_mean[s](0),m_cross_track_mean[s](1));
         Matrix newMean = m_cross_track_mean[s] + weightedAvg - firstWeightedAvg;
-        //debug("newMean: [%f,%f]",newMean(0),newMean(1));
+
         m_cross_track_mean[s] = newMean;
         m_cross_track_window[s].pop();
         m_cross_track_window[s].push(weightedAvg);
@@ -600,8 +538,6 @@ namespace Maneuver
         m_cross_track_d_window[s].pop();
         m_cross_track_d_window[s].push(weightedAvg_d);
 
-        //m_cross_track_mean[s]   = m_cross_track[s];
-        //m_cross_track_d_mean[s] = m_cross_track_d[s];
         delta_p_path_x_mean = delta_p_path_x;
         delta_v_path_x_mean = delta_v_path_x;
       }
@@ -629,7 +565,7 @@ namespace Maneuver
 
         if (aircraftOff || netOff) 
         {
-          m_curr_state = CATCH_ABORT;
+          m_curr_state = IMC::NetRecoveryState::NR_ABORT;
         }
       }
       
@@ -678,21 +614,21 @@ namespace Maneuver
         if (abs(delta_p_path_x_mean) <= m_startCatch_radius && m_cross_track_d[AIRCRAFT](0) > 0)
         {
           //inf("Start net-catch mission: delta_p_path_x_mean=%f", delta_p_path_x_mean);
-          m_curr_state = EN_CATCH;
+          m_curr_state = IMC::NetRecoveryState::NR_START;
         }
       }
 
       void
-      sendDesiredPath(Matrix WP_start, Matrix WP_end, double u_d)
+      sendDesiredPath(double u_d)
       {
         IMC::DesiredPath dp;
-        dp.start_lat = WP_start(0);
-        dp.start_lon = WP_start(1);
-        dp.start_z   = WP_start(2);
+        dp.start_lat = m_WP_start(0);
+        dp.start_lon = m_WP_start(1);
+        dp.start_z   = m_WP_start(2);
         
-        dp.end_lat = WP_end(0);
-        dp.end_lon = WP_end(1);
-        dp.end_z   = WP_end(2);
+        dp.end_lat = m_WP_end(0);
+        dp.end_lon = m_WP_end(1);
+        dp.end_z   = m_WP_end(2);
 
         dp.speed = u_d;
 
