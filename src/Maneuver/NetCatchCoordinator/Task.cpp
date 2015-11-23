@@ -55,13 +55,6 @@ namespace Maneuver
       Matrix eps_ct_a;
       //! Maximum cross-track error net
       Matrix eps_ct_n;
-
-      //! Reference latitude
-      fp64_t ref_lat;
-      //! Reference longitude
-      fp64_t ref_lon;
-      //! Reference height (above elipsoid)
-      fp32_t ref_hae;
       
       //! Radius to stop at end of runway
       unsigned int m_endCatch_radius;
@@ -76,6 +69,12 @@ namespace Maneuver
       //! Vehicles
       std::string m_copter_id;
       std::string m_aircraft_id;
+
+      //! Enable this path controller or not
+      bool use_controller;
+
+      //! Disable Z flag, this will utilize new rate controller on some targets
+      bool disable_Z;
     };
 
     struct VirtualRunway
@@ -87,13 +86,20 @@ namespace Maneuver
 	  fp64_t lat_end;
 	  fp64_t lon_end;
 	  fp32_t hae_end;
+
+	  fp32_t box_height;
+	  fp32_t box_width;
+      //! Course of runway
+      double alpha;
+      //! Pitch of runway
+      double theta;
     };
 
     //! % Coordinator states
     //enum CoordState {INIT=0, GOTO_RUNW, STANDBY_RUNW, EN_CATCH, END_RUNW, CATCH_ABORT};
     enum Vehicle {AIRCRAFT=0, COPTER, INVALID=-1};
 
-    struct Task: public DUNE::Tasks::Task
+    struct Task: public DUNE::Control::PeriodicUAVAutopilot
     {
       //! Task arguments.
       Arguments m_args;
@@ -140,11 +146,6 @@ namespace Maneuver
       double delta_v_path_x;
       double delta_v_path_x_mean;
 
-      //! Course of runway
-      double alpha_runway;
-      //! Pitch of runway
-      double theta_runway;
-
       //! Virtual runway start WP NED
       Matrix m_WP_start;
       //! Virtual runway end WP nED
@@ -169,11 +170,17 @@ namespace Maneuver
       //! Control loops last reference
       uint32_t m_scope_ref;
 
+      //! Controllable loops.
+      static const uint32_t c_controllable = IMC::CL_PATH;
+      //! Required loops.
+      static const uint32_t c_required = IMC::CL_SPEED;
+
+      uint64_t time_end;
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Task(name, ctx),
+    	PeriodicUAVAutopilot(name, ctx, c_controllable, c_required),
         m_WP(0),
         m_ud(0),
         m_initializedCoord(false),
@@ -184,8 +191,20 @@ namespace Maneuver
         m_ref_valid(false),
         m_coordinatorEnabled(false),
         m_u_ref(0.0),
-        m_ad(0.0)
+        m_ad(0.0),
+        time_end(0.0)
       {
+ 	    param("Path Controller", m_args.use_controller)
+	    .visibility(Tasks::Parameter::VISIBILITY_USER)
+	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
+	    .defaultValue("false")
+	    .description("Enable Path Controller");
+
+ 	    param("Disable Z flag", m_args.disable_Z)
+        .defaultValue("false")
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .description("Choose whether to disable Z flag. In turn, this will utilize new rate controller on some targets");
+
         param("Coordinated Catch", m_args.enable_coord)
         .defaultValue("false")
         .description("Flag to enable net catch with two multicopters");
@@ -283,16 +302,17 @@ namespace Maneuver
   	    m_runway.lat_end = msg->end_lat;
   	    m_runway.hae_end = msg->z + msg->z_off;
 
+  	    m_runway.box_height = msg->lbox_height;
+  	    m_runway.box_width = msg->lbox_width;
+
         m_u_ref   = msg->speed;
         m_ad 	  = msg->max_acc;
 
   	    m_coordinatorEnabled = true;
   	    inf("Maneuver enabled");
-  	    //enablePathController();
       }
 
       void
-
       consume(const IMC::EstimatedLocalState* estate)
       {
 
@@ -349,6 +369,7 @@ namespace Maneuver
             if (allInitialized())
             {
               m_curr_state = IMC::NetRecoveryState::NR_STANDBY;
+              inf("Initialized, at standby");
             }
             break;
           }
@@ -386,7 +407,6 @@ namespace Maneuver
             checkPositionsAtRunway(); //requires that the net is standby at the start of the runway
 
             Matrix empty = Matrix(3,1,0);
-            //sendDesiredPath(empty,m_WP_start, m_args.m_ud_impact);
 
             if (!m_args.enable_catch)
             	m_curr_state = IMC::NetRecoveryState::NR_START;
@@ -398,7 +418,7 @@ namespace Maneuver
         	//sendDesiredPath(m_ud);
             updateMeanValues(s);
             m_ud = getPathVelocity(0, m_args.m_ud_impact, m_ad, true);
-            sendDesiredPath(m_ud);
+
             //checkAbortCondition();
             //m_curr_state = IMC::NetRecoveryState::NR_STANDBY;
             break;
@@ -487,14 +507,14 @@ namespace Maneuver
           debug("Rows: %d, Cols: %d",deltaWP.rows(),deltaWP.columns());
           double deltaWP_NE = deltaWP.get(0,1,0,0).norm_2(); 
           debug("deltaWP_NE: %f",deltaWP_NE);
-          alpha_runway =  atan2(deltaWP(1),deltaWP(0));
-          theta_runway = -atan2(deltaWP_NE,deltaWP(2)) + Angles::radians(90);
+          m_runway.alpha=  atan2(deltaWP(1),deltaWP(0));
+          m_runway.theta = -atan2(deltaWP_NE,deltaWP(2)) + Angles::radians(90);
       }
 
       void
       calcPathErrors(Matrix p, Matrix v, int s)
       {
-          Matrix R       = transpose(Rzyx(0.0, -theta_runway, alpha_runway));
+          Matrix R       = transpose(Rzyx(0.0, -m_runway.theta, m_runway.alpha));
           Matrix eps     = R*(p-m_WP_start);
           Matrix eps_dot = R*v;
 
@@ -569,14 +589,6 @@ namespace Maneuver
         }
       }
       
-      bool 
-      changeWP(Matrix currPos)
-      {
-        if ( (m_WP_end-currPos).norm_2() <= m_WP_radius*m_WP_radius )
-          return true;
-        return false;
-      }
-
       Vehicle
       getVehicle(std::string src_entity)
       {
@@ -616,23 +628,6 @@ namespace Maneuver
           //inf("Start net-catch mission: delta_p_path_x_mean=%f", delta_p_path_x_mean);
           m_curr_state = IMC::NetRecoveryState::NR_START;
         }
-      }
-
-      void
-      sendDesiredPath(double u_d)
-      {
-        IMC::DesiredPath dp;
-        dp.start_lat = m_WP_start(0);
-        dp.start_lon = m_WP_start(1);
-        dp.start_z   = m_WP_start(2);
-        
-        dp.end_lat = m_WP_end(0);
-        dp.end_lon = m_WP_end(1);
-        dp.end_z   = m_WP_end(2);
-
-        dp.speed = u_d;
-
-        dispatch(dp);
       }
 
       double 
@@ -686,18 +681,6 @@ namespace Maneuver
       }
 
       void
-      enablePathController()
-      {
-    	  //activate path controller
-    	  IMC::ControlLoops m_cloops;
-          m_cloops.enable = IMC::ControlLoops::CL_ENABLE;
-          m_cloops.mask = IMC::CL_PATH;
-          m_cloops.scope_ref = m_scope_ref;
-          dispatch(m_cloops);
-          inf("Path controller activated from coordinator");
-      }
-
-      void
       sendCurrentState()
       {
     	  IMC::NetRecoveryState state;
@@ -725,14 +708,68 @@ namespace Maneuver
     	  state.course_error_n = 0;
       }
 
+      double
+      sendDesiredLocalVelocity(Matrix vel)
+      {
+  		IMC::DesiredVelocity m_desired_vel;
+
+  		m_desired_vel.u = vel(0);
+  		m_desired_vel.v = vel(1);
+  		m_desired_vel.w = vel(2);
+
+  		if (m_args.disable_Z)
+  		  m_desired_vel.flags = IMC::DesiredVelocity::FL_SURGE| IMC::DesiredVelocity::FL_SWAY;
+        else
+          m_desired_vel.flags = IMC::DesiredVelocity::FL_SURGE| IMC::DesiredVelocity::FL_SWAY | IMC::DesiredVelocity::FL_HEAVE;
+
+  		dispatch(m_desired_vel);
+      }
+
+      //! Control loop in path-frame
+      Matrix
+      getDesiredPathVelocity(double u_d_along_path, Matrix p_a, Matrix v_a, Matrix p_n, Matrix v_n)
+      {
+    	//_a: aircraft
+    	//_n: net (copter)
+
+    	Matrix v = Matrix(3,1,0);
+
+    	// box boundaries
+    	fp32_t b_height = m_runway.box_height;
+    	fp32_t b_width = m_runway.box_width;
+
+
+    	return v;
+      }
+
+      //! Get desired local
+      Matrix
+      getDesiredLocalVelocity(Matrix v_p, double course, double pitch)
+      {
+    	return Rzyx(course, pitch, 0)*v_p;
+      }
+
       //! Main loop.
       void
-      onMain(void)
+      task(void)
       {
-        while (!stopping())
-        {
-          waitForMessages(1.0);
-        }
+  	    if(!m_args.use_controller || !isActive())
+		  return;
+
+        //dispatch control if ready
+    	if(m_coordinatorEnabled)
+    	{
+    		Matrix v_p   = getDesiredPathVelocity(m_ud,
+    											  m_cross_track[AIRCRAFT], 	m_cross_track_d[AIRCRAFT],
+    											  m_cross_track[COPTER],	m_cross_track_d[COPTER]);
+
+    		Matrix v_d_l = getDesiredLocalVelocity(v_p,m_runway.alpha,m_runway.theta);
+
+    		sendDesiredLocalVelocity(v_d_l);
+    	}
+		uint64_t diff = Clock::getMsec() - time_end;
+		time_end = Clock::getMsec();
+		spew("Frequency: %f", 1000.0/diff);
       }
 
       //! @return  Rotation matrix.
