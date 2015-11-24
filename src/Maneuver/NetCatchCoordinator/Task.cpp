@@ -40,65 +40,51 @@ namespace Maneuver
     //! %Task arguments.
     struct Arguments
     {
-      //! Target producer
-      std::string m_trg_prod;
-
       //! Enable coordinated catch
       bool enable_coord;
-
       //! Enable catch-state
       bool enable_catch;
+      //! Enable this path controller or not
+      bool use_controller;
+      //! Enable mean window for aircraft states
+      bool use_mean_window_aircraft;
+      //! Disable Z flag, this will utilize new rate controller on some targets
+      bool disable_Z;
+
       //! Moving mean window size
       double mean_ws;
-      
-      //! Maximum cross-track error aircraft
-      Matrix eps_ct_a;
-      //! Maximum cross-track error net
-      Matrix eps_ct_n;
-      
-      //! Radius to stop at end of runway
-      unsigned int m_endCatch_radius;
-
       //! Desired velocity of net at impact
       double m_ud_impact;
       //! Desired time to accelerate to desired velocity of net at impact
       double m_td_acc;
       //! Desired collision radius
       double m_coll_r;
-
-      //! Vehicles
-      std::string m_copter_id;
-      std::string m_aircraft_id;
-
-      //! Enable this path controller or not
-      bool use_controller;
-
-      //! Enable mean window for aircraft states
-      bool use_mean_window_aircraft;
-
-      //! Disable Z flag, this will utilize new rate controller on some targets
-      bool disable_Z;
+      //! Radius to stop at end of runway
+      double m_endCatch_radius;
 
       //! Frequency of controller
       double m_freq;
+
+      //! Maximum cross-track error aircraft
+      Matrix eps_ct_a;
+      //! Maximum cross-track error net
+      Matrix eps_ct_n;
     };
 
     struct VirtualRunway
     {
-	  fp64_t lat_start;
-	  fp64_t lon_start;
-	  fp32_t hae_start;
+	  fp64_t lat_start, lon_start, hae_start;
+	  fp64_t lat_end, lon_end, hae_end;
 
-	  fp64_t lat_end;
-	  fp64_t lon_end;
-	  fp32_t hae_end;
+	  fp32_t box_height, box_width, box_length;
 
-	  fp32_t box_height;
-	  fp32_t box_width;
       //! Course of runway
       double alpha;
       //! Pitch of runway
       double theta;
+
+      Matrix start_NED;
+      Matrix end_NED;
     };
 
     struct Vehicles
@@ -107,6 +93,7 @@ namespace Maneuver
     	std::string aircraft;
     	std::vector<std::string> copters;
     };
+
     enum Vehicle {AIRCRAFT=0, COPTER_LEAD, COPTER_FOLLOW, INVALID=-1};
 
     struct Task: public DUNE::Control::PeriodicUAVAutopilot
@@ -115,10 +102,8 @@ namespace Maneuver
       Arguments m_args;
       //! Current state
       IMC::NetRecoveryState::NetRecoveryLevelEnum m_curr_state;
-      //CoordState m_curr_state;
 
       VirtualRunway m_runway;
-
       Vehicles m_vehicles;
 
   	  //! Localization origin (WGS-84)
@@ -126,20 +111,19 @@ namespace Maneuver
   	  fp32_t m_ref_hae;
       bool m_ref_valid;
 
+      //! Ready to read state-messages
       bool m_coordinatorEnabled;
-
-
       //! Vehicles initialized
       std::vector<bool> m_initialized;
-      //! Task ready to receive messages
+      //! All parameters well defined
       bool m_initializedCoord;
 
-      //! Last FormPos received
+      //! Last EstimatedLocalState received
       std::vector<IMC::EstimatedLocalState> m_estate;
       
-      //! Last position in NED
+      //! Last positions in NED
       std::vector<Matrix> m_p;
-      //! Last velocity in NED
+      //! Last velocities in NED
       std::vector<Matrix> m_v;
       
       //! Cross track errors
@@ -158,16 +142,7 @@ namespace Maneuver
       double delta_v_path_x;
       double delta_v_path_x_mean;
 
-      //! Virtual runway start WP NED
-      Matrix m_WP_start;
-      //! Virtual runway end WP nED
-      Matrix m_WP_end;
-      //! Radius to change to next WP
-      unsigned int m_WP_radius;
-      //! Current WP
-      unsigned int m_WP;
-
-      //! Radius to start net-catch (calculate based on net-acceleration)
+     //! Radius to start net-catch (calculate based on net-acceleration)
       double m_startCatch_radius;
 
       //! Timeout for operation
@@ -193,7 +168,6 @@ namespace Maneuver
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
     	PeriodicUAVAutopilot(name, ctx, c_controllable, c_required),
-        m_WP(0),
         m_ud(0),
         m_initializedCoord(false),
         m_scope_ref(0),
@@ -243,13 +217,6 @@ namespace Maneuver
         param("Maximum Cross-Track Error Net", m_args.eps_ct_n)
         .units(Units::Meter);
 
-        param("Copter", m_args.m_copter_id);
-        param("Aircraft", m_args.m_aircraft_id);
-
-        param("Radius end-of runway", m_args.m_endCatch_radius)
-        .defaultValue("10.0")
-        .units(Units::Meter);
-
         param("Desired net-vel catch", m_args.m_ud_impact)
         .defaultValue("10.0");
 
@@ -257,9 +224,11 @@ namespace Maneuver
         .defaultValue("100.0")
         .units(Units::Meter);
 
+        param("Desired switching radius", m_args.m_endCatch_radius)
+        .defaultValue("10.0")
+        .units(Units::Meter);
 
         // Bind incoming IMC messages
-        //bind<IMC::EstimatedState>(this);
         bind<IMC::EstimatedLocalState>(this);
         bind<IMC::DesiredNetRecoveryPath>(this);
       }
@@ -328,8 +297,6 @@ namespace Maneuver
         	inf("Multicopter[%d]: %s",i,m_vehicles.copters[i].c_str());
         }
 
-  	    //m_vehicles.copters
-
   	    m_runway.lat_start = msg->start_lat;
   	    m_runway.lon_start = msg->start_lon;
   	    m_runway.hae_start = msg->z + msg->z_off;
@@ -350,7 +317,6 @@ namespace Maneuver
       void
       consume(const IMC::EstimatedLocalState* estate)
       {
-
         if (!m_coordinatorEnabled)
         	return;
 
@@ -410,10 +376,6 @@ namespace Maneuver
           {
             updateMeanValues(s);
 
-            // TODO: keep track of the velocity of the aircraft somehow
-            // extract the mean value
-            // Rotate m_v[AIRCRAFT] to the path frame and extract the x-value -> m_cross_track_d[AIRCRAFT](0) = eps_dot[AIRCRAFT](0)
-
             double v_a = abs(m_cross_track_d[AIRCRAFT](0));
             m_startCatch_radius = updateStartRadius(v_a,0, m_u_ref, m_ad, m_args.m_coll_r);
             if (m_startCatch_radius == -1)
@@ -426,8 +388,8 @@ namespace Maneuver
             	spew("v_a: %f",v_a);
             	spew("p[%d]: [%f,%f,%f]",s,p(0),p(1),p(2));
                 spew("v[%d]: [%f,%f,%f]",s,v(0),v(1),v(2));
-                spew("m_WP_start[%d]: [%f,%f,%f]",s,m_WP_start(0),m_WP_start(1),m_WP_start(2));
-                spew("m_WP_end[%d]: [%f,%f,%f]",s,m_WP_end(0),m_WP_end(1),m_WP_end(2));
+                spew("m_runway.start_NED[%d]: [%f,%f,%f]",s,m_runway.start_NED(0),m_runway.start_NED(1),m_runway.start_NED(2));
+                spew("m_runway.end_NED [%d]: [%f,%f,%f]",s,m_runway.end_NED(0),m_runway.end_NED(1),m_runway.end_NED(2));
 				spew("m_cross_track[%d]: [%f,%f,%f]",s,m_cross_track[s](0),m_cross_track[s](1),m_cross_track[s](2));
 				spew("m_cross_track_d[%d]: [%f,%f,%f]",s,m_cross_track_d[s](0),m_cross_track_d[s](1),m_cross_track_d[s](2));
 				spew("m_cross_track_mean[%d]: [%f,%f,%f]",s,m_cross_track_mean[s](0),m_cross_track_mean[s](1),m_cross_track_mean[s](2));
@@ -439,8 +401,6 @@ namespace Maneuver
             }
             checkPositionsAtRunway(); //requires that the net is standby at the start of the runway
 
-            Matrix empty = Matrix(3,1,0);
-
             if (!m_args.enable_catch)
             	m_curr_state = IMC::NetRecoveryState::NR_START;
 
@@ -448,12 +408,12 @@ namespace Maneuver
           }
           case IMC::NetRecoveryState::NR_START:
           {
-        	//sendDesiredPath(m_ud);
             updateMeanValues(s);
             m_ud = getPathVelocity(0, m_args.m_ud_impact, m_ad, true);
 
             //checkAbortCondition();
             //m_curr_state = IMC::NetRecoveryState::NR_STANDBY;
+            checkEndAtRunway();
             break;
           }                            
           case IMC::NetRecoveryState::NR_END:
@@ -511,10 +471,9 @@ namespace Maneuver
           }
           m_initialized[i] = false;
         }
-        m_WP_start = Matrix(3,1,0);
-        m_WP_end = Matrix(3,1,0);
+        m_runway.end_NED = Matrix(3,1,0);
+        m_runway.start_NED = Matrix(3,1,0);
 
-        m_WP_radius = m_args.m_endCatch_radius;
         m_curr_state = IMC::NetRecoveryState::NR_INIT;
         m_initializedCoord = true;
         inf("Coordinator initialized");
@@ -525,15 +484,19 @@ namespace Maneuver
       {
           WGS84::displacement(m_ref_lat, m_ref_lon, 0,
           				    m_runway.lat_start, m_runway.lon_start, 0,
-          					&m_WP_start(0), &m_WP_start(1));
-          m_WP_start(2) = m_runway.hae_end;
+          					&m_runway.start_NED(0), &m_runway.start_NED(1));
+          m_runway.start_NED(2) = m_runway.hae_end;
 
           WGS84::displacement(m_ref_lat, m_ref_lon, 0,
           					m_runway.lat_end, m_runway.lon_end, 0,
-                              &m_WP_end(0), &m_WP_end(1));
-          m_WP_end(2) = m_runway.hae_end;
+                              &m_runway.end_NED(0), &m_runway.end_NED(1));
+          m_runway.end_NED(2) = m_runway.hae_end;
 
-          Matrix deltaWP = m_WP_end - m_WP_start;
+          Matrix deltaWP = m_runway.end_NED - m_runway.start_NED;
+
+
+          m_runway.box_length = deltaWP.norm_2();
+
           double deltaWP_NE = deltaWP.get(0,1,0,0).norm_2(); 
 
           m_runway.alpha=  atan2(deltaWP(1),deltaWP(0));
@@ -544,14 +507,14 @@ namespace Maneuver
       calcPathErrors(Matrix p, Matrix v, int s)
       {
           Matrix R       = transpose(Rzyx(0.0, -m_runway.theta, m_runway.alpha));
-          Matrix eps     = R*(p-m_WP_start);
+          Matrix eps     = R*(p-m_runway.start_NED);
           Matrix eps_dot = R*v;
 
           m_cross_track[s] = eps;
           m_cross_track_d[s] = eps_dot;
 
-          Matrix p_n = getNetPosition();
-          Matrix v_n = getNetVelocity();
+          Matrix p_n = getNetPosition(m_p);
+          Matrix v_n = getNetVelocity(m_v);
 
           Matrix delta_p_path = R*(p_n-m_p[AIRCRAFT]);
           Matrix delta_v_path = R*(v_n-m_v[AIRCRAFT]);
@@ -609,7 +572,7 @@ namespace Maneuver
         {
           aircraftOff = true;
         }
-        Matrix p_n = getNetPosition();
+        Matrix p_n = getNetPosition(m_cross_track);
         if (abs(p_n(1))  >= m_args.eps_ct_n(0) ||
             abs(p_n(2))  >= m_args.eps_ct_n(1) )
         {
@@ -659,11 +622,25 @@ namespace Maneuver
         //monitor the path-along distance between the net and the aircraft
           // when at a given boundary, start the net-catch mission
         // this requires that the net are stand-by at the first WP at the runway
-        if (abs(delta_p_path_x_mean) <= m_startCatch_radius && m_cross_track_d[AIRCRAFT](0) > 0)
+    	double delta_p = delta_p_path_x;
+    	if (m_args.use_mean_window_aircraft)
+    		delta_p = delta_p_path_x_mean;
+
+        if (abs(delta_p) <= m_startCatch_radius && m_cross_track_d[AIRCRAFT](0) > 0)
         {
           //inf("Start net-catch mission: delta_p_path_x_mean=%f", delta_p_path_x_mean);
           m_curr_state = IMC::NetRecoveryState::NR_START;
         }
+      }
+
+      void
+      checkEndAtRunway()
+      {
+    	Matrix p_n = getNetPosition(m_p);
+      	Matrix p_to_end = p_n - m_runway.end_NED;
+      	double dist_left = p_to_end.norm_2();
+      	if (dist_left <= m_args.m_endCatch_radius)
+    	  m_curr_state = IMC::NetRecoveryState::NR_END;
       }
 
       double 
@@ -721,8 +698,8 @@ namespace Maneuver
       {
     	  IMC::NetRecoveryState state;
     	  //state.flags = m_curr_state;	Should use the IMC flags for state
-    	  Matrix p_n = getNetPosition();
-    	  Matrix v_n = getNetVelocity();
+    	  Matrix p_n = getNetPosition(m_cross_track);
+    	  Matrix v_n = getNetVelocity(m_cross_track_d);
     	  state.x_n = p_n(0);
 		  state.y_n = p_n(1);
 		  state.z_n = p_n(2);
@@ -746,7 +723,7 @@ namespace Maneuver
     	  state.course_error_n = 0;
       }
 
-      double
+      void
       sendDesiredLocalVelocity(Matrix vel)
       {
   		IMC::DesiredVelocity m_desired_vel;
@@ -764,32 +741,31 @@ namespace Maneuver
       }
 
       Matrix
-      getNetPosition()
+      getNetPosition(std::vector<Matrix> p)
       {
     	Matrix p_n;
   		if (m_args.enable_coord && m_vehicles.no_vehicles == 3)
   		{
-  			// The net-position should be given by some relation between the COPTER_LEAD and the COPTER_FOLLOW
-  			p_n = 0.5*(m_cross_track[COPTER_LEAD]   + m_cross_track[COPTER_FOLLOW]);
+  			p_n = 0.5*(p[COPTER_LEAD]+ p[COPTER_FOLLOW]);
   		}
   		else
   		{
-  			p_n = m_cross_track[COPTER_LEAD];
+  			p_n = p[COPTER_LEAD];
   		}
   		return p_n;
       }
 
       Matrix
-      getNetVelocity()
+      getNetVelocity(std::vector<Matrix> v)
       {
     	Matrix v_n;
   		if (m_args.enable_coord && m_vehicles.no_vehicles == 3)
   		{
-  			v_n = 0.5*(m_cross_track_d[COPTER_LEAD] + m_cross_track_d[COPTER_FOLLOW]);
+  			v_n = 0.5*(v[COPTER_LEAD] + v[COPTER_FOLLOW]);
   		}
   		else
   		{
-  			v_n = m_cross_track_d[COPTER_LEAD];
+  			v_n = v[COPTER_LEAD];
   		}
   		return v_n;
       }
@@ -807,7 +783,7 @@ namespace Maneuver
     	// box boundaries
     	fp32_t b_height = m_runway.box_height;
     	fp32_t b_width = m_runway.box_width;
-
+    	fp32_t b_length = m_runway.box_length;
 
     	return v;
       }
@@ -846,8 +822,8 @@ namespace Maneuver
     			v_a = m_cross_track_d[AIRCRAFT];
     		}
 
-    		p_n = getNetPosition();
-    		v_n = getNetVelocity();
+    		p_n = getNetPosition(m_cross_track);
+    		v_n = getNetVelocity(m_cross_track_d);
 
 
     		Matrix v_p   = getDesiredPathVelocity(m_ud, p_a, v_a, p_n, v_n);
