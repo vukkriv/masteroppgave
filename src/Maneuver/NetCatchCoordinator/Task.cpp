@@ -73,8 +73,14 @@ namespace Maneuver
       //! Enable this path controller or not
       bool use_controller;
 
+      //! Enable mean window for aircraft states
+      bool use_mean_window_aircraft;
+
       //! Disable Z flag, this will utilize new rate controller on some targets
       bool disable_Z;
+
+      //! Frequency of controller
+      double m_freq;
     };
 
     struct VirtualRunway
@@ -95,9 +101,13 @@ namespace Maneuver
       double theta;
     };
 
-    //! % Coordinator states
-    //enum CoordState {INIT=0, GOTO_RUNW, STANDBY_RUNW, EN_CATCH, END_RUNW, CATCH_ABORT};
-    enum Vehicle {AIRCRAFT=0, COPTER, INVALID=-1};
+    struct Vehicles
+    {
+    	int no_vehicles;
+    	std::string aircraft;
+    	std::vector<std::string> copters;
+    };
+    enum Vehicle {AIRCRAFT=0, COPTER_LEAD, COPTER_FOLLOW, INVALID=-1};
 
     struct Task: public DUNE::Control::PeriodicUAVAutopilot
     {
@@ -108,6 +118,8 @@ namespace Maneuver
       //CoordState m_curr_state;
 
       VirtualRunway m_runway;
+
+      Vehicles m_vehicles;
 
   	  //! Localization origin (WGS-84)
   	  fp64_t m_ref_lat, m_ref_lon;
@@ -200,6 +212,14 @@ namespace Maneuver
 	    .defaultValue("false")
 	    .description("Enable Path Controller");
 
+ 	    param("Enable Mean Window Aircraft", m_args.use_mean_window_aircraft)
+ 	    .defaultValue("false")
+ 	    .description("Use mean window on aircraft states");
+
+ 	    param("Frequency", m_args.m_freq)
+        .defaultValue("1.0")
+        .description("Controller frequency");
+
  	    param("Disable Z flag", m_args.disable_Z)
         .defaultValue("false")
         .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -248,6 +268,9 @@ namespace Maneuver
       void
       onUpdateParameters(void)
       {
+		inf("Current frequency: %f",getFrequency());
+		setFrequency(m_args.m_freq);
+		inf("Frequency changed to : %f",getFrequency());
       }
 
       //! Reserve entity identifiers.
@@ -284,16 +307,28 @@ namespace Maneuver
       void
       consume(const IMC::DesiredNetRecoveryPath* msg)
       {
-  	    inf("Got DesiredNetRecovery \nfrom '%s' at '%s'",
+  	    trace("Got DesiredNetRecovery \nfrom '%s' at '%s'",
 		     resolveEntity(msg->getSourceEntity()).c_str(),
 		     resolveSystemId(msg->getSource()));
-  	    inf("Intialize net recovery maneuver");
+  	    inf("Initialize net recovery maneuver");
 
-  	    if (!m_initializedCoord)
+  	    m_vehicles.aircraft = msg->aircraft;
+  	    m_vehicles.no_vehicles = 1;
+        std::stringstream  lineStream(msg->multicopters.c_str());
+        std::string        copter;
+        while(std::getline(lineStream,copter,','))
         {
-  	      inf("Intialize coordinator");
-          initCoordinator();
+        	m_vehicles.no_vehicles++;
+        	m_vehicles.copters.push_back(copter);
         }
+        inf("No vehicles: %d",m_vehicles.no_vehicles);
+        inf("Aircraft: %s",m_vehicles.aircraft.c_str());
+        for(unsigned int i=0; i < m_vehicles.copters.size(); i++)
+        {
+        	inf("Multicopter[%d]: %s",i,m_vehicles.copters[i].c_str());
+        }
+
+  	    //m_vehicles.copters
 
   	    m_runway.lat_start = msg->start_lat;
   	    m_runway.lon_start = msg->start_lon;
@@ -316,18 +351,19 @@ namespace Maneuver
       consume(const IMC::EstimatedLocalState* estate)
       {
 
-  	    m_ref_lat = estate->lat;
-		m_ref_lon = estate->lon;
-		m_ref_hae = estate->height;
-		m_ref_valid = true;
+        if (!m_coordinatorEnabled)
+        	return;
 
     	if (!m_initializedCoord)
         {
+  		  m_ref_lat = estate->lat;
+		  m_ref_lon = estate->lon;
+		  m_ref_hae = estate->height;
+		  m_ref_valid = true;
           initCoordinator();
+          initRunwayPath();
           //return;
         }
-
-    	initRunwayPath();
 
         //spew("Got EstimatedState \nfrom '%s' at '%s'",
         //     resolveEntity(estate->getSourceEntity()).c_str(),
@@ -335,7 +371,7 @@ namespace Maneuver
 
         std::string vh_id  = resolveSystemId(estate->getSource());
         int s = getVehicle(vh_id);
-        
+        trace("s=%d",s);
         if (s == INVALID)  //invalid vehicle
           return;
 
@@ -354,9 +390,6 @@ namespace Maneuver
 
         m_initialized[s] = true;
         m_estate[s]       = *estate;
-
-        if (!m_coordinatorEnabled)
-        	return;
 
         calcPathErrors(p, v, s);
         updateMeanValues(s);
@@ -434,7 +467,7 @@ namespace Maneuver
         }        
         sendCurrentState();
         if (last_state != m_curr_state)
-        	inf("Curr state: %d",static_cast<int>(m_curr_state));
+        	inf("Current state: %d",static_cast<NetRecoveryState::NetRecoveryLevelEnum>(m_curr_state));
 
       }
 
@@ -444,7 +477,7 @@ namespace Maneuver
         if (m_initializedCoord)
           return;
 
-        unsigned int no_vehicles = 2;
+        unsigned int no_vehicles = m_vehicles.no_vehicles;
         
         m_estate        = std::vector<IMC::EstimatedLocalState>(no_vehicles);
         m_p             = std::vector<Matrix>(no_vehicles);
@@ -490,9 +523,6 @@ namespace Maneuver
       void
       initRunwayPath()
       {
-    	  debug("Reference point: [%f,%f,%f]",m_ref_lat,m_ref_lon,m_ref_hae);
-    	  debug("Starting point: [%f,%f]",m_runway.lat_start,m_runway.lon_start);
-    	  debug("End point: [%f,%f]",m_runway.lat_end,m_runway.lon_end);
           WGS84::displacement(m_ref_lat, m_ref_lon, 0,
           				    m_runway.lat_start, m_runway.lon_start, 0,
           					&m_WP_start(0), &m_WP_start(1));
@@ -504,9 +534,8 @@ namespace Maneuver
           m_WP_end(2) = m_runway.hae_end;
 
           Matrix deltaWP = m_WP_end - m_WP_start;
-          debug("Rows: %d, Cols: %d",deltaWP.rows(),deltaWP.columns());
           double deltaWP_NE = deltaWP.get(0,1,0,0).norm_2(); 
-          debug("deltaWP_NE: %f",deltaWP_NE);
+
           m_runway.alpha=  atan2(deltaWP(1),deltaWP(0));
           m_runway.theta = -atan2(deltaWP_NE,deltaWP(2)) + Angles::radians(90);
       }
@@ -521,8 +550,11 @@ namespace Maneuver
           m_cross_track[s] = eps;
           m_cross_track_d[s] = eps_dot;
 
-          Matrix delta_p_path = R*(m_p[COPTER]-m_p[AIRCRAFT]);
-          Matrix delta_v_path = R*(m_v[COPTER]-m_v[AIRCRAFT]);
+          Matrix p_n = getNetPosition();
+          Matrix v_n = getNetVelocity();
+
+          Matrix delta_p_path = R*(p_n-m_p[AIRCRAFT]);
+          Matrix delta_v_path = R*(v_n-m_v[AIRCRAFT]);
 
           delta_p_path_x = delta_p_path(0);
           delta_v_path_x = delta_v_path(0);
@@ -577,8 +609,9 @@ namespace Maneuver
         {
           aircraftOff = true;
         }
-        if (abs(m_cross_track_mean[COPTER](1))  >= m_args.eps_ct_n(0) ||
-            abs(m_cross_track_mean[COPTER](2))  >= m_args.eps_ct_n(1) )
+        Matrix p_n = getNetPosition();
+        if (abs(p_n(1))  >= m_args.eps_ct_n(0) ||
+            abs(p_n(2))  >= m_args.eps_ct_n(1) )
         {
           netOff = true;
         }
@@ -592,18 +625,21 @@ namespace Maneuver
       Vehicle
       getVehicle(std::string src_entity)
       {
-    	  if (src_entity == m_args.m_copter_id)
-    	  {
-    		  return COPTER;
-    	  }
-    	  else if (src_entity == m_args.m_aircraft_id)
+    	  if (src_entity == m_vehicles.aircraft)
     	  {
     		  return AIRCRAFT;
     	  }
-    	  else
+    	  for(unsigned int i=0; i < m_vehicles.copters.size(); i++)
     	  {
-    		  return INVALID;
+        	  if (src_entity == m_vehicles.copters[i])
+        	  {
+        		  if (i==0)
+        			  return COPTER_LEAD;
+        		  else
+        			  return COPTER_FOLLOW;
+        	  }
     	  }
+		  return INVALID;
       }
 
       bool
@@ -685,13 +721,15 @@ namespace Maneuver
       {
     	  IMC::NetRecoveryState state;
     	  //state.flags = m_curr_state;	Should use the IMC flags for state
-    	  state.x_n = m_cross_track[COPTER](0);
-		  state.y_n = m_cross_track[COPTER](1);
-		  state.z_n = m_cross_track[COPTER](2);
+    	  Matrix p_n = getNetPosition();
+    	  Matrix v_n = getNetVelocity();
+    	  state.x_n = p_n(0);
+		  state.y_n = p_n(1);
+		  state.z_n = p_n(2);
 
-    	  state.vx_n = m_cross_track_d[COPTER](0);
-		  state.vy_n = m_cross_track_d[COPTER](1);
-		  state.vz_n = m_cross_track_d[COPTER](2);
+    	  state.vx_n = v_n(0);
+		  state.vy_n = v_n(1);
+		  state.vz_n = v_n(2);
 
     	  state.x_a = m_cross_track[AIRCRAFT](0);
     	  state.y_a = m_cross_track[AIRCRAFT](1);
@@ -724,6 +762,38 @@ namespace Maneuver
 
   		dispatch(m_desired_vel);
       }
+
+      Matrix
+      getNetPosition()
+      {
+    	Matrix p_n;
+  		if (m_args.enable_coord && m_vehicles.no_vehicles == 3)
+  		{
+  			// The net-position should be given by some relation between the COPTER_LEAD and the COPTER_FOLLOW
+  			p_n = 0.5*(m_cross_track[COPTER_LEAD]   + m_cross_track[COPTER_FOLLOW]);
+  		}
+  		else
+  		{
+  			p_n = m_cross_track[COPTER_LEAD];
+  		}
+  		return p_n;
+      }
+
+      Matrix
+      getNetVelocity()
+      {
+    	Matrix v_n;
+  		if (m_args.enable_coord && m_vehicles.no_vehicles == 3)
+  		{
+  			v_n = 0.5*(m_cross_track_d[COPTER_LEAD] + m_cross_track_d[COPTER_FOLLOW]);
+  		}
+  		else
+  		{
+  			v_n = m_cross_track_d[COPTER_LEAD];
+  		}
+  		return v_n;
+      }
+
 
       //! Control loop in path-frame
       Matrix
@@ -759,9 +829,28 @@ namespace Maneuver
         //dispatch control if ready
     	if(m_coordinatorEnabled)
     	{
-    		Matrix v_p   = getDesiredPathVelocity(m_ud,
-    											  m_cross_track[AIRCRAFT], 	m_cross_track_d[AIRCRAFT],
-    											  m_cross_track[COPTER],	m_cross_track_d[COPTER]);
+    		Matrix p_a;
+    		Matrix v_a;
+
+    		Matrix p_n;
+    		Matrix v_n;
+
+    		if (m_args.use_mean_window_aircraft)
+    		{
+    			p_a = m_cross_track_mean[AIRCRAFT];
+    			v_a = m_cross_track_d_mean[AIRCRAFT];
+    		}
+    		else
+    		{
+    			p_a = m_cross_track[AIRCRAFT];
+    			v_a = m_cross_track_d[AIRCRAFT];
+    		}
+
+    		p_n = getNetPosition();
+    		v_n = getNetVelocity();
+
+
+    		Matrix v_p   = getDesiredPathVelocity(m_ud, p_a, v_a, p_n, v_n);
 
     		Matrix v_d_l = getDesiredLocalVelocity(v_p,m_runway.alpha,m_runway.theta);
 
@@ -769,7 +858,7 @@ namespace Maneuver
     	}
 		uint64_t diff = Clock::getMsec() - time_end;
 		time_end = Clock::getMsec();
-		spew("Frequency: %f", 1000.0/diff);
+		spew("Frequency: %1.1f", 1000.0/diff);
       }
 
       //! @return  Rotation matrix.
