@@ -71,6 +71,8 @@ namespace Maneuver
         d_path.speed = maneuver->speed;
         d_path.z_off = maneuver->z_off;
         d_path.z_units = maneuver->z_units;
+        d_path.aircraft = maneuver->aircraft;
+        d_path.multicopters = maneuver->multicopters;
 
         dispatch(d_path);
         inf("DesiredNetRecoveryPath dispatched");
@@ -79,7 +81,7 @@ namespace Maneuver
       void
       consume(const IMC::NetRecoveryState* state)
       {
-    	  debug("NetRecveryState received");
+    	  debug("NetRecoveryState received");
     	  if (state->flags && IMC::NetRecoveryState::NR_END)
     	  {
     		  inf("NetRecoveryState END of runway");
