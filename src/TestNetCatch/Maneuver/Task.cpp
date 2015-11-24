@@ -50,6 +50,8 @@ namespace TestNetCatch
     	fp32_t 		m_speed;
     	fp32_t		m_macc;
     	fp32_t		m_zoff;
+    	std::string m_copter_id;
+    	std::string m_aircraft_id;
     };
 
     struct Task: public DUNE::Tasks::Periodic
@@ -106,6 +108,8 @@ namespace TestNetCatch
           param("Altitude Offset", m_args.m_zoff)
           .defaultValue("0.0");
 
+          param("Copter", m_args.m_copter_id);
+          param("Aircraft", m_args.m_aircraft_id);
       }
 
       //! Update internal state with new parameter values.
@@ -161,6 +165,8 @@ namespace TestNetCatch
     	  msg.speed 	  = m_args.m_speed;
     	  msg.max_acc	  = m_args.m_macc;
     	  msg.z_off		  = m_args.m_zoff;
+    	  msg.aircraft	  = m_args.m_aircraft_id;
+    	  msg.multicopters= m_args.m_copter_id;
 
     	  IMC::Goto goto_man;
     	  goto_man.lat = msg.start_lat;
@@ -193,10 +199,8 @@ namespace TestNetCatch
         transition2->source_man = "2";
         transition2->dest_man   = "1";
 
-
         plan.description = "A net recovery test plan";
         plan.plan_id = "NetRecoveryTest";
-
 
         IMC::MessageList<IMC::PlanTransition> translist;
         translist.push_back(transition);
@@ -216,7 +220,6 @@ namespace TestNetCatch
         planCtrl.type = IMC::PlanControl::PC_REQUEST;
         planCtrl.plan_id = "NetRecoveryTest";
         planCtrl.request_id = 10;
-
 
         // Apply custom maneuver to plan
         IMC::InlineMessage<IMC::Message> arg;
