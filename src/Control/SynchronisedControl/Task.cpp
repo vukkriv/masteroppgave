@@ -27,7 +27,6 @@
 
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
-#include <DUNE/Control/DiscretePID.hpp>
 #include <DUNE/Control/BasicAutopilot.hpp>
 
 // Local headers.
@@ -46,16 +45,6 @@ namespace Control
 
     struct Arguments
     {
-      //!PID syn controller parameters:
-      Matrix Kp;
-      Matrix Ki;
-      Matrix Kd;
-      Matrix maxV;
-      Matrix maxInt;
-
-      std::string m_copter_id;
-      std::string m_aircraft_id;
-
       //! Reference latitude
       fp64_t ref_lat;
       //! Reference longitude
@@ -65,6 +54,22 @@ namespace Control
 
       //! Disable Z flag, this will utilize new rate controller on some targets
       bool disable_Z;
+      //! Enables the synchronised x8 follow controller
+      bool enable_syn;
+
+      //!PID syn controller parameters:
+      Matrix Kpp;
+      Matrix Kip;
+      Matrix Kpv;
+      Matrix Kiv;
+      Matrix maxV;
+      Matrix maxInt;
+
+      double max_veln;
+	  double max_Fn;
+
+      std::string m_copter_id;
+      std::string m_aircraft_id;
     };
 
     struct Task: public BasicUAVAutopilot
@@ -76,29 +81,38 @@ namespace Control
       IMC::NetRecovery m_NetRecovery;
       //! Desired force
       IMC::DesiredControl m_desired_force;
-
+      //! FormPos
       IMC::FormPos m_FormPosAircraft;
       IMC::FormPos m_FormPosCopter;
       IMC::DesiredPath m_path;
+
       //! initialization done
       bool m_initialized_path;
 
       //! integration values PID controllers
-      double m_v_int_value;
+      Matrix m_v_int_value;
       Matrix m_pos_int_value;
 
       //! angles of orientation path
       double m_psi;
       double m_theta;
 
+      Matrix m_box_min;
+      Matrix m_box_max;
+
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
         BasicUAVAutopilot(name, ctx, c_controllable, c_required),
+
         m_initialized_path(false),
-		m_v_int_value(0.0),
-		m_pos_int_value(3,1,0.0)
+		m_v_int_value(3,1,0.0),
+		m_pos_int_value(3,1,0.0),
+        m_psi(0),
+		m_theta(0),
+        m_box_min(3,1,0.0),
+		m_box_max(3,1,0.0)
       {
           param("Latitude", m_args.ref_lat)
           .defaultValue("-999.0")
@@ -120,30 +134,40 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Choose whether to disable Z flag. In turn, this will utilize new rate controller on some targets");
 
-          param("Kp", m_args.Kp)
+          param("Enable Syn Controller", m_args.enable_syn)
+          .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Enables the synchronised x8 follow controller");
+
+          param("Kp pos", m_args.Kpp)
           .defaultValue("1.0, 1.0, 1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("PID Kp");
+          .description("PID Kp pos");
 
-             param("Ki", m_args.Ki)
+          param("Ki pos", m_args.Kip)
           .defaultValue("1.0, 1.0, 1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("PID Ki");
+          .description("PID Ki pos");
 
-          param("Kd", m_args.Kd)
+          param("Kp vel", m_args.Kpv)
           .defaultValue("1.0, 1.0, 1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("PID Kd");
+          .description("PID Kp vel");
 
-          param("Max Vel", m_args.maxV)
+          param("Ki vel", m_args.Kiv)
           .defaultValue("1.0, 1.0, 1.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("PID Ki vel");
+
+          param("Max Vel", m_args.max_veln)
+          .defaultValue("1.0")
 		  .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Maximum velocity");
+          .description("Maximum normalized velocity");
 
-          param("Max Integral", m_args.maxInt)
-          .defaultValue("1.0, 1.0, 1.0")
+          param("Max F", m_args.max_Fn)
+          .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Maximum integral y-direction");
+          .description("Maximum normalized force");
 
           param("Copter", m_args.m_copter_id);
           param("Aircraft", m_args.m_aircraft_id);
@@ -169,10 +193,10 @@ namespace Control
       void
 	  consume(const IMC::FormPos* msg)
       {
-          /*inf("Got FormPos \nfrom '%s' at '%s'",
+    	  /*inf("Got FormPos \nfrom '%s' at '%s'",
                resolveEntity(msg->getSourceEntity()).c_str(),
                resolveSystemId(msg->getSource()));
-		  */
+    	  */
 		  std::string src_entity  = resolveSystemId(msg->getSource());
 		  if (src_entity == m_args.m_copter_id)
 		  {
@@ -205,71 +229,79 @@ namespace Control
 
 		  //Way Point 1
 		  WGS84::displacement(Angles::radians(m_args.ref_lat), Angles::radians(m_args.ref_lon), 0, m_NetRecovery.start_lat, m_NetRecovery.start_lon, 0, &WP1(0), &WP1(1));
-		  WP1(2) = m_NetRecovery.z;
+		  WP1(2) = m_NetRecovery.z + m_NetRecovery.z_off;
 
 		  //Way Point 2
 		  WGS84::displacement(Angles::radians(m_args.ref_lat), Angles::radians(m_args.ref_lon), 0, m_NetRecovery.end_lat, m_NetRecovery.end_lon, 0, &WP2(0), &WP2(1));
-		  WP2(2) = m_NetRecovery.z;
+		  WP2(2) = m_NetRecovery.z + m_NetRecovery.z_off;
 
 		  debug("WP_start: [%f,%f,%f]",WP1(0),WP1(1),WP1(2));
 		  debug("WP_end: [%f,%f,%f]",WP2(0),WP2(1),WP2(2));
 
 		  m_psi = atan2(WP2(1)-WP1(1), WP2(0)-WP1(0)); //right hand rotation around z
-		  m_theta = Angles::radians(0); //right hand rotation around y'
+		  m_theta = Angles::radians(0); //right hand rotation around y' (no height difference between way points)
+
+		  m_box_min(0) = 0;
+		  m_box_min(1) = -m_NetRecovery.lbox_width/2;
+		  m_box_min(2) = -m_NetRecovery.lbox_height/2 + m_NetRecovery.z + m_NetRecovery.z_off;
+
+		  Matrix deltaWP = WP2-WP1;
+		  m_box_max(0) = deltaWP.norm_2();
+		  m_box_max(1) = m_NetRecovery.lbox_width/2;
+		  m_box_max(2) = m_NetRecovery.lbox_height/2 + m_NetRecovery.z + m_NetRecovery.z_off;
 
 		  m_initialized_path = true;
 		  inf("Finished path initialization");
 	   }
 
+      Matrix
+	  pos_con(double timestep, Matrix pos_est_path, Matrix pos_ref_path, Matrix v_des_path)
+      {
+		  Matrix e_pos_est_path = pos_ref_path-pos_est_path;
+
+		  m_pos_int_value = m_pos_int_value + e_pos_est_path*timestep;
+
+		  Matrix v_des_syn_path = Matrix(3,1,0.0);
+
+		  if (pos_est_path(0) > pos_ref_path(0))
+ 		  {
+			  v_des_syn_path(0) = m_args.Kpp(0)*e_pos_est_path(0) + m_args.Kip(0)*m_pos_int_value(0);
+		  }
+		  else
+		  {
+			  v_des_syn_path(0) = v_des_path(0);
+		  }
+
+          v_des_syn_path(1) = m_args.Kpp(1)*e_pos_est_path(1) + m_args.Kip(1)*m_pos_int_value(1);
+          v_des_syn_path(2) = m_args.Kpp(2)*e_pos_est_path(2) + m_args.Kip(2)*m_pos_int_value(2);
+
+          if (v_des_syn_path.norm_2() > m_args.max_veln)
+          {
+        	  v_des_syn_path = abs(m_args.max_veln) * v_des_syn_path/v_des_syn_path.norm_2();
+          }
+
+		  return v_des_syn_path;
+      }
+
 	  //! todo: implement speedlimit
       Matrix
-	  path_follow(double timestep, Matrix v_est, double des_speed)
+	  vel_con(double timestep, Matrix v_est, Matrix v_des)
       {
-		  Matrix v_est_path = transpose(Rzyx(m_psi, m_theta, 0))*v_est;
+    	  Matrix e_v_est = v_des-v_est;
 
-		  m_v_int_value = m_v_int_value + (des_speed-v_est_path(0))*timestep;
+		  m_v_int_value = m_v_int_value + e_v_est*timestep;
 
-		  Matrix F_des_path_path = Matrix(3,1,0.0);
-		  F_des_path_path(0) = m_args.Kp(0)*(des_speed-v_est_path(0)) + m_args.Ki(0)*m_v_int_value;
+		  Matrix F_des = Matrix(3,1,0.0);
+		  F_des(0) = m_args.Kpv(0)*e_v_est(0) + m_args.Kiv(0)*m_v_int_value(0);
+		  F_des(1) = m_args.Kpv(1)*e_v_est(1) + m_args.Kiv(1)*m_v_int_value(1);
+		  F_des(2) = m_args.Kpv(2)*e_v_est(2) + m_args.Kiv(2)*m_v_int_value(2);
 
-		  debug("   speed des   : %f", des_speed);
-		  debug("  v est path   : %f; %f; %f", v_est_path(0), v_est_path(1), v_est_path(2));
+		  return F_des;
 
-		  return F_des_path_path;
-      }
-
-
-	  //! todo: implement boundries
-      Matrix
-	  syn_x8(double timestep, Matrix pos_est, Matrix pos_est_x8, Matrix v_est, Matrix v_est_x8)
-      {
-		  Matrix pos_est_path = transpose(Rzyx(m_psi, m_theta, 0))*pos_est;
-		  Matrix pos_est_x8_path = transpose(Rzyx(m_psi, m_theta, 0))*pos_est_x8;
-
-		  pos_est_x8_path(2) = pos_est_x8_path(2)+m_NetRecovery.z_off;
-
-		  Matrix v_est_path = transpose(Rzyx(m_psi, m_theta, 0))*v_est;
-		  Matrix v_est_x8_path = transpose(Rzyx(m_psi, m_theta, 0))*v_est_x8;
-
-		  m_pos_int_value = m_pos_int_value + (pos_est_x8_path-pos_est_path)*timestep;
-
-		  Matrix F_des_syn_path = Matrix(3,1,0.0);
-          F_des_syn_path(1) = m_args.Kp(1)*(pos_est_x8_path(1)-pos_est_path(1)) + m_args.Ki(1)*m_pos_int_value(1) + m_args.Kd(1)*(v_est_x8_path(1)-v_est_path(1));
-          F_des_syn_path(2) = m_args.Kp(2)*(pos_est_x8_path(2)-pos_est_path(2)) + m_args.Ki(2)*m_pos_int_value(2) + m_args.Kd(2)*(v_est_x8_path(2)-v_est_path(2));
-
-          debug("pos est path x8: %f; %f; %f", pos_est_x8_path(0), pos_est_x8_path(1), pos_est_x8_path(2));
-		  debug("pos est path   : %f; %f; %f\n", pos_est_path(0), pos_est_path(1), pos_est_path(2));
-
-		  return F_des_syn_path;
-      }
-
-      //!Return Rotation matrix Rzx'y''.
-      Matrix Rzyx(double psi, double theta, double phi) const
-      {
-        double R_en_elements[] = {cos(psi)*cos(theta), -sin(psi)*cos(phi) + cos(psi)*sin(theta)*sin(phi),  sin(psi)*sin(phi) + cos(psi)*cos(phi)*sin(theta),
-        						  sin(psi)*cos(theta),  cos(psi)*cos(phi) + sin(phi)*sin(theta)*sin(psi), -cos(psi)*sin(phi) + sin(theta)*sin(psi)*cos(phi),
-								 -sin(theta),           cos(theta)*sin(phi),                               cos(theta)*cos(phi)								};
-        return Matrix(R_en_elements,3,3);
+          if (F_des.norm_2() > m_args.max_Fn)
+          {
+        	  F_des = abs(m_args.max_Fn) * F_des/F_des.norm_2();
+          }
       }
 
       //! Dispatch desired force
@@ -281,12 +313,42 @@ namespace Control
         m_desired_force.z =  F_des(2);
 
         if (m_args.disable_Z)
+        {
           m_desired_force.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y;
+        }
         else
+        {
           m_desired_force.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y | IMC::DesiredControl::FL_Z;
+        }
 
         m_desired_force.setSourceEntity(getEntityId());
         dispatch(m_desired_force);
+      }
+
+      //!Return Rotation matrix Rzx'y''.
+      Matrix Rzyx(double psi, double theta, double phi) const
+      {
+        double R_en_elements[] = {cos(psi)*cos(theta), -sin(psi)*cos(phi) + cos(psi)*sin(theta)*sin(phi),  sin(psi)*sin(phi) + cos(psi)*cos(phi)*sin(theta),
+        						  sin(psi)*cos(theta),  cos(psi)*cos(phi) + sin(phi)*sin(theta)*sin(psi), -cos(psi)*sin(phi) + sin(theta)*sin(psi)*cos(phi),
+								 -sin(theta),           cos(theta)*sin(phi),                               cos(theta)*cos(phi)								};
+        return Matrix(R_en_elements,3,3);
+      }
+
+	  Matrix saturate(Matrix ref_value, Matrix min_value, Matrix max_value)
+      {
+          for (int i = 0; i <= 2; i = i+1)
+		  {
+			  if (ref_value(i) < min_value(i))
+			  {
+				  ref_value(i) = min_value(i);
+			  }
+			  if (ref_value(i) > max_value(i))
+			  {
+				  ref_value(i) = max_value(i);
+			  }
+          }
+
+    	  return ref_value;
       }
 
       virtual void
@@ -315,23 +377,33 @@ namespace Control
 		  pos_est_x8(1) = m_FormPosAircraft.y;
 		  pos_est_x8(2) = m_FormPosAircraft.z;
 
-		  //desired speed x
-		  double des_speed = m_path.speed;
-		  //current velocity x8 x y
-		  Matrix v_est_x8(3, 1, 0.0);
-		  v_est_x8(0) = m_FormPosAircraft.vx;
-		  v_est_x8(1) = m_FormPosAircraft.vy;
+		  //desired velocity in path frame
+		  Matrix v_des_path(3, 1, 0.0);
+		  v_des_path(0) = m_NetRecovery.speed;
+		  v_des_path(1) = 0.0;
+		  v_des_path(2) = 0.0;
 
-		  Matrix F_des_path_path = path_follow(timestep, v_est, des_speed);
-		  Matrix F_des_syn_path = syn_x8(timestep, pos_est, pos_est_x8, v_est, v_est_x8);
+		  Matrix v_des_syn_path = Matrix(3,1,0.0);
+		  Matrix F_des = Matrix(3,1,0.0);
+		  Matrix pos_est_path = transpose(Rzyx(m_psi, m_theta, 0))*pos_est;
+		  Matrix pos_est_x8_path = transpose(Rzyx(m_psi, m_theta, 0))*pos_est_x8;
+		  Matrix pos_ref_path = saturate(pos_est_x8_path, m_box_min, m_box_max);
+		  pos_ref_path(0) = m_box_max(0);
+		  Matrix v_est_path = transpose(Rzyx(m_psi, m_theta, 0))*v_est;
 
-		  Matrix F_des_path(3,1, 0.0);
-		  F_des_path(0) = F_des_path_path(0);
-		  F_des_path(1) = F_des_syn_path(1);
-		  F_des_path(2) = F_des_syn_path(2);
+		  if (m_args.enable_syn == true)
+		  {
+			  v_des_syn_path = pos_con(timestep, pos_est_path, pos_ref_path, v_des_path);
+			  Matrix v_des = Rzyx(m_psi, m_theta, 0)*v_des_syn_path;
+			  F_des = vel_con(timestep, v_est, v_des);
+		  }
 
-		  Matrix F_des = Rzyx(m_psi, m_theta, 0)*F_des_path;
-          sendDesiredForce(F_des);
+		  sendDesiredForce(F_des);
+
+          debug("pos ref path: %f; %f; %f", pos_ref_path(0), pos_ref_path(1), pos_ref_path(2));
+		  debug("pos est path: %f; %f; %f", pos_est_path(0), pos_est_path(1), pos_est_path(2));
+		  debug("  v des path: %f, %f, %f", v_des_syn_path(0), v_des_syn_path(1), v_des_syn_path(2));
+		  debug("  v est path: %f; %f; %f\n", v_est_path(0), v_est_path(1), v_est_path(2));
 
 		  debug("angle path: %f", m_psi); 
 		  debug("pos est x8: %f; %f; %f", pos_est_x8(0), pos_est_x8(1), pos_est_x8(2));
