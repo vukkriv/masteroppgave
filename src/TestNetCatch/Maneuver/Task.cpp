@@ -50,6 +50,8 @@ namespace TestNetCatch
     	fp32_t 		m_speed;
     	fp32_t		m_macc;
     	fp32_t		m_zoff;
+    	std::string m_copter_id;
+    	std::string m_aircraft_id;
     };
 
     struct Task: public DUNE::Tasks::Periodic
@@ -106,6 +108,8 @@ namespace TestNetCatch
           param("Altitude Offset", m_args.m_zoff)
           .defaultValue("0.0");
 
+          param("Copter", m_args.m_copter_id);
+          param("Aircraft", m_args.m_aircraft_id);
       }
 
       //! Update internal state with new parameter values.
@@ -161,9 +165,70 @@ namespace TestNetCatch
     	  msg.speed 	  = m_args.m_speed;
     	  msg.max_acc	  = m_args.m_macc;
     	  msg.z_off		  = m_args.m_zoff;
+    	  msg.aircraft	  = m_args.m_aircraft_id;
+    	  msg.multicopters= m_args.m_copter_id;
 
-    	  dispatch(msg);
-    	  inf("NetRecovery maneuver message dispatched");
+    	  IMC::Goto goto_man;
+    	  goto_man.lat = msg.start_lat;
+    	  goto_man.lon = msg.start_lon;
+    	  goto_man.z   = msg.z;
+    	  goto_man.z_units = msg.z_units;
+    	  goto_man.speed = msg.speed;
+    	  goto_man.speed_units = IMC::SUNITS_METERS_PS;
+
+    	  IMC::PlanManeuver* pman1 = new IMC::PlanManeuver();
+    	  IMC::InlineMessage<IMC::Maneuver> pman1_inline;
+    	  pman1_inline.set(goto_man);
+    	  pman1->maneuver_id = "1";
+    	  pman1->data = pman1_inline;
+
+    	  IMC::PlanManeuver* pman2  = new IMC::PlanManeuver();
+    	  IMC::InlineMessage<IMC::Maneuver> pman2_inline;
+    	  pman2_inline.set(msg);
+    	  pman2->maneuver_id = "2";
+    	  pman2->data = pman2_inline;
+
+
+        IMC::PlanSpecification plan;
+
+        IMC::PlanTransition* transition = new IMC::PlanTransition;
+        transition->source_man = "1";
+        transition->dest_man   = "2";
+
+        IMC::PlanTransition* transition2 = new IMC::PlanTransition;
+        transition2->source_man = "2";
+        transition2->dest_man   = "1";
+
+        plan.description = "A net recovery test plan";
+        plan.plan_id = "NetRecoveryTest";
+
+        IMC::MessageList<IMC::PlanTransition> translist;
+        translist.push_back(transition);
+        translist.push_back(transition2);
+
+        IMC::MessageList<IMC::PlanManeuver> manlist;
+        manlist.push_back(pman1);
+        manlist.push_back(pman2);
+
+        plan.start_man_id = "1";
+        plan.maneuvers = manlist;
+        plan.transitions = translist;
+
+        // Create plan
+        IMC::PlanControl planCtrl;
+        planCtrl.op = IMC::PlanControl::PC_START;
+        planCtrl.type = IMC::PlanControl::PC_REQUEST;
+        planCtrl.plan_id = "NetRecoveryTest";
+        planCtrl.request_id = 10;
+
+        // Apply custom maneuver to plan
+        IMC::InlineMessage<IMC::Message> arg;
+        arg.set(plan);
+        planCtrl.arg = arg;
+        debug("Custom plan activated");
+        dispatch(planCtrl);
+
+    	  //dispatch(msg);
     	  maneuver_enabled = true;
       }
 
@@ -174,7 +239,6 @@ namespace TestNetCatch
     	  if (m_timestamp_start == 0.0)
     	  {
     		  m_timestamp_start = Clock::get();
-    		  inf("Timestamp: %f",m_timestamp_start);
     	  }
     	  double timeSinceStart =  Clock::get() - m_timestamp_start;
     	  if (!maneuver_enabled)

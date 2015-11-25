@@ -60,7 +60,7 @@ namespace Transports
       //! Sensor Type
       INPUT_TYPE m_type;
 
-	  IMC::FormPos m_form_pos;
+	  IMC::EstimatedLocalState m_state;
 
 	  //! Localization origin (WGS-84)
 	  fp64_t m_ref_lat, m_ref_lon;
@@ -190,32 +190,40 @@ namespace Transports
             return;
           }
           // Set time stamp
-          m_form_pos.ots = msg->getTimeStamp();
+          m_state.ots = msg->getTimeStamp();
           // Set displacement of agent reference from main reference LLH
           WGS84::displacement(m_ref_lat, m_ref_lon, m_ref_hae,
                               msg->lat, msg->lon, msg->height,
-                              &m_form_pos.x, &m_form_pos.y, &m_form_pos.z);
+                              &m_state.x, &m_state.y, &m_state.z);
           // Add displacement from agent reference
-          m_form_pos.x += msg->x;
-          m_form_pos.y += msg->y;
-          m_form_pos.z += msg->z;
+          m_state.x += msg->x;
+          m_state.y += msg->y;
+          m_state.z += msg->z;
           // Set velocity
-          m_form_pos.vx = msg->vx;
-          m_form_pos.vy = msg->vy;
-          m_form_pos.vz = msg->vz;
+          m_state.vx = msg->vx;
+          m_state.vy = msg->vy;
+          m_state.vz = msg->vz;
 
+          m_state.source = IMC::EstimatedLocalState::SRC_GPS;
+          m_state.ref = IMC::EstimatedLocalState::REF_FIXED;
 
+          if (m_ref_valid)
+          {
+        	  m_state.lat 	 = m_ref_lat;
+        	  m_state.lon 	 = m_ref_lon;
+        	  m_state.height = m_ref_hae;
+          }
           spew("ES: Height = %1.1f, z = %1.1f, New Z = %1.1f",
-              msg->height, msg->z,m_form_pos.z);
+              msg->height, msg->z,m_state.z);
 
           // Keep source entity and source ID
-          //m_form_pos.setSource(msg->getSource());
-          //m_form_pos.setSourceEntity(msg->getSourceEntity());
-          //dispatch(m_form_pos, DF_KEEP_SRC_EID);
+          //m_state.setSource(msg->getSource());
+          //m_state.setSourceEntity(msg->getSourceEntity());
+          //dispatch(m_state, DF_KEEP_SRC_EID);
 
-          dispatch(m_form_pos);
+          dispatch(m_state);
 
-          spew("Sent FormPos State");
+          spew("Sent Estimated Local State");
         }
       }
 
