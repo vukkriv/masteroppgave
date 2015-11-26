@@ -169,6 +169,9 @@ namespace Maneuver
       //! To print the control-loop frequency
       uint64_t m_time_end;
 
+      //! To print the control-loop frequency
+	  uint64_t m_time_diff;
+
       //! Controllable loops.
       static const uint32_t c_controllable = IMC::CL_PATH;
       //! Required loops.
@@ -191,7 +194,7 @@ namespace Maneuver
 		m_p_int_value(3,1,0.0),
         m_u_ref(0.0),
         m_ad(0.0),
-        m_time_end(0.0),
+        m_time_end(Clock::getMsec()),
 		m_time_diff(0.0)
       {
  	    param("Path Controller", m_args.use_controller)
@@ -352,13 +355,15 @@ namespace Maneuver
 
     	if (!m_initializedCoord)
         {
-  		  m_ref_lat = estate->lat;
+    	  inf("Initializing coordinator after EstimatedLocalState");
+    	  m_ref_lat = estate->lat;
 		  m_ref_lon = estate->lon;
 		  m_ref_hae = estate->height;
 		  m_ref_valid = true;
           initCoordinator();
           initRunwayPath();
           //return;
+          inf("Initialized coordinator after EstimatedLocalState");
         }
 
         //spew("Got EstimatedState \nfrom '%s' at '%s'",
@@ -367,7 +372,7 @@ namespace Maneuver
 
         std::string vh_id  = resolveSystemId(estate->getSource());
         int s = getVehicle(vh_id);
-        trace("s=%d",s);
+        //trace("s=%d",s);
         if (s == INVALID)  //invalid vehicle
           return;
 
@@ -389,6 +394,7 @@ namespace Maneuver
 
         calcPathErrors(p, v, s);
         updateMeanValues(s);
+
 
         IMC::NetRecoveryState::NetRecoveryLevelEnum last_state = m_curr_state;
         switch(m_curr_state)
@@ -415,6 +421,7 @@ namespace Maneuver
             }
             if (s==AIRCRAFT)
             {
+            	/*
             	spew("v_a: %f",v_a);
             	spew("p[%d]: [%f,%f,%f]",s,p(0),p(1),p(2));
                 spew("v[%d]: [%f,%f,%f]",s,v(0),v(1),v(2));
@@ -428,6 +435,7 @@ namespace Maneuver
 		        spew("delta_v_path_x = %f",delta_v_path_x);
 		        spew("StartCatch radius: %f",m_startCatch_radius);
 				spew("\n\n");
+				*/
             }
             checkPositionsAtRunway(); //requires that the net is standby at the start of the runway
 
@@ -458,7 +466,6 @@ namespace Maneuver
         sendCurrentState();
         if (last_state != m_curr_state)
         	inf("Current state: %d",static_cast<NetRecoveryState::NetRecoveryLevelEnum>(m_curr_state));
-
       }
 
       void
@@ -515,7 +522,7 @@ namespace Maneuver
           WGS84::displacement(m_ref_lat, m_ref_lon, 0,
           				    m_runway.lat_start, m_runway.lon_start, 0,
           					&m_runway.start_NED(0), &m_runway.start_NED(1));
-          m_runway.start_NED(2) = m_runway.hae_end;
+          m_runway.start_NED(2) = m_runway.hae_start;
 
           WGS84::displacement(m_ref_lat, m_ref_lon, 0,
           					m_runway.lat_end, m_runway.lon_end, 0,
@@ -702,7 +709,7 @@ namespace Maneuver
         {
             vel = v0;
         }
-        spew("getPathVelocity: u_d=%f,deltaTime=%f,startTime=%f",vel,deltaTime,startTime);
+        //spew("getPathVelocity: u_d=%f,deltaTime=%f,startTime=%f",vel,deltaTime,startTime);
         return vel;
       }
 
@@ -807,11 +814,10 @@ namespace Maneuver
 
       //! Control loop in path-frame
       Matrix
-      getDesiredPathVelocity(double u_d_along_path, Matrix p_a, Matrix v_a, Matrix p_n, Matrix v_n)
+      getDesiredPathVelocity(double u_d_along_path, Matrix p_a_path, Matrix v_a_path, Matrix p_n_path, Matrix v_n_path)
       {
     	//_a: aircraft
     	//_n: net (copter)
-
     	Matrix v_path = Matrix(3,1,0.0);
 
     	// box boundaries
@@ -823,19 +829,19 @@ namespace Maneuver
     	Matrix p_max_path = Matrix(3,1,0.0);
     	p_max_path(0) = m_runway.box_length;
     	p_max_path(1) = m_runway.box_width/2;
-    	p_max_path(2) = m_runway.box_height/2 + m_runway.hae_end;
+    	p_max_path(2) = m_runway.box_height/2 + m_runway.hae_start;
 
-    	Matrix p_ref_path = saturate(p_a,p_min_path,p_max_path);
+    	Matrix p_ref_path = saturate(p_a_path,p_min_path,p_max_path);
     	p_ref_path(0) = m_runway.box_length;
 
-    	Matrix e_p_path = p_ref_path-p_n;
-    	Matrix e_v_path = v_a-v_n;
+    	Matrix e_p_path = p_ref_path-p_n_path;
+    	Matrix e_v_path = v_a_path-v_n_path;
 
     	m_p_int_value = m_p_int_value + e_p_path*m_time_diff;
 
-    	if (p_n(0) > p_ref_path(0)-m_args.m_endCatch_radius) //todo: correct check?
+    	if (p_n_path(0) > p_ref_path(0)-m_args.m_endCatch_radius) //todo: correct check?
 		{
-    		v_path(0) = m_args.Kp(0)*e_p_path(0) + m_args.Ki(0)*m_p_int_value(0) + m_args.Kd(0)*(0-v_n(0));
+    		v_path(0) = m_args.Kp(0)*e_p_path(0) + m_args.Ki(0)*m_p_int_value(0) + m_args.Kd(0)*(0-v_n_path(0));
 		}
     	else
     	{
@@ -845,10 +851,18 @@ namespace Maneuver
     	v_path(1) = m_args.Kp(1)*e_p_path(1) + m_args.Ki(1)*m_p_int_value(1) + m_args.Kd(1)*e_v_path(1);
     	v_path(2) = m_args.Kp(2)*e_p_path(2) + m_args.Ki(2)*m_p_int_value(2) + m_args.Kd(2)*e_v_path(2);
 
+
         if (v_path.norm_2() > m_args.max_norm_v)
         {
       	  v_path = abs(m_args.max_norm_v) * v_path/v_path.norm_2();
         }
+
+        spew("p_a: [%f,%f,%f]",p_a_path(0),p_a_path(1),p_a_path(2));
+        spew("p_n: [%f,%f,%f]",p_n_path(0),p_n_path(1),p_n_path(2));
+        spew("v_path [%f,%f,%f]",v_path(0),v_path(1),v_path(2));
+        spew("\n\n");
+        //spew("v[%d]: [%f,%f,%f]",s,v(0),v(1),v(2));
+
 
     	return v_path;
       }
@@ -884,42 +898,42 @@ namespace Maneuver
   	    if(!m_args.use_controller || !isActive())
 		  return;
 
-		m_time_diff = Clock::getMsec() - m_time_end;
-		m_time_end = Clock::getMsec();
+  	    m_time_diff = Clock::getMsec() - m_time_end;
+  	    m_time_end = Clock::getMsec();
+		//spew("Frequency: %1.1f, %d", 1000.0/m_time_diff,m_coordinatorEnabled);
 
         //dispatch control if ready
-    	if(m_coordinatorEnabled)
+    	if(m_coordinatorEnabled && m_initializedCoord)
     	{
-    		Matrix p_a;
-    		Matrix v_a;
+    		Matrix p_a_path;
+    		Matrix v_a_path;
 
-    		Matrix p_n;
-    		Matrix v_n;
+    		Matrix p_n_path;
+    		Matrix v_n_path;
+
 
     		if (m_args.use_mean_window_aircraft)
     		{
-    			p_a = m_p_path_mean[AIRCRAFT];
-    			v_a = m_v_path_mean[AIRCRAFT];
+    			p_a_path = m_p_path_mean[AIRCRAFT];
+    			v_a_path = m_v_path_mean[AIRCRAFT];
     		}
     		else
     		{
-    			p_a = m_p_path[AIRCRAFT];
-    			v_a = m_v_path[AIRCRAFT];
+    			p_a_path = m_p_path[AIRCRAFT];
+    			v_a_path = m_v_path[AIRCRAFT];
     		}
 
-    		p_n = getNetPosition(m_p_path);
-    		v_n = getNetVelocity(m_v_path);
+    		p_n_path = getNetPosition(m_p_path);
+    		v_n_path = getNetVelocity(m_v_path);
+
+    		Matrix v_path   = getDesiredPathVelocity(m_ud, p_a_path, v_a_path, p_n_path, v_n_path);
+
+    		Matrix v_d_local = getDesiredLocalVelocity(v_path,m_runway.alpha,m_runway.theta);
 
 
-    		Matrix v_p   = getDesiredPathVelocity(m_ud, p_a, v_a, p_n, v_n);
-
-    		Matrix v_d_l = getDesiredLocalVelocity(v_p,m_runway.alpha,m_runway.theta);
-
-    		sendDesiredLocalVelocity(v_d_l);
+    		sendDesiredLocalVelocity(v_d_local);
     	}
-		uint64_t diff = Clock::getMsec() - time_end;
-		time_end = Clock::getMsec();
-		spew("Frequency: %1.1f", 1000.0/diff);
+
       }
 
       //! @return  Rotation matrix.
