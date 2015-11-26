@@ -176,7 +176,7 @@ namespace Control
 		  if (getSystemId() == msg->getSource())
 		  {
 
-			  inf("-->consume copter est loc state");
+			  //inf("-->consume copter est loc state");
 			  m_est_l_state = *msg;
 		  }
  	  }
@@ -194,12 +194,11 @@ namespace Control
 		  F_des(1) = m_args.Kp(1)*e_v_est(1) + m_args.Ki(1)*m_v_int_value(1);
 		  F_des(2) = m_args.Kp(2)*e_v_est(2) + m_args.Ki(2)*m_v_int_value(2);
 
-		  return F_des;
-
           if (F_des.norm_2() > m_args.max_norm_F)
           {
         	  F_des = abs(m_args.max_norm_F) * F_des/F_des.norm_2();
           }
+          return F_des;
       }
 
       //! Dispatch desired force
@@ -235,12 +234,12 @@ namespace Control
 		m_time_diff = Clock::getMsec() - m_time_end;
 		m_time_end = Clock::getMsec();
 
-		Matrix v_est;
+		Matrix v_est = Matrix(3,1,0);
 		v_est(0) = m_est_l_state.vx;
 		v_est(1) = m_est_l_state.vy;
 		v_est(2) = m_est_l_state.vz;
 
-    	Matrix v_des;
+    	Matrix v_des = Matrix(3,1,0);
     	v_des(0) = m_v_des.u;
     	v_des(1) = m_v_des.v;
     	v_des(2) = m_v_des.w;
