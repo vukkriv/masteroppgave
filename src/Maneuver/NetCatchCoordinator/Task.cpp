@@ -127,13 +127,13 @@ namespace Maneuver
       std::vector<Matrix> m_v;
       
       //! Cross track errors
-      std::vector<Matrix> m_cross_track;
+      std::vector<Matrix> m_p_path;
       std::vector<std::queue<Matrix> > m_cross_track_window;
-      std::vector<Matrix> m_cross_track_mean;
+      std::vector<Matrix> m_p_path_mean;
       //! Cross track errors derivative
-      std::vector<Matrix> m_cross_track_d;
+      std::vector<Matrix> m_v_path;
       std::vector<std::queue<Matrix> > m_cross_track_d_window;
-      std::vector<Matrix> m_cross_track_d_mean;
+      std::vector<Matrix> m_v_path_mean;
 
       //! Position difference along path
       double delta_p_path_x;
@@ -157,12 +157,14 @@ namespace Maneuver
       //! Control loops last reference
       uint32_t m_scope_ref;
 
+      //! To print the control-loop frequency
+      uint64_t time_end;
+
       //! Controllable loops.
       static const uint32_t c_controllable = IMC::CL_PATH;
       //! Required loops.
       static const uint32_t c_required = IMC::CL_SPEED;
 
-      uint64_t time_end;
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
@@ -376,7 +378,7 @@ namespace Maneuver
           {
             updateMeanValues(s);
 
-            double v_a = abs(m_cross_track_d[AIRCRAFT](0));
+            double v_a = abs(m_v_path[AIRCRAFT](0));
             m_startCatch_radius = updateStartRadius(v_a,0, m_u_ref, m_ad, m_args.m_coll_r);
             if (m_startCatch_radius == -1)
             {
@@ -390,10 +392,10 @@ namespace Maneuver
                 spew("v[%d]: [%f,%f,%f]",s,v(0),v(1),v(2));
                 spew("m_runway.start_NED[%d]: [%f,%f,%f]",s,m_runway.start_NED(0),m_runway.start_NED(1),m_runway.start_NED(2));
                 spew("m_runway.end_NED [%d]: [%f,%f,%f]",s,m_runway.end_NED(0),m_runway.end_NED(1),m_runway.end_NED(2));
-				spew("m_cross_track[%d]: [%f,%f,%f]",s,m_cross_track[s](0),m_cross_track[s](1),m_cross_track[s](2));
-				spew("m_cross_track_d[%d]: [%f,%f,%f]",s,m_cross_track_d[s](0),m_cross_track_d[s](1),m_cross_track_d[s](2));
-				spew("m_cross_track_mean[%d]: [%f,%f,%f]",s,m_cross_track_mean[s](0),m_cross_track_mean[s](1),m_cross_track_mean[s](2));
-				spew("m_cross_track_d_mean[%d]: [%f,%f,%f]",s,m_cross_track_d_mean[s](0),m_cross_track_d_mean[s](1),m_cross_track_d_mean[s](2));
+				spew("m_p_path[%d]: [%f,%f,%f]",s,m_p_path[s](0),m_p_path[s](1),m_p_path[s](2));
+				spew("m_v_path[%d]: [%f,%f,%f]",s,m_v_path[s](0),m_v_path[s](1),m_v_path[s](2));
+				spew("m_p_path_mean[%d]: [%f,%f,%f]",s,m_p_path_mean[s](0),m_p_path_mean[s](1),m_p_path_mean[s](2));
+				spew("m_v_path_mean[%d]: [%f,%f,%f]",s,m_v_path_mean[s](0),m_v_path_mean[s](1),m_v_path_mean[s](2));
 		        spew("delta_p_path_x = %f",delta_p_path_x);
 		        spew("delta_v_path_x = %f",delta_v_path_x);
 		        spew("StartCatch radius: %f",m_startCatch_radius);
@@ -443,10 +445,10 @@ namespace Maneuver
         m_p             = std::vector<Matrix>(no_vehicles);
         m_v             = std::vector<Matrix>(no_vehicles);
 
-        m_cross_track          = std::vector<Matrix>(no_vehicles);
-        m_cross_track_d        = std::vector<Matrix>(no_vehicles);
-        m_cross_track_mean   = std::vector<Matrix>(no_vehicles);
-        m_cross_track_d_mean = std::vector<Matrix>(no_vehicles);
+        m_p_path          = std::vector<Matrix>(no_vehicles);
+        m_v_path        = std::vector<Matrix>(no_vehicles);
+        m_p_path_mean   = std::vector<Matrix>(no_vehicles);
+        m_v_path_mean = std::vector<Matrix>(no_vehicles);
         m_cross_track_window   = std::vector<std::queue<Matrix> >(no_vehicles);
         m_cross_track_d_window = std::vector<std::queue<Matrix> >(no_vehicles);
         m_initialized = std::vector<bool>(no_vehicles);
@@ -454,14 +456,14 @@ namespace Maneuver
         for (unsigned int i=0; i<no_vehicles; i++) {
           m_p[i] = Matrix(3,1,0);
           m_v[i] = Matrix(3,1,0);
-          m_cross_track[i]   = Matrix(3,1,0);
-          m_cross_track_d[i] = Matrix(3,1,0);
-          m_cross_track_mean[i]   = Matrix(3,1,0);
-          m_cross_track_d_mean[i] = Matrix(3,1,0);
-          debug("m_cross_track[%d]: Rows: %d, Cols: %d",i,m_cross_track[i].rows(),m_cross_track[i].columns());
-          debug("m_cross_track_d[%d]: Rows: %d, Cols: %d",i,m_cross_track_d[i].rows(),m_cross_track_d[i].columns());
-          debug("m_cross_track_mean[%d]: Rows: %d, Cols: %d",i,m_cross_track_mean[i].rows(),m_cross_track_mean[i].columns());
-          debug("m_cross_track_d_mean[%d]: Rows: %d, Cols: %d",i,m_cross_track_d_mean[i].rows(),m_cross_track_d_mean[i].columns());
+          m_p_path[i]   = Matrix(3,1,0);
+          m_v_path[i] = Matrix(3,1,0);
+          m_p_path_mean[i]   = Matrix(3,1,0);
+          m_v_path_mean[i] = Matrix(3,1,0);
+          debug("m_p_path[%d]: Rows: %d, Cols: %d",i,m_p_path[i].rows(),m_p_path[i].columns());
+          debug("m_v_path[%d]: Rows: %d, Cols: %d",i,m_v_path[i].rows(),m_v_path[i].columns());
+          debug("m_p_path_mean[%d]: Rows: %d, Cols: %d",i,m_p_path_mean[i].rows(),m_p_path_mean[i].columns());
+          debug("m_v_path_mean[%d]: Rows: %d, Cols: %d",i,m_v_path_mean[i].rows(),m_v_path_mean[i].columns());
           m_cross_track_window[i]   = std::queue<Matrix>();
           m_cross_track_d_window[i] = std::queue<Matrix>();
           for (unsigned int j=0; j < m_args.mean_ws; j++)
@@ -510,8 +512,8 @@ namespace Maneuver
           Matrix eps     = R*(p-m_runway.start_NED);
           Matrix eps_dot = R*v;
 
-          m_cross_track[s] = eps;
-          m_cross_track_d[s] = eps_dot;
+          m_p_path[s] = eps;
+          m_v_path[s] = eps_dot;
 
           Matrix p_n = getNetPosition(m_p);
           Matrix v_n = getNetVelocity(m_v);
@@ -531,11 +533,11 @@ namespace Maneuver
           err("Mean window queue empty");
           return;
         }
-        Matrix weightedAvg      = m_cross_track[s]/m_args.mean_ws;
+        Matrix weightedAvg      = m_p_path[s]/m_args.mean_ws;
         Matrix firstWeightedAvg = m_cross_track_window[s].front();
-        Matrix newMean = m_cross_track_mean[s] + weightedAvg - firstWeightedAvg;
+        Matrix newMean = m_p_path_mean[s] + weightedAvg - firstWeightedAvg;
 
-        m_cross_track_mean[s] = newMean;
+        m_p_path_mean[s] = newMean;
         m_cross_track_window[s].pop();
         m_cross_track_window[s].push(weightedAvg);
         if (m_cross_track_d_window[s].size() == 0)
@@ -544,10 +546,10 @@ namespace Maneuver
           return;
         }
 
-        Matrix weightedAvg_d      = m_cross_track_d[s]/m_args.mean_ws;
+        Matrix weightedAvg_d      = m_v_path[s]/m_args.mean_ws;
         Matrix firstWeightedAvg_d = m_cross_track_d_window[s].front();
-        Matrix newMean_d = m_cross_track_d_mean[s] + weightedAvg_d - firstWeightedAvg_d;
-        m_cross_track_d_mean[s]   = newMean_d;
+        Matrix newMean_d = m_v_path_mean[s] + weightedAvg_d - firstWeightedAvg_d;
+        m_v_path_mean[s]   = newMean_d;
         
         
         m_cross_track_d_window[s].pop();
@@ -564,15 +566,14 @@ namespace Maneuver
         // if the erros are too high and increasing, at a given radius between the vehicles, send abort catch
         // requires that the net-catch mission has started (net at runway)
 
-        //TODO: use a string enumeration to get position of vehicle in the vector lists  
         bool aircraftOff = false;
         bool netOff = false;
-        if (abs(m_cross_track_mean[AIRCRAFT](1))  >= m_args.eps_ct_a(0) ||
-            abs(m_cross_track_mean[AIRCRAFT](2))  >= m_args.eps_ct_a(1) )
+        if (abs(m_p_path_mean[AIRCRAFT](1))  >= m_args.eps_ct_a(0) ||
+            abs(m_p_path_mean[AIRCRAFT](2))  >= m_args.eps_ct_a(1) )
         {
           aircraftOff = true;
         }
-        Matrix p_n = getNetPosition(m_cross_track);
+        Matrix p_n = getNetPosition(m_p_path);
         if (abs(p_n(1))  >= m_args.eps_ct_n(0) ||
             abs(p_n(2))  >= m_args.eps_ct_n(1) )
         {
@@ -608,7 +609,11 @@ namespace Maneuver
       bool
       allInitialized()
       {
-        for(unsigned int i=0; i < m_initialized.size(); i++) 
+    	unsigned int vehicles = m_vehicles.no_vehicles;
+    	if (!m_args.enable_coord)
+    		vehicles = 2;
+
+        for(unsigned int i=0; i < vehicles; i++)
         {
           if (!m_initialized[i])
             return false;
@@ -626,7 +631,7 @@ namespace Maneuver
     	if (m_args.use_mean_window_aircraft)
     		delta_p = delta_p_path_x_mean;
 
-        if (abs(delta_p) <= m_startCatch_radius && m_cross_track_d[AIRCRAFT](0) > 0)
+        if (abs(delta_p) <= m_startCatch_radius && m_v_path[AIRCRAFT](0) > 0)
         {
           //inf("Start net-catch mission: delta_p_path_x_mean=%f", delta_p_path_x_mean);
           m_curr_state = IMC::NetRecoveryState::NR_START;
@@ -698,8 +703,8 @@ namespace Maneuver
       {
     	  IMC::NetRecoveryState state;
     	  //state.flags = m_curr_state;	Should use the IMC flags for state
-    	  Matrix p_n = getNetPosition(m_cross_track);
-    	  Matrix v_n = getNetVelocity(m_cross_track_d);
+    	  Matrix p_n = getNetPosition(m_p_path);
+    	  Matrix v_n = getNetVelocity(m_v_path);
     	  state.x_n = p_n(0);
 		  state.y_n = p_n(1);
 		  state.z_n = p_n(2);
@@ -708,13 +713,13 @@ namespace Maneuver
 		  state.vy_n = v_n(1);
 		  state.vz_n = v_n(2);
 
-    	  state.x_a = m_cross_track[AIRCRAFT](0);
-    	  state.y_a = m_cross_track[AIRCRAFT](1);
-    	  state.z_a = m_cross_track[AIRCRAFT](2);
+    	  state.x_a = m_p_path[AIRCRAFT](0);
+    	  state.y_a = m_p_path[AIRCRAFT](1);
+    	  state.z_a = m_p_path[AIRCRAFT](2);
 
-    	  state.vx_a = m_cross_track_d[AIRCRAFT](0);
-    	  state.vy_a = m_cross_track_d[AIRCRAFT](1);
-    	  state.vz_a = m_cross_track_d[AIRCRAFT](2);
+    	  state.vx_a = m_v_path[AIRCRAFT](0);
+    	  state.vy_a = m_v_path[AIRCRAFT](1);
+    	  state.vz_a = m_v_path[AIRCRAFT](2);
 
     	  state.delta_p  = delta_p_path_x;
     	  state.delta_vp = delta_v_path_x;
@@ -813,17 +818,17 @@ namespace Maneuver
 
     		if (m_args.use_mean_window_aircraft)
     		{
-    			p_a = m_cross_track_mean[AIRCRAFT];
-    			v_a = m_cross_track_d_mean[AIRCRAFT];
+    			p_a = m_p_path_mean[AIRCRAFT];
+    			v_a = m_v_path_mean[AIRCRAFT];
     		}
     		else
     		{
-    			p_a = m_cross_track[AIRCRAFT];
-    			v_a = m_cross_track_d[AIRCRAFT];
+    			p_a = m_p_path[AIRCRAFT];
+    			v_a = m_v_path[AIRCRAFT];
     		}
 
-    		p_n = getNetPosition(m_cross_track);
-    		v_n = getNetVelocity(m_cross_track_d);
+    		p_n = getNetPosition(m_p_path);
+    		v_n = getNetVelocity(m_v_path);
 
 
     		Matrix v_p   = getDesiredPathVelocity(m_ud, p_a, v_a, p_n, v_n);
