@@ -62,6 +62,13 @@ namespace Maneuver
       //! Radius to stop at end of runway
       double m_endCatch_radius;
 
+      //!position Controller parameters
+      Matrix Kp;
+	  Matrix Ki;
+	  Matrix Kd;
+
+	  double max_norm_v;
+
       //! Frequency of controller
       double m_freq;
 
@@ -142,6 +149,8 @@ namespace Maneuver
       double delta_v_path_x;
       double delta_v_path_x_mean;
 
+      Matrix m_p_int_value;
+
      //! Radius to start net-catch (calculate based on net-acceleration)
       double m_startCatch_radius;
 
@@ -158,12 +167,13 @@ namespace Maneuver
       uint32_t m_scope_ref;
 
       //! To print the control-loop frequency
-      uint64_t time_end;
+      uint64_t m_time_end;
 
       //! Controllable loops.
       static const uint32_t c_controllable = IMC::CL_PATH;
       //! Required loops.
       static const uint32_t c_required = IMC::CL_SPEED;
+
 
       //! Constructor.
       //! @param[in] name task name.
@@ -178,9 +188,11 @@ namespace Maneuver
 		m_ref_hae(0.0),
         m_ref_valid(false),
         m_coordinatorEnabled(false),
+		m_p_int_value(3,1,0.0),
         m_u_ref(0.0),
         m_ad(0.0),
-        time_end(0.0)
+        m_time_end(0.0),
+		m_time_diff(0.0)
       {
  	    param("Path Controller", m_args.use_controller)
 	    .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -229,6 +241,22 @@ namespace Maneuver
         param("Desired switching radius", m_args.m_endCatch_radius)
         .defaultValue("10.0")
         .units(Units::Meter);
+
+        param("Kp Position Control", m_args.Kp)
+        .defaultValue("1.0,1.0,1.0")
+        .description("Position Controller tuning parameter Kp");
+
+        param("Ki Position Control", m_args.Ki)
+        .defaultValue("0.0,0.0,0.0")
+        .description("Position Controller tuning parameter Ki");
+
+        param("Kd Position Control", m_args.Kd)
+        .defaultValue("0.0,0.0,0.0")
+        .description("Position Controller tuning parameter Kd");
+
+        param("Maximum Normalised Velocity", m_args.max_norm_v)
+        .defaultValue("5.0")
+        .description("Maximum Normalised Velocity of the Copter");
 
         // Bind incoming IMC messages
         bind<IMC::EstimatedLocalState>(this);
@@ -566,6 +594,7 @@ namespace Maneuver
         // if the erros are too high and increasing, at a given radius between the vehicles, send abort catch
         // requires that the net-catch mission has started (net at runway)
 
+      
         bool aircraftOff = false;
         bool netOff = false;
         if (abs(m_p_path_mean[AIRCRAFT](1))  >= m_args.eps_ct_a(0) ||
@@ -648,7 +677,7 @@ namespace Maneuver
     	  m_curr_state = IMC::NetRecoveryState::NR_END;
       }
 
-      double 
+      double
       getPathVelocity(double v0, double v_ref, double a_n, bool active_ramp)
       {
     	double deltaT = (v_ref-v0)/a_n;
@@ -783,14 +812,62 @@ namespace Maneuver
     	//_a: aircraft
     	//_n: net (copter)
 
-    	Matrix v = Matrix(3,1,0);
+    	Matrix v_path = Matrix(3,1,0.0);
 
     	// box boundaries
-    	fp32_t b_height = m_runway.box_height;
-    	fp32_t b_width = m_runway.box_width;
-    	fp32_t b_length = m_runway.box_length;
+    	Matrix p_min_path = Matrix(3,1,0.0);
+    	p_min_path(0) = 0;
+    	p_min_path(1) = -m_runway.box_width/2;
+    	p_min_path(2) = -m_runway.box_height/2 + m_runway.hae_start; //todo: correct like this?
 
-    	return v;
+    	Matrix p_max_path = Matrix(3,1,0.0);
+    	p_max_path(0) = m_runway.box_length;
+    	p_max_path(1) = m_runway.box_width/2;
+    	p_max_path(2) = m_runway.box_height/2 + m_runway.hae_end;
+
+    	Matrix p_ref_path = saturate(p_a,p_min_path,p_max_path);
+    	p_ref_path(0) = m_runway.box_length;
+
+    	Matrix e_p_path = p_ref_path-p_n;
+    	Matrix e_v_path = v_a-v_n;
+
+    	m_p_int_value = m_p_int_value + e_p_path*m_time_diff;
+
+    	if (p_n(0) > p_ref_path(0)-m_args.m_endCatch_radius) //todo: correct check?
+		{
+    		v_path(0) = m_args.Kp(0)*e_p_path(0) + m_args.Ki(0)*m_p_int_value(0) + m_args.Kd(0)*(0-v_n(0));
+		}
+    	else
+    	{
+    		v_path(0) = u_d_along_path;
+    	}
+
+    	v_path(1) = m_args.Kp(1)*e_p_path(1) + m_args.Ki(1)*m_p_int_value(1) + m_args.Kd(1)*e_v_path(1);
+    	v_path(2) = m_args.Kp(2)*e_p_path(2) + m_args.Ki(2)*m_p_int_value(2) + m_args.Kd(2)*e_v_path(2);
+
+        if (v_path.norm_2() > m_args.max_norm_v)
+        {
+      	  v_path = abs(m_args.max_norm_v) * v_path/v_path.norm_2();
+        }
+
+    	return v_path;
+      }
+
+	  Matrix saturate(Matrix ref_value, Matrix min_value, Matrix max_value)
+      {
+          for (int i = 0; i <= 2; i = i+1)
+		  {
+			  if (ref_value(i) < min_value(i))
+			  {
+				  ref_value(i) = min_value(i);
+			  }
+			  if (ref_value(i) > max_value(i))
+			  {
+				  ref_value(i) = max_value(i);
+			  }
+          }
+
+    	  return ref_value;
       }
 
       //! Get desired local
@@ -806,6 +883,9 @@ namespace Maneuver
       {
   	    if(!m_args.use_controller || !isActive())
 		  return;
+
+		m_time_diff = Clock::getMsec() - m_time_end;
+		m_time_end = Clock::getMsec();
 
         //dispatch control if ready
     	if(m_coordinatorEnabled)
@@ -845,9 +925,9 @@ namespace Maneuver
       //! @return  Rotation matrix.
       Matrix Rzyx(double phi, double theta, double psi) const
       {
-        double R_en_elements[] = {cos(psi)*cos(theta), (-sin(psi)*cos(phi))+(cos(psi)*sin(theta)*sin(phi)), (sin(psi)*sin(phi))+(cos(psi)*cos(phi)*sin(theta)) ,
-            sin(psi)*cos(theta), (cos(psi)*cos(phi))+(sin(phi)*sin(theta)*sin(psi)), (-cos(psi)*sin(phi))+(sin(theta)*sin(psi)*cos(phi)),
-            -sin(theta), cos(theta)*sin(phi), cos(theta)*cos(phi)};
+        double R_en_elements[] = {cos(psi)*cos(theta), (-sin(psi)*cos(phi))+(cos(psi)*sin(theta)*sin(phi)), ( sin(psi)*sin(phi))+(cos(psi)*cos(phi)*sin(theta)) ,
+        						  sin(psi)*cos(theta), ( cos(psi)*cos(phi))+(sin(phi)*sin(theta)*sin(psi)), (-cos(psi)*sin(phi))+(sin(theta)*sin(psi)*cos(phi)),
+								 -sin(theta), 			 cos(theta)*sin(phi), 								  cos(theta)*cos(phi)};
         return Matrix(R_en_elements,3,3);
       }
 
