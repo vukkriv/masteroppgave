@@ -52,7 +52,7 @@
  * (but lacking the ns field) and indicates a more precise time of
  * these messages.
  */
-#define SBP_MSG_GPS_TIME      0x0100
+#define SBP_MSG_GPS_TIME         0x0100
 typedef struct __attribute__((packed)) {
   u16 wn;       /**< GPS week number [weeks] */
   u32 tow;      /**< GPS time of week rounded to the nearest millisecond [ms] */
@@ -69,14 +69,14 @@ from -500000 to 500000)
  * navigation satellite geometry on positional measurement
  * precision.
  */
-#define SBP_MSG_DOPS          0x0206
+#define SBP_MSG_DOPS             0x0206
 typedef struct __attribute__((packed)) {
   u32 tow;     /**< GPS Time of Week [ms] */
-  u16 gdop;    /**< Geometric Dilution of Precision */
-  u16 pdop;    /**< Position Dilution of Precision */
-  u16 tdop;    /**< Time Dilution of Precision */
-  u16 hdop;    /**< Horizontal Dilution of Precision */
-  u16 vdop;    /**< Vertical Dilution of Precision */
+  u16 gdop;    /**< Geometric Dilution of Precision [0.01] */
+  u16 pdop;    /**< Position Dilution of Precision [0.01] */
+  u16 tdop;    /**< Time Dilution of Precision [0.01] */
+  u16 hdop;    /**< Horizontal Dilution of Precision [0.01] */
+  u16 vdop;    /**< Vertical Dilution of Precision [0.01] */
 } msg_dops_t;
 
 
@@ -91,7 +91,7 @@ typedef struct __attribute__((packed)) {
  * baseline vector. The full GPS time is given by the preceding
  * MSG_GPS_TIME with the matching time-of-week (tow).
  */
-#define SBP_MSG_POS_ECEF      0x0200
+#define SBP_MSG_POS_ECEF         0x0200
 typedef struct __attribute__((packed)) {
   u32 tow;         /**< GPS Time of Week [ms] */
   double x;           /**< ECEF X coordinate [m] */
@@ -116,7 +116,7 @@ to 0.
  * GPS time is given by the preceding MSG_GPS_TIME with the
  * matching time-of-week (tow).
  */
-#define SBP_MSG_POS_LLH       0x0201
+#define SBP_MSG_POS_LLH          0x0201
 typedef struct __attribute__((packed)) {
   u32 tow;           /**< GPS Time of Week [ms] */
   double lat;           /**< Latitude [deg] */
@@ -141,7 +141,7 @@ implemented). Defaults to 0.
  * full GPS time is given by the preceding MSG_GPS_TIME with the
  * matching time-of-week (tow).
  */
-#define SBP_MSG_BASELINE_ECEF 0x0202
+#define SBP_MSG_BASELINE_ECEF    0x0202
 typedef struct __attribute__((packed)) {
   u32 tow;         /**< GPS Time of Week [ms] */
   s32 x;           /**< Baseline ECEF X coordinate [mm] */
@@ -160,11 +160,11 @@ to 0.
  * This message reports the baseline solution in North East Down
  * (NED) coordinates. This baseline is the relative vector distance
  * from the base station to the rover receiver, and NED coordinate
- * system is defined at the local tangent plane centered at the
+ * system is defined at the local WGS84 tangent plane centered at the
  * base station position.  The full GPS time is given by the
  * preceding MSG_GPS_TIME with the matching time-of-week (tow).
  */
-#define SBP_MSG_BASELINE_NED  0x0203
+#define SBP_MSG_BASELINE_NED     0x0203
 typedef struct __attribute__((packed)) {
   u32 tow;           /**< GPS Time of Week [ms] */
   s32 n;             /**< Baseline North coordinate [mm] */
@@ -187,7 +187,7 @@ implemented). Defaults to 0.
  * (ECEF) coordinates. The full GPS time is given by the preceding
  * MSG_GPS_TIME with the matching time-of-week (tow).
  */
-#define SBP_MSG_VEL_ECEF      0x0204
+#define SBP_MSG_VEL_ECEF         0x0204
 typedef struct __attribute__((packed)) {
   u32 tow;         /**< GPS Time of Week [ms] */
   s32 x;           /**< Velocity ECEF X coordinate [mm/s] */
@@ -204,10 +204,11 @@ to 0.
 /** Velocity in NED
  *
  * This message reports the velocity in local North East Down (NED)
- * coordinates. The full GPS time is given by the preceding
- * MSG_GPS_TIME with the matching time-of-week (tow).
+ * coordinates. The NED coordinate system is defined as the local WGS84
+ * tangent plane centered at the current position. The full GPS time is
+ * given by the preceding MSG_GPS_TIME with the matching time-of-week (tow).
  */
-#define SBP_MSG_VEL_NED       0x0205
+#define SBP_MSG_VEL_NED          0x0205
 typedef struct __attribute__((packed)) {
   u32 tow;           /**< GPS Time of Week [ms] */
   s32 n;             /**< Velocity North coordinate [mm/s] */
@@ -222,6 +223,21 @@ implemented). Defaults to 0.
   u8 n_sats;        /**< Number of satellites used in solution */
   u8 flags;         /**< Status flags (reserved) */
 } msg_vel_ned_t;
+
+
+/** Heading relative to True North
+ *
+ * This message reports the baseline heading pointing from the base station
+ * to the rover relative to True North. The full GPS time is given by the
+ * preceding MSG_GPS_TIME with the matching time-of-week (tow).
+ */
+#define SBP_MSG_BASELINE_HEADING 0x0207
+typedef struct __attribute__((packed)) {
+  u32 tow;        /**< GPS Time of Week [ms] */
+  u32 heading;    /**< Heading [mdeg] */
+  u8 n_sats;     /**< Number of satellites used in solution */
+  u8 flags;      /**< Status flags */
+} msg_baseline_heading_t;
 
 
 /** \} */

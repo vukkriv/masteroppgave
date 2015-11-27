@@ -21,9 +21,6 @@
  * of these messages target specific flash memory peripherals used in
  * Swift Navigation devices: the STM32 flash and the M25Pxx FPGA
  * configuration flash.
- * 
- * These are in the implementation-defined range (0x0000-0x00FF), and
- * are intended for internal-use only.
  * \{ */
 
 #ifndef LIBSBP_FLASH_MESSAGES_H
@@ -56,7 +53,7 @@ starting address
  *
  * This message defines success or failure codes for a variety of
  * flash memory requests from the host to the device. Flash read
- * and write messages, such as MSG_FLASH_READ_HOST, or
+ * and write messages, such as MSG_FLASH_READ_REQ, or
  * MSG_FLASH_PROGRAM, may return this message on failure.
  */
 #define SBP_MSG_FLASH_DONE              0x00E0
@@ -69,40 +66,40 @@ typedef struct __attribute__((packed)) {
  *
  * The flash read message reads a set of addresses of either the
  * STM or M25 onboard flash. The device replies with a
- * MSG_FLASH_READ_DEVICE message containing either the read data on
+ * MSG_FLASH_READ_RESP message containing either the read data on
  * success or a MSG_FLASH_DONE message containing the return code
  * FLASH_INVALID_LEN (2) if the maximum read size is exceeded or
  * FLASH_INVALID_ADDR (3) if the address is outside of the allowed
  * range.
  */
-#define SBP_MSG_FLASH_READ_HOST         0x00E7
+#define SBP_MSG_FLASH_READ_REQ          0x00E7
 typedef struct __attribute__((packed)) {
   u8 target;        /**< Target flags */
   u8 addr_start[3]; /**< Starting address offset to read from [bytes] */
   u8 addr_len;      /**< Length of set of addresses to read, counting up from
 starting address
  [bytes] */
-} msg_flash_read_host_t;
+} msg_flash_read_req_t;
 
 
 /** Read STM or M25 flash address response (host <= device).
  *
  * The flash read message reads a set of addresses of either the
  * STM or M25 onboard flash. The device replies with a
- * MSG_FLASH_READ_DEVICE message containing either the read data on
+ * MSG_FLASH_READ_RESP message containing either the read data on
  * success or a MSG_FLASH_DONE message containing the return code
  * FLASH_INVALID_LEN (2) if the maximum read size is exceeded or
  * FLASH_INVALID_ADDR (3) if the address is outside of the allowed
  * range.
  */
-#define SBP_MSG_FLASH_READ_DEVICE       0x00E1
+#define SBP_MSG_FLASH_READ_RESP         0x00E1
 typedef struct __attribute__((packed)) {
   u8 target;        /**< Target flags */
   u8 addr_start[3]; /**< Starting address offset to read from [bytes] */
   u8 addr_len;      /**< Length of set of addresses to read, counting up from
 starting address
  [bytes] */
-} msg_flash_read_device_t;
+} msg_flash_read_resp_t;
 
 
 /** Erase sector of device flash memory (host => device).
@@ -148,25 +145,25 @@ typedef struct __attribute__((packed)) {
 
  *
  * This message reads the device's hardcoded unique ID. The host
- * requests the ID by sending a MSG_STM_UNIQUE_ID_HOST. The device
- * responds with a MSG_STM_UNIQUE_ID_DEVICE with the 12-byte unique
- * ID in the payload..
+ * requests the ID by sending a MSG_STM_UNIQUE_ID_REQ. The device
+ * responds with a MSG_STM_UNIQUE_ID_RESP with the 12-byte unique
+ * ID in the payload.
  */
-#define SBP_MSG_STM_UNIQUE_ID_HOST      0x00E8
+#define SBP_MSG_STM_UNIQUE_ID_REQ       0x00E8
 
 
 /** Read device's hardcoded unique ID response (host <= device)
 
  *
  * This message reads the device's hardcoded unique ID. The host
- * requests the ID by sending a MSG_STM_UNIQUE_ID_HOST. The device
- * responds with a MSG_STM_UNIQUE_ID_DEVICE with the 12-byte unique
+ * requests the ID by sending a MSG_STM_UNIQUE_ID_REQ. The device
+ * responds with a MSG_STM_UNIQUE_ID_RESP with the 12-byte unique
  * ID in the payload..
  */
-#define SBP_MSG_STM_UNIQUE_ID_DEVICE    0x00E5
+#define SBP_MSG_STM_UNIQUE_ID_RESP      0x00E5
 typedef struct __attribute__((packed)) {
   u8 stm_id[12]; /**< Device unique ID */
-} msg_stm_unique_id_device_t;
+} msg_stm_unique_id_resp_t;
 
 
 /** Write M25 flash status register (host => device)
