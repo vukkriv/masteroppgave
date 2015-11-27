@@ -39,8 +39,10 @@
 // Library headers
 extern "C"
 {
-  #include <libswiftnav/sbp.h>
-  #include <libswiftnav/sbp_messages.h>
+  #include <sbp/sbp.h>
+  #include <sbp/observation.h>
+  #include <sbp/piksi.h>      // Includes piksi interface, such as resetting filters and IAR state
+  #include <sbp/system.h> // heartbeat
 }
 
 
@@ -74,6 +76,11 @@ namespace Sensors
     {
       //! Task arguments.
       Arguments m_args;
+      //! Processing state of incoming sbp messages
+      sbp_state_t m_sbp_state;
+      //! Map of callback-nodes for swiftnav API
+      typedef std::map<int, sbp_msg_callbacks_node_t> CallbackNodeMap;
+      CallbackNodeMap m_nodemap;
       //! Serial port handle.
       SerialPort* m_uart;
       //! Udp handle
@@ -81,6 +88,10 @@ namespace Sensors
       //! Set of rovers
       std::set<Address> m_rovers;
       uint8_t m_buf[512];
+      //! Index in buffer representing start of a packet
+      int m_buf_pkt_start;
+      //! Index in buffer when done parsing
+      int m_buf_pkt_stop;
       //! Timestamp on previous local packet
       double m_last_pkt_time;
       //! If in error mode
@@ -93,6 +104,8 @@ namespace Sensors
         DUNE::Tasks::Task(name, ctx),
         m_uart(NULL),
         m_udp(NULL),
+        m_buf_pkt_start(0),
+        m_buf_pkt_stop(0),
         m_last_pkt_time(0),
         m_error_missing_data(true)
       {
@@ -122,6 +135,25 @@ namespace Sensors
         m_last_pkt_time = Clock::get();
 
         setEntityState(IMC::EntityState::ESTA_ERROR, "Waiting for observations.");
+
+        // Init piksi interface
+        sbp_state_init(&m_sbp_state);
+
+
+        // Populate callback nodes.
+        // values are copied to the map.
+        sbp_msg_callbacks_node_t tmp;
+        m_nodemap[SBP_MSG_OBS] = tmp;
+        m_nodemap[SBP_MSG_HEARTBEAT] = tmp;
+        // Register task as context
+        sbp_state_set_io_context(&m_sbp_state, (void*) this);
+
+        // Register callbacks
+        sbp_register_callback(&m_sbp_state, SBP_MSG_OBS, sbp_obs_callback, (void*)this, &m_nodemap[SBP_MSG_OBS]);
+        sbp_register_callback(&m_sbp_state, SBP_MSG_HEARTBEAT, sbp_heartbeat_callback, (void*)this, &m_nodemap[SBP_MSG_HEARTBEAT]);
+
+
+
 
 
       }
@@ -245,6 +277,31 @@ namespace Sensors
         return 0;
       }
 
+      static u32
+      receiveData(u8* buf, u32 blen, void* context)
+      {
+        Task* task = (Task*)(context);
+
+        // Check that we have plenty space
+        if (task->m_buf_pkt_stop > 256)
+        {
+          // Reset local
+          task->debug("Resetting buffer parsing");
+          task->m_buf_pkt_start = 0;
+          task->m_buf_pkt_stop = 0;
+          return task->m_uart->read(buf, blen);
+        }
+
+
+        int len = task->m_uart->read(&task->m_buf[task->m_buf_pkt_stop], blen);
+
+
+        // memcopy
+        memcpy(buf, &task->m_buf[task->m_buf_pkt_stop], len);
+        task->m_buf_pkt_stop += len;
+        return len;
+      }
+
       //! Handle incomming serial data
       void
       handleSerialData(void)
@@ -253,31 +310,74 @@ namespace Sensors
         // Todo: Consider waiting for a number of bytes first.
 
         int counter = 0;
-        while (pollUart(0.01) && counter < 50)
+
+
+        while (pollUart(0.01) && counter < 100)
         {
-          ++counter;
-          int n = receiveUartData(m_buf, sizeof(m_buf));
+          counter++;
 
-          spew("Received %d bytes. Forwarding to rovers.", n);
+          int result = sbp_process(&m_sbp_state, receiveData);
 
-          if (n < 0)
+          switch(result)
           {
-            debug(DTR("Receive error"));
-            break;
+            case SBP_OK:
+              break;
+            case SBP_OK_CALLBACK_EXECUTED:
+              // Reset start counter
+              // If last packet wasa indeed a obs-packet, then stop is set to zero in sendBufferToRovers
+              m_buf_pkt_start = m_buf_pkt_stop;
+              break;
+            case SBP_OK_CALLBACK_UNDEFINED:
+              trace("Unknown message.");
+              m_buf_pkt_start = m_buf_pkt_stop;
+              break;
+            case SBP_CRC_ERROR:
+              debug("Received message CRC error.");
+              m_buf_pkt_start = m_buf_pkt_stop;
+              break;
+            default:
+              spew("Unknown result from sbp process.");
           }
-          // Send to rovers
-          std::set<Address>::iterator itr = m_rovers.begin();
-          for (; itr != m_rovers.end(); ++itr)
-          {
-            try
-            {
-              m_udp->write(m_buf, n, *itr, m_args.UDP_port);
-            }
-            catch (...)
-            { }
-          }
+
         }
 
+
+
+
+      }
+      void
+      sendBufferToRovers(void)
+      {
+
+        int len = m_buf_pkt_stop  - m_buf_pkt_start;
+        int nLength = len*3;
+        char *pBuffer = new char[nLength + 1];
+        pBuffer[nLength] = '\0';
+        u8* msg = &m_buf[m_buf_pkt_start];
+        for (int i = 0; i < len; i++)
+        {
+            sprintf(&pBuffer[3 * i], "%02X ", msg[i]);
+        }
+        inf("%s", pBuffer);
+
+        // Send to rovers
+        std::set<Address>::iterator itr = m_rovers.begin();
+        debug("Forwarding observation. ");
+
+        for (; itr != m_rovers.end(); ++itr)
+        {
+          try
+          {
+            m_udp->write(msg, len, *itr, m_args.UDP_port);
+          }
+          catch (...)
+          { }
+        }
+
+
+        // Reset pointers
+        m_buf_pkt_start = 0;
+        m_buf_pkt_stop = 0;
       }
 
 
@@ -321,6 +421,35 @@ namespace Sensors
           // Handle IMC messages from bus
           consumeMessages();
         }
+      }
+
+      void
+      handleHeartbeat(msg_heartbeat_t heartbeat)
+      {
+        (void) heartbeat;
+      }
+      /* Callback-methods for Piksi interface */
+      static void
+      sbp_obs_callback(u16 sender_id, u8 len, u8 msg[], void *context)
+      {
+        Task* task = (Task*)(context);
+        task->m_last_pkt_time = Clock::get();
+
+        task->sendBufferToRovers();
+        (void) sender_id;
+        (void) len;
+        (void) msg;
+      }
+
+      static void
+      sbp_heartbeat_callback(u16 sender_id, u8 len, u8 msg[], void *context)
+      {
+        msg_heartbeat_t heartbeat = *(msg_heartbeat_t *)msg;
+        Task* task = (Task*)(context);
+
+        (void) sender_id;
+        (void) len;
+        task->handleHeartbeat(heartbeat);
       }
 
     };
