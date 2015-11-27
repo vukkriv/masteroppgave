@@ -314,6 +314,15 @@ namespace Maneuver
 		     resolveSystemId(msg->getSource()));
   	    inf("Initialize net recovery maneuver");
 
+    	inf("Start (ll): [%f,%f]",msg->start_lat,msg->start_lon);
+    	inf("End (ll): [%f,%f]",msg->end_lat,msg->end_lon);
+    	inf("z: %f",msg->z);
+    	inf("z_off: %f",msg->z);
+    	inf("box [h x w]=[%f x %f]=",msg->lbox_height,msg->lbox_width);
+    	inf("Speed: %f",msg->speed);
+    	inf("Max acceleration: %f",msg->max_acc);
+    	inf("\n\n");
+
   	    m_vehicles.aircraft = msg->aircraft;
   	    m_vehicles.no_vehicles = 1;
         std::stringstream  lineStream(msg->multicopters.c_str());
