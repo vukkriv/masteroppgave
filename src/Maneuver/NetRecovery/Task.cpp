@@ -82,9 +82,9 @@ namespace Maneuver
       consume(const IMC::NetRecoveryState* state)
       {
     	  debug("NetRecoveryState received");
-    	  if (state->flags && IMC::NetRecoveryState::NR_END)
+    	  if (state->flags && IMC::NetRecoveryState::NR_STOP)
     	  {
-    		  inf("NetRecoveryState END of runway");
+    		  inf("NetRecoveryState STOP, maneuver is done");
     		  signalCompletion();
     	  }
     	  else
