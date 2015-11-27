@@ -44,6 +44,8 @@ namespace Maneuver
       bool enable_coord;
       //! Enable catch-state
       bool enable_catch;
+      //! Stop and hold at end of runway
+      bool enable_stop_endRunway;
       //! Enable this path controller or not
       bool use_controller;
       //! Enable mean window for aircraft states
@@ -202,6 +204,13 @@ namespace Maneuver
 	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
 	    .defaultValue("false")
 	    .description("Enable Path Controller");
+
+
+	    param("Stop at end-of-runway", m_args.enable_stop_endRunway)
+	    .visibility(Tasks::Parameter::VISIBILITY_USER)
+	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
+	    .defaultValue("false")
+	    .description("Enable stop at end of runway");
 
  	    param("Enable Mean Window Aircraft", m_args.use_mean_window_aircraft)
  	    .defaultValue("false")
@@ -419,53 +428,74 @@ namespace Maneuver
           }
           case IMC::NetRecoveryState::NR_STANDBY:
           {
-            updateMeanValues(s);
-
-            double v_a = abs(m_v_path[AIRCRAFT](0));
-            m_startCatch_radius = updateStartRadius(v_a,0, m_u_ref, m_ad, m_args.m_coll_r);
-            if (m_startCatch_radius == -1)
-            {
-            	err("Unable to calculate the desired start-radius");
-            	return;
-            }
-            if (s==AIRCRAFT)
-            {
-            	/*
-            	spew("v_a: %f",v_a);
-            	spew("p[%d]: [%f,%f,%f]",s,p(0),p(1),p(2));
-                spew("v[%d]: [%f,%f,%f]",s,v(0),v(1),v(2));
-                spew("m_runway.start_NED[%d]: [%f,%f,%f]",s,m_runway.start_NED(0),m_runway.start_NED(1),m_runway.start_NED(2));
-                spew("m_runway.end_NED [%d]: [%f,%f,%f]",s,m_runway.end_NED(0),m_runway.end_NED(1),m_runway.end_NED(2));
-				spew("m_p_path[%d]: [%f,%f,%f]",s,m_p_path[s](0),m_p_path[s](1),m_p_path[s](2));
-				spew("m_v_path[%d]: [%f,%f,%f]",s,m_v_path[s](0),m_v_path[s](1),m_v_path[s](2));
-				spew("m_p_path_mean[%d]: [%f,%f,%f]",s,m_p_path_mean[s](0),m_p_path_mean[s](1),m_p_path_mean[s](2));
-				spew("m_v_path_mean[%d]: [%f,%f,%f]",s,m_v_path_mean[s](0),m_v_path_mean[s](1),m_v_path_mean[s](2));
-		        spew("delta_p_path_x = %f",delta_p_path_x);
-		        spew("delta_v_path_x = %f",delta_v_path_x);
-		        spew("StartCatch radius: %f",m_startCatch_radius);
-				spew("\n\n");
-				*/
-            }
-            checkPositionsAtRunway(); //requires that the net is standby at the start of the runway
-
-            if (!m_args.enable_catch)
-            	m_curr_state = IMC::NetRecoveryState::NR_START;
+        	updateMeanValues(s);
+            if (aircraftApproaching() && m_args.enable_catch)
+            	m_curr_state = IMC::NetRecoveryState::NR_APPROACH; //requires that the net is standby at the start of the runway
 
             break;
+          }
+          case IMC::NetRecoveryState::NR_APPROACH:
+          {
+              updateMeanValues(s);
+
+              double v_a = abs(m_v_path[AIRCRAFT](0));
+              m_startCatch_radius = updateStartRadius(v_a,0, m_u_ref, m_ad, m_args.m_coll_r);
+              if (m_startCatch_radius == -1)
+              {
+              	err("Unable to calculate the desired start-radius");
+              	return;
+              }
+              if (s==AIRCRAFT)
+              {
+              	/*
+              	spew("v_a: %f",v_a);
+              	spew("p[%d]: [%f,%f,%f]",s,p(0),p(1),p(2));
+                  spew("v[%d]: [%f,%f,%f]",s,v(0),v(1),v(2));
+                  spew("m_runway.start_NED[%d]: [%f,%f,%f]",s,m_runway.start_NED(0),m_runway.start_NED(1),m_runway.start_NED(2));
+                  spew("m_runway.end_NED [%d]: [%f,%f,%f]",s,m_runway.end_NED(0),m_runway.end_NED(1),m_runway.end_NED(2));
+  				spew("m_p_path[%d]: [%f,%f,%f]",s,m_p_path[s](0),m_p_path[s](1),m_p_path[s](2));
+  				spew("m_v_path[%d]: [%f,%f,%f]",s,m_v_path[s](0),m_v_path[s](1),m_v_path[s](2));
+  				spew("m_p_path_mean[%d]: [%f,%f,%f]",s,m_p_path_mean[s](0),m_p_path_mean[s](1),m_p_path_mean[s](2));
+  				spew("m_v_path_mean[%d]: [%f,%f,%f]",s,m_v_path_mean[s](0),m_v_path_mean[s](1),m_v_path_mean[s](2));
+  		        spew("delta_p_path_x = %f",delta_p_path_x);
+  		        spew("delta_v_path_x = %f",delta_v_path_x);
+  		        spew("StartCatch radius: %f",m_startCatch_radius);
+  				spew("\n\n");
+  				*/
+              }
+
+        	  if (startNetRecovery())
+        		 m_curr_state = IMC::NetRecoveryState::NR_START;
+
+        	  break;
           }
           case IMC::NetRecoveryState::NR_START:
           {
             updateMeanValues(s);
             m_ud = getPathVelocity(0, m_args.m_ud_impact, m_ad, true);
 
-            //checkAbortCondition();
-            //m_curr_state = IMC::NetRecoveryState::NR_STANDBY;
-            checkEndAtRunway();
+            if (catched())
+            	m_curr_state = IMC::NetRecoveryState::NR_CATCH;
+
+            if (endAtRunway())
+            	m_curr_state = IMC::NetRecoveryState::NR_END;
+
             break;
-          }                            
+          }
+          case IMC::NetRecoveryState::NR_CATCH:
+          {
+        	//catching the aircraft
+        	break;
+          }
           case IMC::NetRecoveryState::NR_END:
           {
+        	m_curr_state = IMC::NetRecoveryState::NR_STOP;
             break;
+          }
+          case IMC::NetRecoveryState::NR_STOP:
+          {
+        	 //signal the supervisor that the maneuver is done
+        	 break;
           }
           case IMC::NetRecoveryState::NR_ABORT:
           {
@@ -603,14 +633,9 @@ namespace Maneuver
         delta_v_path_x_mean = delta_v_path_x;
       }
 
-      void
-      checkAbortCondition()
+      bool
+      abort()
       {
-        //cḧeck the mean values of the cross-track errors, if too high, possible abort
-        // if the erros are too high and increasing, at a given radius between the vehicles, send abort catch
-        // requires that the net-catch mission has started (net at runway)
-
-      
         bool aircraftOff = false;
         bool netOff = false;
         if (abs(m_p_path_mean[AIRCRAFT](1))  >= m_args.eps_ct_a(0) ||
@@ -625,10 +650,7 @@ namespace Maneuver
           netOff = true;
         }
 
-        if (aircraftOff || netOff) 
-        {
-          m_curr_state = IMC::NetRecoveryState::NR_ABORT;
-        }
+        return (aircraftOff || netOff);
       }
       
       Vehicle
@@ -666,8 +688,16 @@ namespace Maneuver
         return true;
       }
 
-      void
-      checkPositionsAtRunway()
+      bool
+      aircraftApproaching()
+      {
+    	  if (m_v_path[AIRCRAFT](0) > 0)
+    		  return true;
+    	  return false;
+      }
+
+      bool
+      startNetRecovery()
       {
         //monitor the path-along distance between the net and the aircraft
           // when at a given boundary, start the net-catch mission
@@ -676,21 +706,31 @@ namespace Maneuver
     	if (m_args.use_mean_window_aircraft)
     		delta_p = delta_p_path_x_mean;
 
-        if (abs(delta_p) <= m_startCatch_radius && m_v_path[AIRCRAFT](0) > 0)
+        if (abs(delta_p) <= m_startCatch_radius)
         {
           //inf("Start net-catch mission: delta_p_path_x_mean=%f", delta_p_path_x_mean);
-          m_curr_state = IMC::NetRecoveryState::NR_START;
+          return true;
         }
+        return false;
       }
 
-      void
-      checkEndAtRunway()
+      bool
+      catched()
+      {
+    	  //simulation: position check
+    	  //real life: weight cell in combination with rotary sensor
+    	  return false;
+      }
+
+      bool
+      endAtRunway()
       {
     	Matrix p_n = getNetPosition(m_p);
       	Matrix p_to_end = p_n - m_runway.end_NED;
       	double dist_left = p_to_end.norm_2();
       	if (dist_left <= m_args.m_endCatch_radius)
-    	  m_curr_state = IMC::NetRecoveryState::NR_END;
+    	  return true;
+      	return false;
       }
 
       double
@@ -912,7 +952,10 @@ namespace Maneuver
 		//spew("Frequency: %1.1f, %d", 1000.0/m_time_diff,m_coordinatorEnabled);
 
         //dispatch control if ready
-    	if(m_coordinatorEnabled && m_initializedCoord)
+
+    	if(m_curr_state == IMC::NetRecoveryState::NR_APPROACH ||
+    	   m_curr_state == IMC::NetRecoveryState::NR_START    ||
+    	   m_curr_state == IMC::NetRecoveryState::NR_END)
     	{
     		Matrix p_a_path;
     		Matrix v_a_path;
