@@ -350,15 +350,16 @@ namespace Sensors
       {
 
         int len = m_buf_pkt_stop  - m_buf_pkt_start;
-        int nLength = len*3;
-        char *pBuffer = new char[nLength + 1];
-        pBuffer[nLength] = '\0';
         u8* msg = &m_buf[m_buf_pkt_start];
-        for (int i = 0; i < len; i++)
-        {
-            sprintf(&pBuffer[3 * i], "%02X ", msg[i]);
-        }
-        inf("%s", pBuffer);
+//        int nLength = len*3;
+//        char *pBuffer = new char[nLength + 1];
+//        pBuffer[nLength] = '\0';
+//
+//        for (int i = 0; i < len; i++)
+//        {
+//            sprintf(&pBuffer[3 * i], "%02X ", msg[i]);
+//        }
+//        inf("%s", pBuffer);
 
         // Send to rovers
         std::set<Address>::iterator itr = m_rovers.begin();
