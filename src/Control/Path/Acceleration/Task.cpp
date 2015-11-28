@@ -76,6 +76,9 @@ namespace Control
         bool enable_mass_division;
         double ctrl_omega_b;
         double ctrl_xi;
+        bool enable_wind_ff;
+        bool enable_wind_square_vel;
+        float wind_drag_coefficient;
       };
 
       static const std::string c_parcel_names[] = {DTR_RT("PID"), DTR_RT("Beta-X"),
@@ -510,6 +513,23 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Controller damping");
+
+          param("Enable Wind Feed Forward", m_args.enable_wind_ff)
+          .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_PLAN)
+          .description("Enable to feed-forward wind effects");
+
+          param("Enable Square Wind Velocity", m_args.enable_wind_square_vel)
+          .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Use the square of the velocity to calculate wind ff");
+
+          param("Wind Drag Coefficient", m_args.wind_drag_coefficient)
+          .defaultValue("0.15")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_PLAN)
+          .description("Coefficient to use in wind ff");
 
 
           bind<IMC::EulerAngles>(this);
@@ -1247,6 +1267,30 @@ namespace Control
             dispatch(m_parcels[PC_ALPHA45_PHI]);
             dispatch(m_parcels[PC_ALPHA45_THETA]);
           }
+
+          // Apply wind feed forward
+          if (m_args.enable_wind_ff)
+          {
+
+            Matrix wind_ff = Matrix(3,1, 0.0);
+
+            wind_ff(0) = m_args.wind_drag_coefficient * state.vx;
+            wind_ff(1) = m_args.wind_drag_coefficient * state.vy;
+            wind_ff(2) = m_args.wind_drag_coefficient * state.vz;
+
+            if (m_args.enable_wind_square_vel)
+            {
+              wind_ff(0) *= copysign(1.0, state.vx) * state.vx;
+              wind_ff(1) *= copysign(1.0, state.vy) * state.vy;
+              wind_ff(2) *= copysign(1.0, state.vz) * state.vz;
+            }
+
+            desiredAcc += wind_ff;
+
+          }
+
+
+
 
           // Divide by mass
           if (m_args.enable_mass_division)
