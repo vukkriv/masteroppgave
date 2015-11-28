@@ -76,6 +76,10 @@ namespace Control
         bool enable_mass_division;
         double ctrl_omega_b;
         double ctrl_xi;
+        bool enable_wind_ff;
+        bool enable_wind_square_vel;
+        float wind_drag_coefficient;
+        double prefilter_time_constant;
       };
 
       static const std::string c_parcel_names[] = {DTR_RT("PID"), DTR_RT("Beta-X"),
@@ -151,7 +155,9 @@ namespace Control
         ReferenceModel():
           A(9,9, 0.0),
           B(9,3, 0.0),
-          x(9,1, 0.0)
+          x(9,1, 0.0),
+          a_out(3,1, 0.0),
+          prefilterState(3,1, 0.0)
       {
           /* Intentionally Empty */
       }
@@ -164,6 +170,9 @@ namespace Control
         Matrix
         getAcc(void) { return x.get(6,8, 0,0); }
 
+        Matrix
+        getAOut(void) { return a_out; };
+
         void
         setPos(Matrix& pos) { x.put(0,0, pos); }
 
@@ -173,11 +182,16 @@ namespace Control
         void
         setAcc(Matrix& acc) { x.put(6,0, acc); }
 
+        void
+        setAOut(Matrix& a) { a_out.put(0, 0, a); }
+
 
       public:
         Matrix A;
         Matrix B;
         Matrix x;
+        Matrix a_out;
+        Matrix prefilterState;
       };
 
       class Reference
@@ -501,6 +515,28 @@ namespace Control
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Controller damping");
 
+          param("Enable Wind Feed Forward", m_args.enable_wind_ff)
+          .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_PLAN)
+          .description("Enable to feed-forward wind effects");
+
+          param("Enable Square Wind Velocity", m_args.enable_wind_square_vel)
+          .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Use the square of the velocity to calculate wind ff");
+
+          param("Wind Drag Coefficient", m_args.wind_drag_coefficient)
+          .defaultValue("0.15")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_PLAN)
+          .description("Coefficient to use in wind ff");
+
+          param("Pre-filter Time Constant", m_args.prefilter_time_constant)
+          .defaultValue("0.05")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Sets the pre-filter time constant. Higher value for slower transition. ");
+
 
           bind<IMC::EulerAngles>(this);
           bind<IMC::EstimatedState>(this);
@@ -744,6 +780,14 @@ namespace Control
             m_refmodel.x(7) = 0.0;
             m_refmodel.x(8) = 0.0;
 
+            m_refmodel.a_out(0) = 0.0;
+            m_refmodel.a_out(1) = 0.0;
+            m_refmodel.a_out(2) = 0.0;
+
+            m_refmodel.prefilterState(0) = m_refmodel.x(0);
+            m_refmodel.prefilterState(1) = m_refmodel.x(1);
+            m_refmodel.prefilterState(2) = m_refmodel.x(2);
+
             // Consider using last setpoint as acc startup
             if (Clock::get() - m_timestamp_prev_step < 2.0)
             {
@@ -857,8 +901,11 @@ namespace Control
           TrackingState::Coord targetPosition = ts.end;
 
           if (m_args.enable_hold_position)
+          {
             targetPosition = ts.start;
-
+            // Hack
+            targetPosition.z = -targetPosition.z;
+          }
           Matrix x_d = Matrix(3, 1, 0.0);
           x_d(0) = targetPosition.x;
           x_d(1) = targetPosition.y;
@@ -866,9 +913,13 @@ namespace Control
           trace("x_d:\t [%1.2f, %1.2f, %1.2f]",
               x_d(0), x_d(1), x_d(2));
 
+          double T = m_args.prefilter_time_constant;
+          m_refmodel.prefilterState += ts.delta * (-(1/T)*m_refmodel.prefilterState + (1/T)*x_d);
 
+          Matrix old_pos = m_refmodel.getPos();
+          Matrix old_vel = m_refmodel.getVel();
           // Update reference
-          m_refmodel.x += ts.delta * (m_refmodel.A * m_refmodel.x + m_refmodel.B * x_d);
+          m_refmodel.x += ts.delta * (m_refmodel.A * m_refmodel.x + m_refmodel.B * m_refmodel.prefilterState);
 
           // Saturate reference velocity
           Matrix vel = m_refmodel.getVel();
@@ -882,10 +933,17 @@ namespace Control
           }
 
 
+          bool limited_vel = false;
           if (vel.norm_2() > m_args.refmodel_max_speed)
           {
+            limited_vel = true;
             vel = m_args.refmodel_max_speed * vel / vel.norm_2();
             m_refmodel.setVel(vel);
+
+            // Recalculate pos
+            Matrix new_pos = old_pos + ts.delta * m_refmodel.getVel();
+
+            m_refmodel.setPos(new_pos);
           }
 
           if (acc.norm_2() > m_args.refmodel_max_acc)
@@ -893,7 +951,19 @@ namespace Control
             acc = m_args.refmodel_max_acc * acc / acc.norm_2();
             m_refmodel.setAcc(acc);
           }
+          // Set A out
+          m_refmodel.setAOut(acc);
 
+          // Update A out if limited velocity
+          if (limited_vel)
+          {
+            // numeric filter
+            m_refmodel.a_out = (m_refmodel.getVel() - old_vel) / ts.delta;
+            T /= 10.0;
+            // Numeric filter with smoothing time constant.
+            //m_refmodel.a_out += ts.delta * (-(1/T)*m_refmodel.a_out + (1/T)*(m_refmodel.getVel() - old_vel) / ts.delta);
+
+          }
 
           m_setpoint_log.x = m_refmodel.x(0);
           m_setpoint_log.y = m_refmodel.x(1);
@@ -1032,6 +1102,10 @@ namespace Control
           // Set reference from reference model
           m_reference.setReference(m_refmodel.x);
 
+          // Use numeric filtered version
+          Matrix a_out = m_refmodel.a_out;
+          m_reference.setAcc(a_out);
+
 
           if (m_args.enable_input_shaping)
           {
@@ -1124,7 +1198,7 @@ namespace Control
           if (m_integrator_value.norm_2() > m_args.max_integral)
             m_integrator_value = m_args.max_integral * m_integrator_value / m_integrator_value.norm_2();
 
-          desiredAcc = refAcc + m_args.Kd * error_d + m_args.Kp * error_p + m_args.Ki * m_integrator_value;
+          desiredAcc = m_args.copter_mass_kg * refAcc + m_args.Kd * error_d + m_args.Kp * error_p + m_args.Ki * m_integrator_value;
 
 
 
@@ -1210,6 +1284,30 @@ namespace Control
             dispatch(m_parcels[PC_ALPHA45_THETA]);
           }
 
+          // Apply wind feed forward
+          if (m_args.enable_wind_ff)
+          {
+
+            Matrix wind_ff = Matrix(3,1, 0.0);
+
+            wind_ff(0) = m_args.wind_drag_coefficient * state.vx;
+            wind_ff(1) = m_args.wind_drag_coefficient * state.vy;
+            wind_ff(2) = m_args.wind_drag_coefficient * state.vz;
+
+            if (m_args.enable_wind_square_vel)
+            {
+              wind_ff(0) *= copysign(1.0, state.vx) * state.vx;
+              wind_ff(1) *= copysign(1.0, state.vy) * state.vy;
+              wind_ff(2) *= copysign(1.0, state.vz) * state.vz;
+            }
+
+            desiredAcc += wind_ff;
+
+          }
+
+
+
+
           // Divide by mass
           if (m_args.enable_mass_division)
             desiredAcc = desiredAcc / m_args.copter_mass_kg;
@@ -1240,6 +1338,21 @@ namespace Control
           if(m_args.disable_heave || !m_args.use_altitude)
             m_desired_control.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y;
 
+
+          // Hack test the transient of arducopter
+          Matrix newDesiredAcc = Matrix(3, 1, 0.0);
+
+          for (int i = 0; i < 1; ++i)
+          {
+            newDesiredAcc(i) = 1*copysign(1.0, -state.x + ts.end.x) + state.vx*9.81/15;
+          }
+
+
+          m_desired_control.x = desiredAcc(0);
+          m_desired_control.y = desiredAcc(1);
+          m_desired_control.z = desiredAcc(2);
+
+          m_prev_controller_output = desiredAcc;
 
           dispatch(m_desired_control);
 
