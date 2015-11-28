@@ -1330,13 +1330,7 @@ namespace Control
           {
             newDesiredAcc(i) = 1*copysign(1.0, -state.x + ts.end.x) + state.vx*9.81/15;
           }
-          m_desired_control.x = desiredAcc(0)+ state.vx*9.81/15;
-          m_desired_control.y = desiredAcc(1)+ state.vy*9.81/15;
-          m_desired_control.z = desiredAcc(2)+ state.vz*9.81/15;
 
-          desiredAcc(0)+= state.vx*9.81/15;
-          desiredAcc(1)+= state.vy*9.81/15;
-          desiredAcc(2)+= state.vz*9.81/15;
 
           m_desired_control.x = desiredAcc(0);
           m_desired_control.y = desiredAcc(1);
