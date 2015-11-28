@@ -79,6 +79,7 @@ namespace Control
         bool enable_wind_ff;
         bool enable_wind_square_vel;
         float wind_drag_coefficient;
+        double prefilter_time_constant;
       };
 
       static const std::string c_parcel_names[] = {DTR_RT("PID"), DTR_RT("Beta-X"),
@@ -531,6 +532,11 @@ namespace Control
           .scope(Tasks::Parameter::SCOPE_PLAN)
           .description("Coefficient to use in wind ff");
 
+          param("Pre-filter Time Constant", m_args.prefilter_time_constant)
+          .defaultValue("0.05")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Sets the pre-filter time constant. Higher value for slower transition. ");
+
 
           bind<IMC::EulerAngles>(this);
           bind<IMC::EstimatedState>(this);
@@ -907,8 +913,8 @@ namespace Control
           trace("x_d:\t [%1.2f, %1.2f, %1.2f]",
               x_d(0), x_d(1), x_d(2));
 
-          double T = 0.1;
-          m_refmodel.prefilterState += ts.delta * (-1/T*m_refmodel.prefilterState + 1/T*x_d);
+          double T = m_args.prefilter_time_constant;
+          m_refmodel.prefilterState += ts.delta * (-(1/T)*m_refmodel.prefilterState + (1/T)*x_d);
 
           Matrix old_pos = m_refmodel.getPos();
           Matrix old_vel = m_refmodel.getVel();
@@ -927,8 +933,10 @@ namespace Control
           }
 
 
+          bool limited_vel = false;
           if (vel.norm_2() > m_args.refmodel_max_speed)
           {
+            limited_vel = true;
             vel = m_args.refmodel_max_speed * vel / vel.norm_2();
             m_refmodel.setVel(vel);
 
@@ -943,11 +951,19 @@ namespace Control
             acc = m_args.refmodel_max_acc * acc / acc.norm_2();
             m_refmodel.setAcc(acc);
           }
+          // Set A out
+          m_refmodel.setAOut(acc);
 
-          // Update A out
-          // numeric filter
-          m_refmodel.a_out = (m_refmodel.getVel() - old_vel) / ts.delta;
+          // Update A out if limited velocity
+          if (limited_vel)
+          {
+            // numeric filter
+            m_refmodel.a_out = (m_refmodel.getVel() - old_vel) / ts.delta;
+            T /= 10.0;
+            // Numeric filter with smoothing time constant.
+            //m_refmodel.a_out += ts.delta * (-(1/T)*m_refmodel.a_out + (1/T)*(m_refmodel.getVel() - old_vel) / ts.delta);
 
+          }
 
           m_setpoint_log.x = m_refmodel.x(0);
           m_setpoint_log.y = m_refmodel.x(1);
