@@ -37,6 +37,7 @@ extern "C"
   #include <sbp/sbp.h>
   #include <sbp/navigation.h> // Includes baseline messages
   #include <sbp/piksi.h>      // Includes piksi interface, such as resetting filters and IAR state
+  #include <sbp/system.h>    // Heartbeat
 
 
 }
@@ -231,6 +232,7 @@ namespace Sensors
         m_nodemap[SBP_MSG_VEL_NED]   = tmp;
         m_nodemap[SBP_MSG_DOPS]     = tmp;
         m_nodemap[SBP_MSG_IAR_STATE] = tmp;
+        m_nodemap[SBP_MSG_HEARTBEAT] = tmp;
 
         // Register task as context
         sbp_state_set_io_context(&m_sbp_state, (void*) this);
@@ -242,7 +244,7 @@ namespace Sensors
         sbp_register_callback(&m_sbp_state, SBP_MSG_DOPS,         sbp_dops_callback, (void*)this, &m_nodemap[SBP_MSG_DOPS]);
         sbp_register_callback(&m_sbp_state, SBP_MSG_GPS_TIME,     sbp_gps_time_callback, (void*)this, &m_nodemap[SBP_MSG_GPS_TIME]);
         sbp_register_callback(&m_sbp_state, SBP_MSG_IAR_STATE,     sbp_iar_state_callback, (void*)this, &m_nodemap[SBP_MSG_IAR_STATE]);
-
+        sbp_register_callback(&m_sbp_state, SBP_MSG_HEARTBEAT,     sbp_heartbeat_callback, (void*)this, &m_nodemap[SBP_MSG_HEARTBEAT]);
 
       }
 
@@ -646,7 +648,7 @@ namespace Sensors
             case SBP_OK_CALLBACK_EXECUTED:
               break;
             case SBP_OK_CALLBACK_UNDEFINED:
-              trace("Unknown message. (NB: may be heartbeat).");
+              trace("Unknown message.");
               break;
             case SBP_CRC_ERROR:
               debug("Received message CRC error.");
@@ -817,6 +819,11 @@ namespace Sensors
             if (m_args.apply_gps_smoothing && (m_gps_fix.validity & IMC::GpsFix::GFV_VALID_POS))
             {
               float dt = m_gps_fix.utc_time - prev_fix_utc_time;
+              if (dt < 0.01)
+              {
+                debug("Invalid DT, setting to 0.01");
+                dt = 0.01;
+              }
 
               m_gps_fix.lat = lowPassSmoothing(m_gps_fix.lat, Angles::radians(msg.lat), dt, m_args.gps_smoothing_T);
               m_gps_fix.lon = lowPassSmoothing(m_gps_fix.lon, Angles::radians(msg.lon), dt, m_args.gps_smoothing_T);
@@ -1027,6 +1034,17 @@ namespace Sensors
         (void) sender_id;
         (void) len;
         task->handleIARState(*iar);
+      }
+
+      static void
+      sbp_heartbeat_callback(u16 sender_id, u8 len, u8 msg[], void *context)
+      {
+
+        // nop for now.
+        (void) sender_id;
+        (void) len;
+        (void) msg;
+        (void) context;
       }
 
     };

@@ -24,6 +24,7 @@
 #define LIBSBP_ACQUISITION_MESSAGES_H
 
 #include "common.h"
+#include "gnss_signal.h"
 
 
 /** Satellite acquisition result
@@ -34,7 +35,22 @@
  * acquisition search space with the best signal-to-noise (SNR)
  * ratio.
  */
-#define SBP_MSG_ACQ_RESULT 0x0015
+#define SBP_MSG_ACQ_RESULT       0x0014
+typedef struct __attribute__((packed)) {
+  float snr;    /**< SNR of best point. Currently in arbitrary SNR points, but will
+be in units of dB Hz in a later revision of this message.
+ */
+  float cp;     /**< Code phase of best point [chips] */
+  float cf;     /**< Carrier frequency of best point [hz] */
+  sbp_gnss_signal_t sid;    /**< GNSS signal for which acquisition was attempted */
+} msg_acq_result_t;
+
+
+/** Deprecated
+ *
+* Deprecated.
+ */
+#define SBP_MSG_ACQ_RESULT_DEP_A 0x0015
 typedef struct __attribute__((packed)) {
   float snr;    /**< SNR of best point. Currently dimensonless, but will have
 units of dB Hz in the revision of this message.
@@ -44,7 +60,7 @@ units of dB Hz in the revision of this message.
   u8 prn;    /**< PRN-1 identifier of the satellite signal for which
 acquisition was attempted
  */
-} msg_acq_result_t;
+} msg_acq_result_dep_a_t;
 
 
 /** \} */
