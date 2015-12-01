@@ -1142,7 +1142,8 @@ namespace Control
           m_setpoint_log.ay = m_reference.x(7);
           m_setpoint_log.az = m_reference.x(8);
 
-          dispatch(m_setpoint_log);
+          // Is dispatched later.
+          //dispatch(m_setpoint_log);
         }
 
         void
@@ -1357,6 +1358,7 @@ namespace Control
           dispatch(m_desired_control);
 
           // Dispatch linear setpoint for logging
+          // At time of control dispatch
           dispatch(m_setpoint_log);
 
 
