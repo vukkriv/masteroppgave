@@ -157,7 +157,8 @@ namespace Control
           B(9,3, 0.0),
           x(9,1, 0.0),
           a_out(3,1, 0.0),
-          prefilterState(3,1, 0.0)
+          prefilterState(3,1, 0.0),
+          k1(0.0),k2(0.0),k3(0.0)
       {
           /* Intentionally Empty */
       }
@@ -192,6 +193,7 @@ namespace Control
         Matrix x;
         Matrix a_out;
         Matrix prefilterState;
+        double k1,k2,k3;
       };
 
       class Reference
@@ -798,6 +800,9 @@ namespace Control
           }
 
 
+          m_refmodel.k3 =  (2*m_args.refmodel_xi + 1) *     m_args.refmodel_omega_n;
+          m_refmodel.k2 = ((2*m_args.refmodel_xi + 1) * pow(m_args.refmodel_omega_n, 2)) /  m_refmodel.k3;
+          m_refmodel.k1 =                               pow(m_args.refmodel_omega_n, 3)  / (m_refmodel.k3 * m_refmodel.k2);
 
 
           // Set model
@@ -890,6 +895,86 @@ namespace Control
         }
 
 
+        void
+        stepNewRefModel(const IMC::EstimatedState& state, const TrackingState& ts)
+        {
+          (void) state;
+
+          // Get target position
+          TrackingState::Coord targetPosition = ts.end;
+
+          if (m_args.enable_hold_position)
+          {
+            targetPosition = ts.start;
+            // Hack
+            targetPosition.z = -targetPosition.z;
+          }
+          Matrix x_d = Matrix(3, 1, 0.0);
+          x_d(0) = targetPosition.x;
+          x_d(1) = targetPosition.y;
+          x_d(2) = -targetPosition.z - state.height; // z is received as height. For copters, state.height will usually be zero.
+          trace("x_d:\t [%1.2f, %1.2f, %1.2f]",
+              x_d(0), x_d(1), x_d(2));
+
+
+          double T = m_args.prefilter_time_constant;
+          m_refmodel.prefilterState += ts.delta * (-(1/T)*m_refmodel.prefilterState + (1/T)*x_d);
+
+          // Step 1: V-part
+          Matrix tau1 = m_refmodel.k1 * (m_refmodel.prefilterState - m_refmodel.getPos());
+
+          // Set heave to 0 if not controlling altitude
+          if (!m_args.use_altitude)
+            tau1(2) = 0.0;
+
+          if (tau1.norm_2() > m_args.refmodel_max_speed)
+          {
+            tau1 = m_args.refmodel_max_speed * tau1 / tau1.norm_2();
+          }
+
+          // Step 2: A-part
+          Matrix tau2 = m_refmodel.k2 * (tau1 - m_refmodel.getVel());
+
+          // Set heave to 0 if not controlling altitude
+          if (!m_args.use_altitude)
+            tau2(2) = 0.0;
+
+          if (tau2.norm_2() > m_args.refmodel_max_acc)
+          {
+            tau2 = m_args.refmodel_max_acc * tau2 / tau2.norm_2();
+          }
+
+          // Step 3: J-part
+          Matrix tau3 = m_refmodel.k3 * (tau2 - m_refmodel.getAcc());
+
+          // Set heave to 0 if not controlling altitude
+          if (!m_args.use_altitude)
+            tau3(2) = 0.0;
+
+          // Integrate
+          m_refmodel.x += ts.delta * (m_refmodel.x.get(3,8,0,0).vertCat(tau3));
+
+          // Set correct acc output
+          Matrix acc = m_refmodel.getAcc();
+          m_refmodel.setAOut(acc);
+
+          // Log
+          m_setpoint_log.x = m_refmodel.x(0);
+          m_setpoint_log.y = m_refmodel.x(1);
+          m_setpoint_log.z = m_refmodel.x(2);
+          m_setpoint_log.vx = m_refmodel.x(3);
+          m_setpoint_log.vy = m_refmodel.x(4);
+          m_setpoint_log.vz = m_refmodel.x(5);
+          m_setpoint_log.ax = m_refmodel.x(6);
+          m_setpoint_log.ay = m_refmodel.x(7);
+          m_setpoint_log.az = m_refmodel.x(8);
+
+          // Print reference pos and vel
+          trace("x_r:\t [%1.2f, %1.2f, %1.2f]",
+              m_refmodel.x(0), m_refmodel.x(1), m_refmodel.x(2));
+          trace("v_r:\t [%1.2f, %1.2f, %1.2f]",
+              m_refmodel.x(3), m_refmodel.x(4), m_refmodel.x(5));
+        }
 
         void
         stepRefModel(const IMC::EstimatedState& state, const TrackingState& ts)
@@ -1097,7 +1182,7 @@ namespace Control
         {
           // Updates the reference model, and checks which modules are enabled.
 
-          stepRefModel(state, ts);
+          stepNewRefModel(state, ts);
 
           // Set reference from reference model
           m_reference.setReference(m_refmodel.x);
