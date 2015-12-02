@@ -59,6 +59,8 @@ namespace Maneuver
       double m_ud_impact;
       //! Desired time to accelerate to desired velocity of net at impact
       double m_td_acc;
+      //! Desired offset-cross track
+      double m_crosstrack_offset;
       //! Desired collision radius
       double m_coll_r;
       //! Radius to stop at end of runway
@@ -205,6 +207,11 @@ namespace Maneuver
 	    .defaultValue("false")
 	    .description("Enable Path Controller");
 
+ 	    param("Offset cross-track", m_args.m_crosstrack_offset)
+	    .visibility(Tasks::Parameter::VISIBILITY_USER)
+	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
+	    .defaultValue("0.0")
+	    .description("Cross-track offset");
 
 	    param("Stop at end-of-runway", m_args.enable_stop_endRunway)
 	    .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -213,10 +220,14 @@ namespace Maneuver
 	    .description("Enable stop at end of runway");
 
  	    param("Enable Mean Window Aircraft", m_args.use_mean_window_aircraft)
+	    .visibility(Tasks::Parameter::VISIBILITY_USER)
+	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
  	    .defaultValue("false")
  	    .description("Use mean window on aircraft states");
 
  	    param("Frequency", m_args.m_freq)
+	    .visibility(Tasks::Parameter::VISIBILITY_USER)
+	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .defaultValue("1.0")
         .description("Controller frequency");
 
@@ -226,14 +237,20 @@ namespace Maneuver
         .description("Choose whether to disable Z flag. In turn, this will utilize new rate controller on some targets");
 
         param("Coordinated Catch", m_args.enable_coord)
+	    .visibility(Tasks::Parameter::VISIBILITY_USER)
+	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .defaultValue("false")
         .description("Flag to enable net catch with two multicopters");
 
         param("Enable Catch", m_args.enable_catch)
+	    .visibility(Tasks::Parameter::VISIBILITY_USER)
+	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .defaultValue("false")
         .description("Flag to enable catch state of the state-machine");
         
         param("Mean Window Size", m_args.mean_ws)
+	    .visibility(Tasks::Parameter::VISIBILITY_USER)
+	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .defaultValue("1.0")
         .description("Number of samples in moving average window");
 
@@ -243,26 +260,28 @@ namespace Maneuver
         param("Maximum Cross-Track Error Net", m_args.eps_ct_n)
         .units(Units::Meter);
 
-        param("Desired net-vel catch", m_args.m_ud_impact)
-        .defaultValue("10.0");
-
         param("Desired collision radius", m_args.m_coll_r)
         .defaultValue("100.0")
         .units(Units::Meter);
 
         param("Desired switching radius", m_args.m_endCatch_radius)
+	    .visibility(Tasks::Parameter::VISIBILITY_USER)
+	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .defaultValue("10.0")
         .units(Units::Meter);
 
         param("Kp Position Control", m_args.Kp)
+	    .visibility(Tasks::Parameter::VISIBILITY_USER)
         .defaultValue("1.0,1.0,1.0")
         .description("Position Controller tuning parameter Kp");
 
         param("Ki Position Control", m_args.Ki)
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
         .defaultValue("0.0,0.0,0.0")
         .description("Position Controller tuning parameter Ki");
 
         param("Kd Position Control", m_args.Kd)
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
         .defaultValue("0.0,0.0,0.0")
         .description("Position Controller tuning parameter Kd");
 
@@ -279,9 +298,9 @@ namespace Maneuver
       void
       onUpdateParameters(void)
       {
-		inf("Current frequency: %f",getFrequency());
+		debug("Current frequency: %f",getFrequency());
 		setFrequency(m_args.m_freq);
-		inf("Frequency changed to : %f",getFrequency());
+		debug("Frequency changed to : %f",getFrequency());
       }
 
  
@@ -300,17 +319,18 @@ namespace Maneuver
 		     resolveSystemId(msg->getSource()));
   	    inf("Initialize net recovery maneuver");
 
-    	inf("Start (ll): [%f,%f]",msg->start_lat,msg->start_lon);
-    	inf("End (ll): [%f,%f]",msg->end_lat,msg->end_lon);
-    	inf("z: %f",msg->z);
-    	inf("z_off: %f",msg->z);
-    	inf("box [h x w]=[%f x %f]=",msg->lbox_height,msg->lbox_width);
-    	inf("Speed: %f",msg->speed);
-    	inf("Max acceleration: %f",msg->max_acc);
-    	inf("\n\n");
+    	debug("Start (ll): [%f,%f]",msg->start_lat,msg->start_lon);
+    	debug("End (ll): [%f,%f]",msg->end_lat,msg->end_lon);
+    	debug("z: %f",msg->z);
+    	debug("z_off: %f",msg->z);
+    	debug("box [h x w]=[%f x %f]=",msg->lbox_height,msg->lbox_width);
+    	debug("Speed: %f",msg->speed);
+    	debug("Max acceleration: %f",msg->max_acc);
+    	debug("\n\n");
 
   	    m_vehicles.aircraft = msg->aircraft;
   	    m_vehicles.no_vehicles = 1;
+  	    m_vehicles.copters = std::vector<std::string>();
         std::stringstream  lineStream(msg->multicopters.c_str());
         std::string        copter;
         while(std::getline(lineStream,copter,','))
@@ -350,7 +370,7 @@ namespace Maneuver
 
     	if (!m_initializedCoord)
         {
-    	  inf("Initializing coordinator after EstimatedLocalState");
+    	  debug("Initializing coordinator after EstimatedLocalState");
     	  m_ref_lat = estate->lat;
 		  m_ref_lon = estate->lon;
 		  m_ref_hae = estate->height;
@@ -358,7 +378,7 @@ namespace Maneuver
           initCoordinator();
           initRunwayPath();
           //return;
-          inf("Initialized coordinator after EstimatedLocalState");
+          debug("Initialized coordinator after EstimatedLocalState");
         }
 
         //spew("Got EstimatedState \nfrom '%s' at '%s'",
@@ -366,9 +386,9 @@ namespace Maneuver
         //     resolveSystemId(estate->getSource()));
 
         std::string vh_id  = resolveSystemId(estate->getSource());
-        spew("Received EstimatedLocalState from %s: ",vh_id.c_str());
+        //spew("Received EstimatedLocalState from %s: ",vh_id.c_str());
         int s = getVehicle(vh_id);
-        trace("s=%d",s);
+        //spew("s=%d",s);
         if (s == INVALID)  //invalid vehicle
           return;
 
@@ -396,10 +416,10 @@ namespace Maneuver
         {
           case IMC::NetRecoveryState::NR_INIT:
           {
-
             if (allInitialized())
             {
               m_curr_state = IMC::NetRecoveryState::NR_STANDBY;
+
               /**********************
               //!!!!DEBUG!!!
               ***********************/
@@ -454,7 +474,7 @@ namespace Maneuver
           case IMC::NetRecoveryState::NR_START:
           {
             updateMeanValues(s);
-            m_ud = getPathVelocity(0, m_args.m_ud_impact, m_ad, true);
+            m_ud = getPathVelocity(0, m_u_ref, m_ad, false);
 
             if (catched())
               m_curr_state = IMC::NetRecoveryState::NR_CATCH;
@@ -505,8 +525,10 @@ namespace Maneuver
       initCoordinator()
       {
         if (m_initializedCoord)
+        {
+          inf("Coordinator already initialized");
           return;
-
+        }
         unsigned int no_vehicles = m_vehicles.no_vehicles;
         
         m_estate        = std::vector<IMC::EstimatedLocalState>(no_vehicles);
@@ -576,7 +598,7 @@ namespace Maneuver
       void
       calcPathErrors(Matrix p, Matrix v, int s)
       {
-    	  spew("p_NED[%d]: [%f,%f,%f]",s,p(0),p(1),p(2));
+    	  //spew("p_NED[%d]: [%f,%f,%f]",s,p(0),p(1),p(2));
 
           Matrix R       = transpose(Rzyx(0.0, -m_runway.theta, m_runway.alpha));
           Matrix eps     = R*(p-m_runway.start_NED);
@@ -585,7 +607,7 @@ namespace Maneuver
           m_p_path[s] = eps;
           m_v_path[s] = eps_dot;
 
-          spew("m_p_path[%d]: [%f,%f,%f]",s,m_p_path[s](0),m_p_path[s](1),m_p_path[s](2));
+          //spew("m_p_path[%d]: [%f,%f,%f]",s,m_p_path[s](0),m_p_path[s](1),m_p_path[s](2));
 
           Matrix p_n = getNetPosition(m_p);
           Matrix v_n = getNetVelocity(m_v);
@@ -736,14 +758,19 @@ namespace Maneuver
       }
 
       double
-      getPathVelocity(double v0, double v_ref, double a_n, bool active_ramp)
+      getPathVelocity(double v0, double v_ref, double a_n, bool reset_ramp)
       {
     	double deltaT = (v_ref-v0)/a_n;
         static bool rampEnabled = false;
         static double startTime = -1;
         static double deltaV = (v_ref-v0)/deltaT;
+        if (reset_ramp)
+        {
+        	startTime = -1;
+        	rampEnabled = false;
+        }
         //when starting net-catch operation, this should be a ramp in velocity
-        if (active_ramp)
+        if (!reset_ramp)
             rampEnabled = true;
         if (rampEnabled && startTime == -1)
           startTime=Clock::get();
@@ -760,7 +787,14 @@ namespace Maneuver
         {
             vel = v0;
         }
-        //spew("getPathVelocity: u_d=%f,deltaTime=%f,startTime=%f",vel,deltaTime,startTime);
+        static double startPrint = 0;
+        if (Clock::get() - startPrint > 1)
+        {
+        	spew("deltaV: %f\n");
+        	spew("getPathVelocity: \n\t u_d=%f\n\t deltaTime=%f\n\t enabled=%d",vel,deltaTime,rampEnabled);
+        	startPrint = Clock::get();
+        }
+
         return vel;
       }
 
@@ -782,6 +816,13 @@ namespace Maneuver
           Delta_r_impact = 0;          
         }
         double r_start = abs(r_impact - v_a*(deltaT_n + Delta_r_impact/v_ref_n));
+
+        static double startPrint = 0;
+        if (Clock::get() - startPrint > 1)
+        {
+        	spew("desiredStartRadius: %f", r_start);
+        	startPrint = Clock::get();
+        }
         return r_start;
       }
 
@@ -903,6 +944,8 @@ namespace Maneuver
     	Matrix e_v_path = v_ref_path-v_n_path;
     	m_p_int_value = m_p_int_value + e_p_path*m_time_diff;
 
+
+
     	if (p_n_path(0) < p_max_path(0)-m_args.m_endCatch_radius && u_d_along_path > 0)
 		{
     		v_path(0) = u_d_along_path;
@@ -922,9 +965,20 @@ namespace Maneuver
       	  v_path = abs(m_args.max_norm_v) * v_path/v_path.norm_2();
         }
 
-        //debug("p_a_path: [%f,%f,%f]"  ,p_a_path(0),p_a_path(1),p_a_path(2));
-        //debug("p_n_path: [%f,%f,%f]"  ,p_n_path(0),p_n_path(1),p_n_path(2));
-        //debug("  v_path: [%f,%f,%f]\n",v_path(0),v_path(1),v_path(2));
+    	static double startPrint = 0;
+        if (Clock::get() - startPrint > 1)
+        {
+        	spew("Kp: [%f,%f,%f]", m_args.Kp(0),m_args.Kp(1),m_args.Kp(2));
+        	spew("m_time_diff: %d",m_time_diff);
+        	spew("m_p_int_value: [%f,%f,%f]", m_p_int_value(0),m_p_int_value(1),m_p_int_value(2));
+        	spew("p_ref_path: [%f,%f,%f]"  ,p_ref_path(0),p_ref_path(1),p_ref_path(2));
+        	spew("v_ref_path: [%f,%f,%f]"  ,v_ref_path(0),v_ref_path(1),v_ref_path(2));
+        	spew("p_a_path: [%f,%f,%f]"  ,p_a_path(0),p_a_path(1),p_a_path(2));
+        	spew("p_n_path: [%f,%f,%f]"  ,p_n_path(0),p_n_path(1),p_n_path(2));
+        	spew("  v_path: [%f,%f,%f]\n\n",v_path(0),v_path(1),v_path(2));
+
+        	startPrint = Clock::get();
+        }
 
     	return v_path;
       }
@@ -934,6 +988,23 @@ namespace Maneuver
       getDesiredLocalVelocity(Matrix v_p, double course, double pitch)
       {
     	return Rzyx(course, pitch, 0)*v_p;
+      }
+
+      virtual void
+      reset(void)
+      {
+    	  inf("Reset coordinator");
+    	  m_curr_state = IMC::NetRecoveryState::NR_INIT;
+          m_initializedCoord = false;
+          m_ref_valid = false;
+          m_coordinatorEnabled = false;
+          m_time_end = Clock::getMsec();
+          m_time_diff = 0.0;
+          m_p_int_value = Matrix(3,1,0.0);
+          //reset ramp
+          m_ud = 0;
+          getPathVelocity(0, m_u_ref, m_ad, true);
+          //initCoordinator();
       }
 
       virtual void
@@ -959,7 +1030,7 @@ namespace Maneuver
       void
       task(void)
       {
-  	    if(!m_args.use_controller || !isActive())
+  	    if(!m_args.use_controller || !isActive() || !m_coordinatorEnabled)
   	      //spew("isActive: %d",isActive());
 		  return;
 
