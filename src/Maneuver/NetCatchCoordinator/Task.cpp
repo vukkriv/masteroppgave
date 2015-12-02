@@ -284,40 +284,17 @@ namespace Maneuver
 		inf("Frequency changed to : %f",getFrequency());
       }
 
-      //! Reserve entity identifiers.
-      void
-      onEntityReservation(void)
-      {
-      }
-
-      //! Resolve entity names.
-      void
-      onEntityResolution(void)
-      {
-      }
-
-      //! Acquire resources.
-      void
-      onResourceAcquisition(void)
-      {
-
-      }
-
-      //! Initialize resources.
-      void
-      onResourceInitialization(void)
-      {
-      }
-
-      //! Release resources.
-      void
-      onResourceRelease(void)
-      {
-      }
-
       void
       consume(const IMC::DesiredNetRecoveryPath* msg)
       {
+
+	  if (!isActive())
+	  {
+		err(DTR("not active"));
+		return;
+	  }
+
+
   	    trace("Got DesiredNetRecovery \nfrom '%s' at '%s'",
 		     resolveEntity(msg->getSourceEntity()).c_str(),
 		     resolveSystemId(msg->getSource()));
@@ -419,9 +396,14 @@ namespace Maneuver
         {
           case IMC::NetRecoveryState::NR_INIT:
           {
+
             if (allInitialized())
             {
               m_curr_state = IMC::NetRecoveryState::NR_STANDBY;
+              /**********************
+              //!!!!DEBUG!!!
+              ***********************/
+            		//m_curr_state = IMC::NetRecoveryState::NR_STOP;
               inf("Initialized, at standby");
             }
             break;
@@ -502,10 +484,19 @@ namespace Maneuver
             break;
           }                            
         }        
+        //inf("Send current state");
         sendCurrentState();
+        //inf("Current state sent");
         if (last_state != m_curr_state)
         	inf("Current state: %d",static_cast<NetRecoveryState::NetRecoveryLevelEnum>(m_curr_state));
-
+        if (m_curr_state == IMC::NetRecoveryState::NR_STOP)
+        {
+        	//inf("test state %d", m_curr_state);
+        	//onAutopilotDeactivation();
+        	//inf("test state %d", m_curr_state);
+        	//m_curr_state = IMC::NetRecoveryState::NR_INIT;
+        }
+        //inf("Here");
       }
 
       void
@@ -792,7 +783,7 @@ namespace Maneuver
       sendCurrentState()
       {
     	  IMC::NetRecoveryState state;
-    	  //state.flags = m_curr_state;	Should use the IMC flags for state
+    	  state.flags = m_curr_state;	// Should use the IMC flags for state
     	  Matrix p_n = getNetPosition(m_p_path);
     	  Matrix v_n = getNetVelocity(m_v_path);
     	  state.x_n = p_n(0);
@@ -816,6 +807,8 @@ namespace Maneuver
 
     	  state.course_error_a = 0;
     	  state.course_error_n = 0;
+
+    	  dispatch(state);
       }
 
       void
@@ -865,13 +858,14 @@ namespace Maneuver
   		return v_n;
       }
 
-
       //! Control loop in path-frame
       Matrix
       getDesiredPathVelocity(double u_d_along_path, Matrix p_a_path, Matrix v_a_path, Matrix p_n_path, Matrix v_n_path)
       {
     	//_a: aircraft
     	//_n: net (copter)
+    	Matrix p_ref_path = Matrix(3,1,0.0);
+      	Matrix v_ref_path = Matrix(3,1,0.0);
     	Matrix v_path = Matrix(3,1,0.0);
 
     	Matrix p_max_path = Matrix(3,1,0.0);
@@ -879,9 +873,11 @@ namespace Maneuver
     	p_max_path(1) = m_runway.box_width/2;
     	p_max_path(2) = m_runway.box_height/2;
 
-    	Matrix p_ref_path = Matrix(3,1,0.0);
-    	p_ref_path(0) = p_max_path(0);
-	    Matrix v_ref_path = Matrix(3,1,0.0);
+    	if (u_d_along_path > 0)
+    	{
+    		p_ref_path(0) = p_max_path(0);
+    	}
+
     	for (int i = 1; i <= 2; i = i+1)
     	{
     		if (abs(p_a_path(i)) < p_max_path(i))
@@ -900,14 +896,14 @@ namespace Maneuver
     	Matrix e_v_path = v_ref_path-v_n_path;
     	m_p_int_value = m_p_int_value + e_p_path*m_time_diff;
 
-    	if (p_n_path(0) < p_ref_path(0)-m_args.m_endCatch_radius)
+    	if (p_n_path(0) < p_max_path(0)-m_args.m_endCatch_radius && u_d_along_path > 0)
 		{
     		v_path(0) = u_d_along_path;
     		e_p_path(0) = 0;
 		}
     	else
     	{
-    		v_path(0) = m_args.Kp(0)*e_p_path(0) + m_args.Ki(0)*m_p_int_value(0) + m_args.Kd(0)*(e_v_path(0));
+    		v_path(0) = m_args.Kp(0)*e_p_path(0) + m_args.Ki(0)*m_p_int_value(0) + m_args.Kd(0)*e_v_path(0);
     	}
 
     	v_path(1) = m_args.Kp(1)*e_p_path(1) + m_args.Ki(1)*m_p_int_value(1) + m_args.Kd(1)*e_v_path(1);
@@ -919,29 +915,12 @@ namespace Maneuver
       	  v_path = abs(m_args.max_norm_v) * v_path/v_path.norm_2();
         }
 
-        debug("p_a_path: [%f,%f,%f]"  ,p_a_path(0),p_a_path(1),p_a_path(2));
-        debug("p_n_path: [%f,%f,%f]"  ,p_n_path(0),p_n_path(1),p_n_path(2));
-        debug("  v_path: [%f,%f,%f]\n",v_path(0),v_path(1),v_path(2));
+        //debug("p_a_path: [%f,%f,%f]"  ,p_a_path(0),p_a_path(1),p_a_path(2));
+        //debug("p_n_path: [%f,%f,%f]"  ,p_n_path(0),p_n_path(1),p_n_path(2));
+        //debug("  v_path: [%f,%f,%f]\n",v_path(0),v_path(1),v_path(2));
 
     	return v_path;
       }
-
-/*	  Matrix saturate(Matrix ref_value, Matrix min_value, Matrix max_value)
-      {
-          for (int i = 0; i <= 2; i = i+1)
-		  {
-			  if (ref_value(i) < min_value(i))
-			  {
-				  ref_value(i) = min_value(i);
-			  }
-			  if (ref_value(i) > max_value(i))
-			  {
-				  ref_value(i) = max_value(i);
-			  }
-          }
-
-    	  return ref_value;
-      }*/
 
       //! Get desired local
       Matrix
@@ -950,11 +929,31 @@ namespace Maneuver
     	return Rzyx(course, pitch, 0)*v_p;
       }
 
+      virtual void
+	  onAutopilotActivation(void)
+      {
+    	  inf("AutopilotActivating");
+          if (!m_args.use_controller)
+          {
+            debug("Path activated, but not active: Requesting deactivation");
+            requestDeactivation();
+            return;
+          }
+      }
+
+      virtual void
+	  onAutopilotDeactivation(void)
+      {
+    	  debug("Deactivation");
+          //requestDeactivation();
+      }
+
       //! Main loop.
       void
       task(void)
       {
   	    if(!m_args.use_controller || !isActive())
+  	      //spew("isActive: %d",isActive());
 		  return;
 
   	    m_time_diff = Clock::getMsec() - m_time_end;
@@ -963,9 +962,10 @@ namespace Maneuver
 
         //dispatch control if ready
 
-    	if(m_curr_state == IMC::NetRecoveryState::NR_APPROACH ||
+    	if(m_curr_state == IMC::NetRecoveryState::NR_STANDBY  ||
+    	   m_curr_state == IMC::NetRecoveryState::NR_APPROACH ||
     	   m_curr_state == IMC::NetRecoveryState::NR_START    ||
-    	   m_curr_state == IMC::NetRecoveryState::NR_END)
+    	   m_curr_state == IMC::NetRecoveryState::NR_END	)
     	{
     		Matrix p_a_path;
     		Matrix v_a_path;
@@ -973,15 +973,23 @@ namespace Maneuver
     		Matrix p_n_path;
     		Matrix v_n_path;
 
-    		if (m_args.use_mean_window_aircraft)
+    		if (m_curr_state == IMC::NetRecoveryState::NR_STANDBY)
     		{
-    			p_a_path = m_p_path_mean[AIRCRAFT];
-    			v_a_path = m_v_path_mean[AIRCRAFT];
+    			p_a_path = Matrix(3,1,0.0);
+    			v_a_path = Matrix(3,1,0.0);
     		}
     		else
     		{
-    			p_a_path = m_p_path[AIRCRAFT];
-    			v_a_path = m_v_path[AIRCRAFT];
+				if (m_args.use_mean_window_aircraft)
+				{
+					p_a_path = m_p_path_mean[AIRCRAFT];
+					v_a_path = m_v_path_mean[AIRCRAFT];
+				}
+				else
+				{
+					p_a_path = m_p_path[AIRCRAFT];
+					v_a_path = m_v_path[AIRCRAFT];
+				}
     		}
 
     		p_n_path = getNetPosition(m_p_path);
