@@ -687,7 +687,7 @@ namespace Maneuver
       bool
       aircraftApproaching()
       {
-    	  if (m_v_path[AIRCRAFT](0) > 0)
+    	  if (m_v_path[AIRCRAFT](0) > 0 && m_p_path[AIRCRAFT](0) < 0)
     		  return true;
     	  return false;
       }
