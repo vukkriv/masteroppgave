@@ -284,18 +284,18 @@ namespace Maneuver
 		inf("Frequency changed to : %f",getFrequency());
       }
 
+ 
       void
       consume(const IMC::DesiredNetRecoveryPath* msg)
       {
+   
+	   if (!isActive())
+	   {
+		 err(DTR("not active"));
+		 return;
+	   }
 
-	  if (!isActive())
-	  {
-		err(DTR("not active"));
-		return;
-	  }
-
-
-  	    trace("Got DesiredNetRecovery \nfrom '%s' at '%s'",
+        trace("Got DesiredNetRecovery \nfrom '%s' at '%s'",
 		     resolveEntity(msg->getSourceEntity()).c_str(),
 		     resolveSystemId(msg->getSource()));
   	    inf("Initialize net recovery maneuver");
@@ -457,16 +457,18 @@ namespace Maneuver
             m_ud = getPathVelocity(0, m_args.m_ud_impact, m_ad, true);
 
             if (catched())
-            	m_curr_state = IMC::NetRecoveryState::NR_CATCH;
+              m_curr_state = IMC::NetRecoveryState::NR_CATCH;
 
             if (endAtRunway())
-            	m_curr_state = IMC::NetRecoveryState::NR_END;
+              m_curr_state = IMC::NetRecoveryState::NR_END;
 
             break;
           }
           case IMC::NetRecoveryState::NR_CATCH:
           {
-        	//catching the aircraft
+        	if (endAtRunway())
+			  m_curr_state = IMC::NetRecoveryState::NR_END;
+
         	break;
           }
           case IMC::NetRecoveryState::NR_END:
@@ -553,12 +555,12 @@ namespace Maneuver
           WGS84::displacement(m_ref_lat, m_ref_lon, 0,
           				    m_runway.lat_start, m_runway.lon_start, 0,
           					&m_runway.start_NED(0), &m_runway.start_NED(1));
-          m_runway.start_NED(2) = m_runway.hae_start;
+          m_runway.start_NED(2) = -m_runway.hae_start;
 
           WGS84::displacement(m_ref_lat, m_ref_lon, 0,
           					m_runway.lat_end, m_runway.lon_end, 0,
                               &m_runway.end_NED(0), &m_runway.end_NED(1));
-          m_runway.end_NED(2) = m_runway.hae_end;
+          m_runway.end_NED(2) = -m_runway.hae_end;
 
           Matrix deltaWP = m_runway.end_NED - m_runway.start_NED;
 
@@ -715,6 +717,10 @@ namespace Maneuver
       {
     	  //simulation: position check
     	  //real life: weight cell in combination with rotary sensor
+    	  double eps = 0.1;
+    	  Matrix diff = m_p_path[COPTER_LEAD]-m_p_path[AIRCRAFT];
+    	  if ( diff.norm_2() < eps && m_v_path[AIRCRAFT](0) > 0)
+    		  return true;
     	  return false;
       }
 
@@ -857,6 +863,7 @@ namespace Maneuver
   		}
   		return v_n;
       }
+
 
       //! Control loop in path-frame
       Matrix
