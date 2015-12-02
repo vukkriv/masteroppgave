@@ -84,7 +84,7 @@ namespace Control
 
       static const std::string c_parcel_names[] = {DTR_RT("PID"), DTR_RT("Beta-X"),
                                                    DTR_RT("Beta-Y"), DTR_RT("Beta-Z"),
-                                                   DTR_RT("Alpha45-Phi"), DTR_RT("Alpha45-Theta"), "Delayed-x", "Delayed-y", "PID-X", "PID-Y", "PID-Z"};
+                                                   DTR_RT("Alpha45-Phi"), DTR_RT("Alpha45-Theta"), "Delayed-x", "Delayed-y", "PID-X", "PID-Y", "PID-Z", "ERROR"};
       enum Parcel {
         PC_PID = 0,
         PC_BETA_X = 1,
@@ -96,7 +96,8 @@ namespace Control
         PC_DELAYED_Y = 7,
         PC_PID_X = 8,
         PC_PID_Y = 9,
-        PC_PID_Z = 10
+        PC_PID_Z = 10,
+        PC_ERROR = 11
       };
 
       static const int NUM_PARCELS = 11;
@@ -1304,6 +1305,12 @@ namespace Control
           parcel.p = parcel_p.norm_2();
           parcel.d = parcel_d.norm_2();
           parcel.i = parcel_i.norm_2();
+
+          IMC::ControlParcel errors = m_parcels[PC_ERROR];
+          errors.p = parcel.p / m_args.Kp;
+          errors.d = parcel.d / m_args.Kd;
+
+          dispatch(errors);
 
           // Dispatch normed parcel
           dispatch(parcel);
