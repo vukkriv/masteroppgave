@@ -157,6 +157,14 @@ namespace Control
       Matrix
 	  vel_con(Matrix v_est, Matrix v_des)
       {
+          static double startPrint = 0;
+          if (Clock::get() - startPrint > 1)
+          {
+          	spew("v_est: [%f,%f,%f]", v_est(0),v_est(1),v_est(2));
+          	spew("v_des: [%f,%f,%f]", v_des(0),v_des(1),v_des(2));
+          	startPrint = Clock::get();
+          }
+
     	  Matrix e_v_est = v_des-v_est;
 
 		  m_v_int_value = m_v_int_value + e_v_est*m_time_diff;
@@ -196,6 +204,14 @@ namespace Control
         dispatch(desired_force);
       }
 
+      virtual void
+      reset(void)
+      {
+    	  m_time_end = Clock::getMsec();
+          m_time_diff = 0.0;
+          m_v_int_value = Matrix(3,1,0.0);
+      }
+
       //! Main loop.
       void
       task(void)
@@ -220,7 +236,7 @@ namespace Control
 
     	sendDesiredForce(F_des);
 
-		spew("Frequency: %1.1f", 1000.0/m_time_diff);
+		//spew("Frequency: %1.1f", 1000.0/m_time_diff);
       }
 
       //! @return  Rotation matrix.
