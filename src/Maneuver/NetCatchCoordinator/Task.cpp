@@ -185,19 +185,22 @@ namespace Maneuver
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
     	PeriodicUAVAutopilot(name, ctx, c_controllable, c_required),
-        m_ud(0),
-        m_initializedCoord(false),
-        m_scope_ref(0),
         m_ref_lat(0.0),
 		m_ref_lon(0.0),
 		m_ref_hae(0.0),
         m_ref_valid(false),
         m_coordinatorEnabled(false),
+		delta_p_path_x(0),
+		delta_p_path_x_mean(0),
+		delta_v_path_x(0),
+		delta_v_path_x_mean(0),
 		m_p_int_value(3,1,0.0),
+	    m_startCatch_radius(0),
+		m_timeout(0),
         m_u_ref(0.0),
         m_ad(0.0),
         m_time_end(Clock::getMsec()),
-		m_time_diff(0.0)
+		m_time_diff(0)
       {
  	    param("Path Controller", m_args.use_controller)
 	    .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -786,7 +789,9 @@ namespace Maneuver
     	  state.flags = m_curr_state;	// Should use the IMC flags for state
     	  Matrix p_n = getNetPosition(m_p_path);
     	  Matrix v_n = getNetVelocity(m_v_path);
-    	  state.x_n = p_n(0);
+    	  state.x_n = p_n(0);//        m_ud(0.0),
+    	  //        m_initializedCoord(false),
+    	  //        m_scope_ref(0),
 		  state.y_n = p_n(1);
 		  state.z_n = p_n(2);
 
@@ -898,26 +903,38 @@ namespace Maneuver
 
     	if (p_n_path(0) < p_max_path(0)-m_args.m_endCatch_radius && u_d_along_path > 0)
 		{
-    		v_path(0) = u_d_along_path;
     		e_p_path(0) = 0;
+    		v_path(0) = u_d_along_path;
+
+        	Matrix v_path_yz = Matrix(2,1,0.0);
+    		v_path_yz(0) = m_args.Kp(1)*e_p_path(1) + m_args.Ki(1)*m_p_int_value(1) + m_args.Kd(1)*e_v_path(1);
+    		v_path_yz(1) = m_args.Kp(2)*e_p_path(2) + m_args.Ki(2)*m_p_int_value(2) + m_args.Kd(2)*e_v_path(2);
+
+        	//limit velocity
+    		if (v_path_yz.norm_2() > sqrt(pow(m_args.max_norm_v,2)-pow(m_u_ref,2)))
+    		{
+				v_path_yz = sqrt(pow(m_args.max_norm_v,2)-pow(m_u_ref,2)) * v_path_yz/v_path_yz.norm_2();
+    		}
+
+			v_path(1) = v_path_yz(0);
+			v_path(2) = v_path_yz(1);
 		}
     	else
     	{
     		v_path(0) = m_args.Kp(0)*e_p_path(0) + m_args.Ki(0)*m_p_int_value(0) + m_args.Kd(0)*e_v_path(0);
+        	v_path(1) = m_args.Kp(1)*e_p_path(1) + m_args.Ki(1)*m_p_int_value(1) + m_args.Kd(1)*e_v_path(1);
+        	v_path(2) = m_args.Kp(2)*e_p_path(2) + m_args.Ki(2)*m_p_int_value(2) + m_args.Kd(2)*e_v_path(2);
+
+        	//limit velocity
+    		if (v_path.norm_2() > m_args.max_norm_v)
+    		{
+    			v_path = abs(m_args.max_norm_v) * v_path/v_path.norm_2();
+    		}
     	}
-
-    	v_path(1) = m_args.Kp(1)*e_p_path(1) + m_args.Ki(1)*m_p_int_value(1) + m_args.Kd(1)*e_v_path(1);
-    	v_path(2) = m_args.Kp(2)*e_p_path(2) + m_args.Ki(2)*m_p_int_value(2) + m_args.Kd(2)*e_v_path(2);
-
-
-        if (v_path.norm_2() > m_args.max_norm_v)
-        {
-      	  v_path = abs(m_args.max_norm_v) * v_path/v_path.norm_2();
-        }
 
         //debug("p_a_path: [%f,%f,%f]"  ,p_a_path(0),p_a_path(1),p_a_path(2));
         //debug("p_n_path: [%f,%f,%f]"  ,p_n_path(0),p_n_path(1),p_n_path(2));
-        //debug("  v_path: [%f,%f,%f]\n",v_path(0),v_path(1),v_path(2));
+        //debug("  v_path: [%f,%f,%f]",v_path(0),v_path(1),v_path(2));
 
     	return v_path;
       }
