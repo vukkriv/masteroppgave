@@ -56,6 +56,8 @@ namespace Maneuver
       consume(const IMC::NetRecovery* maneuver)
       {
     	inf("NetRecovery maneuver received");
+    	// First disable all
+    	setControl(0);
         // Enable control loops
         setControl(IMC::CL_PATH);
 
@@ -81,11 +83,13 @@ namespace Maneuver
       void
       consume(const IMC::NetRecoveryState* state)
       {
-    	  debug("NetRecoveryState received");
-    	  if (state->flags && IMC::NetRecoveryState::NR_STOP)
+    	  spew("NetRecoveryState received");
+    	  if (state->flags == IMC::NetRecoveryState::NR_STOP)
     	  {
     		  inf("NetRecoveryState STOP, maneuver is done");
     		  signalCompletion();
+    	      setControl(0); // Becouse f* the other controllers.
+
     	  }
     	  else
     	  {
