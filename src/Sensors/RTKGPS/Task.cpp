@@ -264,8 +264,8 @@ namespace Sensors
 		  std::vector<std::string> parts;
 		  String::split(line, " ", parts);
 		  /*
-		   * parts[0]	GPS year/month/day
-		   * parts[1]	GPS time HH:MM:SS:FFF
+		   * parts[0]	GPS week wwww
+		   * parts[1]	GPS TOW sssssss.sss
 		   * 		      xyz		      llh           enu
 		   * parts[2]	x-ecef(m)	 |	lat(deg)	|	e(m)
 		   * parts[3]	y-ecef(m)	 |	lon(deg)	|	n(m)
@@ -424,11 +424,14 @@ namespace Sensors
           //Invert Z axis
           m_rtkfix.v_d = -m_rtkfix.v_d;
         }
+        // Set time of week (TOW)
+        readDecimal(parts[1],m_rtkfix.tow);
+
         m_wdog.reset();
         dispatch(m_rtkfix);
         war("RtkFix Message Dispatched!");
       }
-
+       
       void
       onMain(void)
       {
