@@ -22,7 +22,7 @@
 // language governing permissions and limitations at                        *
 // http://ec.europa.eu/idabc/eupl.html.                                     *
 //***************************************************************************
-// Author: Jostein B. Moe                                                   *
+// Author: Jornel van den hoorn                                             *
 //***************************************************************************
 
 // DUNE headers.
@@ -129,35 +129,7 @@ namespace Control
 		inf("Frequency changed to : %f",getFrequency());
       }
 
-      //! Reserve entity identifiers.
-      void
-      onEntityReservation(void)
-      {
-      }
 
-      //! Resolve entity names.
-      void
-      onEntityResolution(void)
-      {
-      }
-
-      //! Acquire resources.
-      void
-      onResourceAcquisition(void)
-      {
-      }
-
-      //! Initialize resources.
-      void
-      onResourceInitialization(void)
-      {
-      }
-
-      //! Release resources.
-      void
-      onResourceRelease(void)
-      {
-      }
 
       void
       consume(const IMC::DesiredVelocity* msg)
