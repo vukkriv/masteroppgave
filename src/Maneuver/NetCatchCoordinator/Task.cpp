@@ -63,6 +63,8 @@ namespace Maneuver
       double m_crosstrack_offset;
       //! Desired collision radius
       double m_coll_r;
+      //! Desired radius to confirm recovery
+      double m_coll_eps;
       //! Radius to stop at end of runway
       double m_endCatch_radius;
 
@@ -153,6 +155,9 @@ namespace Maneuver
       double delta_v_path_x;
       double delta_v_path_x_mean;
 
+  	  Matrix m_p_ref_path;
+      Matrix m_v_ref_path;
+
       Matrix m_p_int_value;
 
      //! Radius to start net-catch (calculate based on net-acceleration)
@@ -200,6 +205,8 @@ namespace Maneuver
 		delta_v_path_x(0),
 		delta_v_path_x_mean(0),
 		m_p_int_value(3,1,0.0),
+		m_p_ref_path(3,1,0.0),
+		m_v_ref_path(3,1,0.0),
 	    m_startCatch_radius(0),
 		m_timeout(0),
         m_u_ref(0.0),
@@ -267,8 +274,17 @@ namespace Maneuver
         .units(Units::Meter);
 
         param("Desired collision radius", m_args.m_coll_r)
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .defaultValue("100.0")
         .units(Units::Meter);
+
+        param("Radius at recovery", m_args.m_coll_eps)
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+        .defaultValue("0.1")
+        .units(Units::Meter)
+        .description("Desired radius to confirm recovery");
 
         param("Desired switching radius", m_args.m_endCatch_radius)
 	    .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -857,6 +873,14 @@ namespace Maneuver
 		  state.vy_n = v_n(1);
 		  state.vz_n = v_n(2);
 
+		  state.vx_n_d = m_v_ref_path(0);
+		  state.vy_n_d = m_v_ref_path(1);
+		  state.vz_n_d = m_v_ref_path(2);
+
+		  state.x_n_d = m_p_ref_path(0);
+		  state.y_n_d = m_p_ref_path(1);
+		  state.z_n_d = m_p_ref_path(2);
+
     	  state.x_a = m_p_path[AIRCRAFT](0);
     	  state.y_a = m_p_path[AIRCRAFT](1);
     	  state.z_a = m_p_path[AIRCRAFT](2);
@@ -865,8 +889,10 @@ namespace Maneuver
     	  state.vy_a = m_v_path[AIRCRAFT](1);
     	  state.vz_a = m_v_path[AIRCRAFT](2);
 
-    	  state.delta_p  = delta_p_path_x;
-    	  state.delta_vp = delta_v_path_x;
+    	  state.delta_p_p  = delta_p_path_x;
+    	  state.delta_v_p = delta_v_path_x;
+
+    	  state.start_r = m_startCatch_radius;
 
     	  state.course_error_a = 0;
     	  state.course_error_n = 0;
@@ -926,10 +952,6 @@ namespace Maneuver
       Matrix
       getDesiredPathVelocity(double u_d_along_path, Matrix p_a_path, Matrix v_a_path, Matrix p_n_path, Matrix v_n_path)
       {
-    	//_a: aircraft
-    	//_n: net (copter)
-    	Matrix p_ref_path = Matrix(3,1,0.0);
-      	Matrix v_ref_path = Matrix(3,1,0.0);
     	Matrix v_path = Matrix(3,1,0.0);
 
     	Matrix p_max_path = Matrix(3,1,0.0);
@@ -939,25 +961,25 @@ namespace Maneuver
 
     	if (u_d_along_path > 0)
     	{
-    		p_ref_path(0) = p_max_path(0);
+    		m_p_ref_path(0) = p_max_path(0);
     	}
 
     	for (int i = 1; i <= 2; i = i+1)
     	{
     		if (abs(p_a_path(i)) < p_max_path(i))
     		{
-    			p_ref_path(i) = p_a_path(i);
-    			v_ref_path(i) = v_a_path(i);
+    			m_p_ref_path(i) = p_a_path(i);
+    			m_v_ref_path(i) = v_a_path(i);
     		}
     		else
     		{
-    			p_ref_path(i) = p_a_path(i)/abs(p_a_path(i)) * p_max_path(i);
-    			v_ref_path(i) = 0;
+    			m_p_ref_path(i) = p_a_path(i)/abs(p_a_path(i)) * p_max_path(i);
+    			m_v_ref_path(i) = 0;
     		}
     	}
 
-    	Matrix e_p_path = p_ref_path-p_n_path;
-    	Matrix e_v_path = v_ref_path-v_n_path;
+    	Matrix e_p_path = m_p_ref_path-p_n_path;
+    	Matrix e_v_path = m_v_ref_path-v_n_path;
     	m_p_int_value = m_p_int_value + e_p_path*m_time_diff;
 
 
