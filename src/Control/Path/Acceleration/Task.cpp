@@ -74,6 +74,7 @@ namespace Control
         bool enable_slung_control;
         bool enable_hold_position;
         bool enable_mass_division;
+        bool enable_integrator;
         double ctrl_omega_b;
         double ctrl_xi;
         bool enable_wind_ff;
@@ -506,6 +507,12 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Enable or disable division by copter mass in final output");
 
+          param("Enable Integrator", m_args.enable_integrator)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Enable or disable I-term in controller.");
+
           param("Acceleration Controller Bandwidth", m_args.ctrl_omega_b)
           .defaultValue("0.7")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -539,6 +546,8 @@ namespace Control
           .defaultValue("0.05")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Sets the pre-filter time constant. Higher value for slower transition. ");
+
+
 
 
           bind<IMC::EulerAngles>(this);
@@ -597,6 +606,10 @@ namespace Control
             double vKp = m_args.copter_mass_kg * pow(ctrl_omega_n, 2);
             double vKd = 2.0 * m_args.ctrl_xi * ctrl_omega_n * m_args.copter_mass_kg;
             double vKi = (ctrl_omega_n / 10.0) * m_args.Kp;
+
+            if (!m_args.enable_integrator)
+              vKi = 0.0;
+
 
 
 
@@ -1439,6 +1452,7 @@ namespace Control
           {
             newDesiredAcc(i) = 1*copysign(1.0, -state.x + ts.end.x) + state.vx*9.81/15;
           }
+
 
 
           m_desired_control.x = desiredAcc(0);
