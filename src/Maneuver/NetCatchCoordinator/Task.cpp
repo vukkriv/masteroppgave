@@ -1021,8 +1021,8 @@ namespace Maneuver
         	spew("Kp: [%f,%f,%f]", m_args.Kp(0),m_args.Kp(1),m_args.Kp(2));
         	spew("m_time_diff: %lu",m_time_diff);
         	spew("m_p_int_value: [%f,%f,%f]", m_p_int_value(0),m_p_int_value(1),m_p_int_value(2));
-        	spew("p_ref_path: [%f,%f,%f]"  ,p_ref_path(0),p_ref_path(1),p_ref_path(2));
-        	spew("v_ref_path: [%f,%f,%f]"  ,v_ref_path(0),v_ref_path(1),v_ref_path(2));
+        	spew("p_ref_path: [%f,%f,%f]"  ,m_p_ref_path(0),m_p_ref_path(1),m_p_ref_path(2));
+        	spew("v_ref_path: [%f,%f,%f]"  ,m_v_ref_path(0),m_v_ref_path(1),m_v_ref_path(2));
         	spew("p_a_path: [%f,%f,%f]"  ,p_a_path(0),p_a_path(1),p_a_path(2));
         	spew("p_n_path: [%f,%f,%f]"  ,p_n_path(0),p_n_path(1),p_n_path(2));
         	//Matrix delta = p_a_path-p_n_path;
