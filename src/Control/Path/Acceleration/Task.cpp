@@ -270,8 +270,6 @@ namespace Control
         Arguments m_args;
         //! Reference Model
         ReferenceModel m_refmodel;
-        //! Desired speed profile
-        double m_desired_speed;
         //! Current autopilot mode
         IMC::AutopilotMode m_autopilot_mode;
         //! Current integrator value
@@ -316,7 +314,6 @@ namespace Control
 
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
-          m_desired_speed(0),
           m_integrator_value(3,1, 0.0),
           m_timestamp_prev_step(0.0),
           m_controllerType(CT_PID),
@@ -568,9 +565,6 @@ namespace Control
         {
           PathController::onUpdateParameters();
 
-          // update desired speed to max speed
-          m_desired_speed = m_args.refmodel_max_speed;
-
           // Set controller type
           if (m_args.controller_type == "PID")
             m_controllerType = CT_PID;
@@ -655,27 +649,6 @@ namespace Control
 
           m_calculated_angles.setSourceEntity(reserveEntity("Calculated Suspended Angles"));
 
-        }
-
-
-        //! Consumer for DesiredSpeed message.
-        //! @param dspeed message to consume.
-        void
-        consume(const IMC::DesiredSpeed* dspeed)
-        {
-          // overloaded.
-          // Update desired speed
-          if (dspeed->value < m_args.refmodel_max_speed)
-          {
-            m_desired_speed = dspeed->value;
-          }
-          else
-          {
-            m_desired_speed = m_args.refmodel_max_speed;
-            debug("Trying to set a speed above maximum speed. ");
-          }
-
-          PathController::consume(dspeed);
         }
 
         void
