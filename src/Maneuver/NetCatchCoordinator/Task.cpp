@@ -741,7 +741,6 @@ namespace Maneuver
 
         if (abs(delta_p) <= m_startCatch_radius)
         {
-          debug("desiredStartRadius: %f", m_startCatch_radius);
           //inf("Start net-catch mission: delta_p_path_x_mean=%f", delta_p_path_x_mean);
           return true;
         }
@@ -787,7 +786,10 @@ namespace Maneuver
         if (!reset_ramp)
             rampEnabled = true;
         if (rampEnabled && startTime == -1)
-          startTime=Clock::get();
+        {
+        	startTime=Clock::get();
+        	deltaV = (v_ref-v0)/deltaT;
+        }
         double vel = v0;
         double deltaTime = Clock::get() - startTime;
         if (rampEnabled)
@@ -802,10 +804,10 @@ namespace Maneuver
             vel = v0;
         }
         static double startPrint = 0;
-        if (Clock::get() - startPrint > 0.3)
+        if (Clock::get() - startPrint > 1)
         {
-        	spew("deltaV: %f\n",deltaV);
-        	spew("getPathVelocity: \n\t u_d=%f\n\t deltaTime=%f\n\t enabled=%d",vel,deltaTime,rampEnabled);
+        	spew("getPathVelocity:\n");
+        	spew("\t u_d=%f \n  \t deltaTime=%f \n \t enabled=%d",vel,deltaTime,rampEnabled);
         	startPrint = Clock::get();
         }
 
