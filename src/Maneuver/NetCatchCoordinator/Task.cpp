@@ -85,7 +85,7 @@ namespace Maneuver
     struct VirtualRunway
     {
 	  fp64_t lat_start, lon_start, hae_start;
-	  fp64_t lat_end, lon_end, hae_end;
+	  fp64_t lat_end, lon_end, hae_end,  z_off_a;
 
 	  fp32_t box_height, box_width, box_length;
 
@@ -353,10 +353,11 @@ namespace Maneuver
 
   	    m_runway.lat_start = msg->start_lat;
   	    m_runway.lon_start = msg->start_lon;
-  	    m_runway.hae_start = msg->z + msg->z_off;
+  	    m_runway.hae_start = msg->z;
+  	    m_runway.z_off_a = msg->z_off;
   	    m_runway.lon_end = msg->end_lon;
   	    m_runway.lat_end = msg->end_lat;
-  	    m_runway.hae_end = msg->z + msg->z_off;
+  	    m_runway.hae_end = msg->z;
 
   	    m_runway.box_height = msg->lbox_height;
   	    m_runway.box_width = msg->lbox_width;
@@ -614,6 +615,11 @@ namespace Maneuver
           m_p_path[s] = eps;
           m_v_path[s] = eps_dot;
 
+          if (s == AIRCRAFT)
+          {
+        	  m_p_path[s](1) = m_p_path[s](1) - m_args.m_crosstrack_offset;
+        	  m_p_path[s](2) = m_p_path[s](2) + m_runway.z_off_a;
+          }
           //spew("m_p_path[%d]: [%f,%f,%f]",s,m_p_path[s](0),m_p_path[s](1),m_p_path[s](2));
 
           Matrix p_n = getNetPosition(m_p);
@@ -735,6 +741,7 @@ namespace Maneuver
 
         if (abs(delta_p) <= m_startCatch_radius)
         {
+          debug("desiredStartRadius: %f", m_startCatch_radius);
           //inf("Start net-catch mission: delta_p_path_x_mean=%f", delta_p_path_x_mean);
           return true;
         }
@@ -795,9 +802,9 @@ namespace Maneuver
             vel = v0;
         }
         static double startPrint = 0;
-        if (Clock::get() - startPrint > 1)
+        if (Clock::get() - startPrint > 0.3)
         {
-        	spew("deltaV: %f\n");
+        	spew("deltaV: %f\n",deltaV);
         	spew("getPathVelocity: \n\t u_d=%f\n\t deltaTime=%f\n\t enabled=%d",vel,deltaTime,rampEnabled);
         	startPrint = Clock::get();
         }
@@ -985,15 +992,17 @@ namespace Maneuver
     	}
 
     	static double startPrint = 0;
-        if (Clock::get() - startPrint > 1)
+        if (Clock::get() - startPrint > 0.3)
         {
         	spew("Kp: [%f,%f,%f]", m_args.Kp(0),m_args.Kp(1),m_args.Kp(2));
-        	spew("m_time_diff: %d",m_time_diff);
+        	spew("m_time_diff: %lu",m_time_diff);
         	spew("m_p_int_value: [%f,%f,%f]", m_p_int_value(0),m_p_int_value(1),m_p_int_value(2));
         	spew("p_ref_path: [%f,%f,%f]"  ,p_ref_path(0),p_ref_path(1),p_ref_path(2));
         	spew("v_ref_path: [%f,%f,%f]"  ,v_ref_path(0),v_ref_path(1),v_ref_path(2));
         	spew("p_a_path: [%f,%f,%f]"  ,p_a_path(0),p_a_path(1),p_a_path(2));
         	spew("p_n_path: [%f,%f,%f]"  ,p_n_path(0),p_n_path(1),p_n_path(2));
+        	//Matrix delta = p_a_path-p_n_path;
+        	//inf("norm delta %f-> des speed %f\n", delta.norm_2(), u_d_along_path);
         	spew("  v_path: [%f,%f,%f]\n\n",v_path(0),v_path(1),v_path(2));
 
         	startPrint = Clock::get();
