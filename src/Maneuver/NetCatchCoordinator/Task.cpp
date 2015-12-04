@@ -501,11 +501,15 @@ namespace Maneuver
             m_ud = getPathVelocity(0, m_u_ref, m_ad, false);
 
             if (catched())
+            {
               m_curr_state = IMC::NetRecoveryState::NR_CATCH;
-
+            }
+            else if (aircraftPassed())
+            {
+              m_curr_state = IMC::NetRecoveryState::NR_STOP;
+            }
             if (endAtRunway())
               m_curr_state = IMC::NetRecoveryState::NR_END;
-
             break;
           }
           case IMC::NetRecoveryState::NR_CATCH:
@@ -768,9 +772,17 @@ namespace Maneuver
       {
     	  //simulation: position check
     	  //real life: weight cell in combination with rotary sensor
-    	  double eps = 0.1;
     	  Matrix diff = m_p_path[COPTER_LEAD]-m_p_path[AIRCRAFT];
-    	  if ( diff.norm_2() < eps && m_v_path[AIRCRAFT](0) > 0)
+    	  if ( diff.norm_2() < m_args.m_coll_eps && m_v_path[AIRCRAFT](0) > 0)
+    		  return true;
+    	  return false;
+      }
+
+      bool
+      aircraftPassed()
+      {
+    	  Matrix diff = m_p_path[COPTER_LEAD]-m_p_path[AIRCRAFT];
+    	  if (diff(0)< 0)
     		  return true;
     	  return false;
       }
@@ -781,7 +793,7 @@ namespace Maneuver
     	Matrix p_n = getNetPosition(m_p);
       	Matrix p_to_end = p_n - m_runway.end_NED;
       	double dist_left = p_to_end.norm_2();
-      	if (dist_left <= m_args.m_endCatch_radius)
+      	if (dist_left <= m_args.m_endCatch_radius || p_to_end(0) > 0)
     	  return true;
       	return false;
       }
@@ -959,33 +971,59 @@ namespace Maneuver
     	p_max_path(1) = m_runway.box_width/2;
     	p_max_path(2) = m_runway.box_height/2;
 
-    	if (u_d_along_path > 0)
+    	if (m_curr_state == IMC::NetRecoveryState::NR_END)
     	{
     		m_p_ref_path(0) = p_max_path(0);
     	}
-
-    	for (int i = 1; i <= 2; i = i+1)
+    	else
     	{
-    		if (abs(p_a_path(i)) < p_max_path(i))
-    		{
-    			m_p_ref_path(i) = p_a_path(i);
-    			m_v_ref_path(i) = v_a_path(i);
-    		}
-    		else
-    		{
-    			m_p_ref_path(i) = p_a_path(i)/abs(p_a_path(i)) * p_max_path(i);
-    			m_v_ref_path(i) = 0;
-    		}
+    		m_p_ref_path(0) = 0;
+    	}
+
+    	if (m_curr_state != IMC::NetRecoveryState::NR_CATCH)
+    	{
+			for (int i = 1; i <= 2; i = i+1)
+			{
+				if (abs(p_a_path(i)) < p_max_path(i))
+				{
+					m_p_ref_path(i) = p_a_path(i);
+					m_v_ref_path(i) = v_a_path(i);
+				}
+				else
+				{
+					m_p_ref_path(i) = p_a_path(i)/abs(p_a_path(i)) * p_max_path(i);
+					m_v_ref_path(i) = 0;
+				}
+			}
+    	}
+    	else
+    	{
+    		m_v_ref_path(1) = 0;
+    		m_v_ref_path(2) = 0;
     	}
 
     	Matrix e_p_path = m_p_ref_path-p_n_path;
     	Matrix e_v_path = m_v_ref_path-v_n_path;
     	m_p_int_value = m_p_int_value + e_p_path*m_time_diff;
 
+    	if(m_curr_state == IMC::NetRecoveryState::NR_STANDBY ||
+    	   m_curr_state == IMC::NetRecoveryState::NR_APPROACH ||
+    	   m_curr_state == IMC::NetRecoveryState::NR_CATCH ||
+    	   m_curr_state == IMC::NetRecoveryState::NR_END)
+    	{
+    		v_path(0) = m_args.Kp(0)*e_p_path(0) + m_args.Ki(0)*m_p_int_value(0) + m_args.Kd(0)*e_v_path(0);
+        	v_path(1) = m_args.Kp(1)*e_p_path(1) + m_args.Ki(1)*m_p_int_value(1) + m_args.Kd(1)*e_v_path(1);
+        	v_path(2) = m_args.Kp(2)*e_p_path(2) + m_args.Ki(2)*m_p_int_value(2) + m_args.Kd(2)*e_v_path(2);
 
-
-    	if (p_n_path(0) < p_max_path(0)-m_args.m_endCatch_radius && u_d_along_path > 0)
-		{
+        	//limit velocity
+    		if (v_path.norm_2() > m_args.max_norm_v)
+    		{
+    			v_path = abs(m_args.max_norm_v) * v_path/v_path.norm_2();
+    		}
+    	}
+    	else if(m_curr_state == IMC::NetRecoveryState::NR_START ||
+    	    	m_curr_state == IMC::NetRecoveryState::NR_CATCH)
+    	{
     		e_p_path(0) = 0;
     		v_path(0) = u_d_along_path;
 
@@ -1001,18 +1039,6 @@ namespace Maneuver
 
 			v_path(1) = v_path_yz(0);
 			v_path(2) = v_path_yz(1);
-		}
-    	else
-    	{
-    		v_path(0) = m_args.Kp(0)*e_p_path(0) + m_args.Ki(0)*m_p_int_value(0) + m_args.Kd(0)*e_v_path(0);
-        	v_path(1) = m_args.Kp(1)*e_p_path(1) + m_args.Ki(1)*m_p_int_value(1) + m_args.Kd(1)*e_v_path(1);
-        	v_path(2) = m_args.Kp(2)*e_p_path(2) + m_args.Ki(2)*m_p_int_value(2) + m_args.Kd(2)*e_v_path(2);
-
-        	//limit velocity
-    		if (v_path.norm_2() > m_args.max_norm_v)
-    		{
-    			v_path = abs(m_args.max_norm_v) * v_path/v_path.norm_2();
-    		}
     	}
 
     	static double startPrint = 0;
