@@ -971,7 +971,8 @@ namespace Maneuver
     	p_max_path(1) = m_runway.box_width/2;
     	p_max_path(2) = m_runway.box_height/2;
 
-    	if (m_curr_state == IMC::NetRecoveryState::NR_END)
+    	if ( m_curr_state == IMC::NetRecoveryState::NR_CATCH ||
+    		 m_curr_state == IMC::NetRecoveryState::NR_END)
     	{
     		m_p_ref_path(0) = p_max_path(0);
     	}
@@ -1118,10 +1119,8 @@ namespace Maneuver
 
         //dispatch control if ready
 
-    	if(m_curr_state == IMC::NetRecoveryState::NR_STANDBY  ||
-    	   m_curr_state == IMC::NetRecoveryState::NR_APPROACH ||
-    	   m_curr_state == IMC::NetRecoveryState::NR_START    ||
-    	   m_curr_state == IMC::NetRecoveryState::NR_END	)
+    	if(m_curr_state != IMC::NetRecoveryState::NR_STOP    &&
+    	   m_curr_state != IMC::NetRecoveryState::NR_INIT	)
     	{
     		Matrix p_a_path;
     		Matrix v_a_path;
