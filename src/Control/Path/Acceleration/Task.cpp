@@ -505,7 +505,7 @@ namespace Control
           .description("Enable or disable division by copter mass in final output");
 
           param("Enable Integrator", m_args.enable_integrator)
-          .defaultValue("false")
+          .defaultValue("true")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Enable or disable I-term in controller.");
