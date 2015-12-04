@@ -101,7 +101,7 @@ namespace Control
         PC_ERROR = 11
       };
 
-      static const int NUM_PARCELS = 11;
+      static const int NUM_PARCELS = 12;
 
       enum ControllerType {
         CT_PID,
