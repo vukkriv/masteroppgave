@@ -74,6 +74,7 @@ namespace Control
         bool enable_slung_control;
         bool enable_hold_position;
         bool enable_mass_division;
+        bool enable_integrator;
         double ctrl_omega_b;
         double ctrl_xi;
         bool enable_wind_ff;
@@ -100,7 +101,7 @@ namespace Control
         PC_ERROR = 11
       };
 
-      static const int NUM_PARCELS = 11;
+      static const int NUM_PARCELS = 12;
 
       enum ControllerType {
         CT_PID,
@@ -269,8 +270,6 @@ namespace Control
         Arguments m_args;
         //! Reference Model
         ReferenceModel m_refmodel;
-        //! Desired speed profile
-        double m_desired_speed;
         //! Current autopilot mode
         IMC::AutopilotMode m_autopilot_mode;
         //! Current integrator value
@@ -315,7 +314,6 @@ namespace Control
 
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
-          m_desired_speed(0),
           m_integrator_value(3,1, 0.0),
           m_timestamp_prev_step(0.0),
           m_controllerType(CT_PID),
@@ -506,6 +504,12 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Enable or disable division by copter mass in final output");
 
+          param("Enable Integrator", m_args.enable_integrator)
+          .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Enable or disable I-term in controller.");
+
           param("Acceleration Controller Bandwidth", m_args.ctrl_omega_b)
           .defaultValue("0.7")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -541,6 +545,8 @@ namespace Control
           .description("Sets the pre-filter time constant. Higher value for slower transition. ");
 
 
+
+
           bind<IMC::EulerAngles>(this);
           bind<IMC::EstimatedState>(this);
 
@@ -558,9 +564,6 @@ namespace Control
         onUpdateParameters(void)
         {
           PathController::onUpdateParameters();
-
-          // update desired speed to max speed
-          m_desired_speed = m_args.refmodel_max_speed;
 
           // Set controller type
           if (m_args.controller_type == "PID")
@@ -597,6 +600,10 @@ namespace Control
             double vKp = m_args.copter_mass_kg * pow(ctrl_omega_n, 2);
             double vKd = 2.0 * m_args.ctrl_xi * ctrl_omega_n * m_args.copter_mass_kg;
             double vKi = (ctrl_omega_n / 10.0) * m_args.Kp;
+
+            if (!m_args.enable_integrator)
+              vKi = 0.0;
+
 
 
 
@@ -642,27 +649,6 @@ namespace Control
 
           m_calculated_angles.setSourceEntity(reserveEntity("Calculated Suspended Angles"));
 
-        }
-
-
-        //! Consumer for DesiredSpeed message.
-        //! @param dspeed message to consume.
-        void
-        consume(const IMC::DesiredSpeed* dspeed)
-        {
-          // overloaded.
-          // Update desired speed
-          if (dspeed->value < m_args.refmodel_max_speed)
-          {
-            m_desired_speed = dspeed->value;
-          }
-          else
-          {
-            m_desired_speed = m_args.refmodel_max_speed;
-            debug("Trying to set a speed above maximum speed. ");
-          }
-
-          PathController::consume(dspeed);
         }
 
         void
@@ -1441,6 +1427,7 @@ namespace Control
           }
 
 
+
           m_desired_control.x = desiredAcc(0);
           m_desired_control.y = desiredAcc(1);
           m_desired_control.z = desiredAcc(2);
@@ -1458,159 +1445,6 @@ namespace Control
 
           // Update step-time
           m_timestamp_prev_step = Clock::get();
-
-
-
-
-/*
-          //if (m_controllerType == CT_PID || m_controllerType == CT_PID_INPUT || )
-          // always run baseline PID controller for now.
-          if (true)
-          {
-
-
-
-            // if using delayed, we are staying put and using sstart coordinates
-            if (m_args.activate_delayed_feedback)
-            {
-              // initiate new error variables
-              error_p = m_delayed_feedback_desired_pos - curPos;
-              error_d = -curVel;
-              refAcc  = Matrix(3,1, 0.0);
-
-
-
-              double pd =  0.001;
-              double omega_n = std::sqrt(Math::c_gravity/m_args.suspended_rope_length);
-              double xi = pd/(2*omega_n*(m_args.suspended_load_mass_g/1000.0));
-              double omega_d = omega_n*std::sqrt(1 - std::pow(xi,2));
-              double Td = 2*Math::c_pi/omega_d;
-              double tau_d = 0.325*Td + m_args.tau_d_extra_ms / 1000.0;
-              double Gd    = 0.325 * m_args.Gd_extra;
-
-              double pL = m_args.suspended_rope_length;
-
-              debug("Angle history size: %lu", m_anglehistory.size());
-
-
-
-
-              // check if we have angles far enough back
-              while ( m_anglehistory.size() >=1 && now - m_anglehistory.front().timestamp >= tau_d)
-              {
-
-                LoadAngle oldAngle = m_anglehistory.front().angle;
-
-
-                addPos(0)     =  sin(oldAngle.theta);
-                addPos(1)     = -sin(oldAngle.phi);
-
-
-                addVel(0)     =  cos(oldAngle.theta) * oldAngle.dtheta;
-                addVel(1)     = -cos(oldAngle.phi)   * oldAngle.dphi;
-
-
-                addAcc(0)     = -sin(oldAngle.theta) * oldAngle.dtheta;
-                addAcc(1)     =  sin(oldAngle.phi)   * oldAngle.dphi;
-
-                addPos = Gd*pL*addPos;
-                addVel = Gd*pL*addVel;
-                addAcc = Gd*pL*addAcc;
-
-
-                debug("Delayed: Calculating");
-
-                // if the next one is also valid, it is ok to delete this one. And we continue the loop
-                if ( m_anglehistory.size() >= 2 && (now - m_anglehistory.at(1).timestamp >= tau_d))
-                {
-                  m_anglehistory.pop_front();
-                }
-                else
-                  break;
-
-
-
-
-              }
-
-              error_p += addPos;
-              error_d += addVel;
-              refAcc  += addAcc;
-
-              // log
-              m_parcels[PC_DELAYED_X].p = addPos(0);
-              m_parcels[PC_DELAYED_X].d = addVel(0);
-              m_parcels[PC_DELAYED_X].i = addAcc(0);
-
-              m_parcels[PC_DELAYED_Y].p = addPos(1);
-              m_parcels[PC_DELAYED_Y].d = addVel(1);
-              m_parcels[PC_DELAYED_Y].i = addAcc(1);
-
-              // New setpoint for logging
-              Matrix newPosRef = m_delayed_feedback_desired_pos + addPos;
-              m_setpoint_log.x = newPosRef(0);
-              m_setpoint_log.y = newPosRef(1);
-              m_setpoint_log.z = newPosRef(2);
-              m_setpoint_log.vx = addVel(0);
-              m_setpoint_log.vy = addVel(1);
-              m_setpoint_log.vz = addVel(2);
-
-              dispatch(m_parcels[PC_DELAYED_X]);
-              dispatch(m_parcels[PC_DELAYED_Y]);
-            }
-
-            // If using input shaper, we are using some different error signals
-            if ((m_controllerType == CT_PID_INPUT || m_controllerType == CT_SUSPENDED_INPUT))
-            {
-
-              // Store current history
-              m_refhistory.push(ReferenceHistoryContainer(m_refmodel.x, now));
-
-              Matrix t2Ref = Matrix(9, 1, 0.0);
-              Matrix new_ref = Matrix(9, 1, 0.0);
-              // Peek first, to see if we have one far enough back in time
-              if (now - m_refhistory.front().timestamp >= m_input_cfg.t2)
-              {
-                t2Ref = m_refhistory.front().state;
-                m_refhistory.pop();
-
-                new_ref = m_refmodel.x * m_input_cfg.A1 + t2Ref * m_input_cfg.A2;
-              }
-              else
-              {
-                // Use only the first refmodel
-                new_ref = m_refhistory.front().state;
-              }
-
-              // Calculate new reference state
-
-              // Actually disable input-shaping
-              new_ref = m_refmodel.x;
-
-
-              // New setpoint for logging
-              m_setpoint_log.x = new_ref(0) + addPos(0);
-              m_setpoint_log.y = new_ref(1) + addPos(1);
-              m_setpoint_log.z = new_ref(2) + addPos(2);
-              m_setpoint_log.vx = new_ref(3) + addVel(0);
-              m_setpoint_log.vy = new_ref(4) + addVel(1);
-              m_setpoint_log.vz = new_ref(5) + addVel(2);
-
-              // Calculate new error states
-              error_p = new_ref.get(0,2, 0,0) - curPos + addPos;
-              error_d = new_ref.get(3,5, 0,0) - curVel + addVel;
-              refAcc  = new_ref.get(6,8, 0,0) + addAcc;
-
-            }
-
-
-          }
-
-          if(m_controllerType == CT_SUSPENDED || m_controllerType == CT_SUSPENDED_INPUT)
-          {
-
-          }
-  */
 
 
 
@@ -1752,7 +1586,7 @@ namespace Control
         //! @return  Rotation matrix.
         Matrix Rzyx(double phi, double theta, double psi) const
         {
-          double R_en_elements[] = {cos(psi)*cos(theta), (-sin(psi)*cos(phi))+(cos(psi)*sin(theta)*sin(psi)), (sin(psi)*sin(phi))+(cos(psi)*cos(phi)*sin(theta)) ,
+          double R_en_elements[] = {cos(psi)*cos(theta), (-sin(psi)*cos(phi))+(cos(psi)*sin(theta)*sin(phi)), (sin(psi)*sin(phi))+(cos(psi)*cos(phi)*sin(theta)) ,
               sin(psi)*cos(theta), (cos(psi)*cos(phi))+(sin(phi)*sin(theta)*sin(psi)), (-cos(psi)*sin(phi))+(sin(theta)*sin(psi)*cos(phi)),
               -sin(theta), cos(theta)*sin(phi), cos(theta)*cos(phi)};
           return Matrix(R_en_elements,3,3);
