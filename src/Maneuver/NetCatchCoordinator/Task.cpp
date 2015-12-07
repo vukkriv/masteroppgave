@@ -959,7 +959,6 @@ namespace Maneuver
   		return v_n;
       }
 
-
       //! Control loop in path-frame
       Matrix
       getDesiredPathVelocity(double u_d_along_path, Matrix p_a_path, Matrix v_a_path, Matrix p_n_path, Matrix v_n_path)
@@ -985,14 +984,14 @@ namespace Maneuver
     	{
 			for (int i = 1; i <= 2; i = i+1)
 			{
-				if (abs(p_a_path(i)) < p_max_path(i))
+				if (sqrt(pow(p_a_path(i),2)) < p_max_path(i))
 				{
 					m_p_ref_path(i) = p_a_path(i);
 					m_v_ref_path(i) = v_a_path(i);
 				}
 				else
 				{
-					m_p_ref_path(i) = p_a_path(i)/abs(p_a_path(i)) * p_max_path(i);
+					m_p_ref_path(i) = p_a_path(i)/sqrt(pow(p_a_path(i),2)) * p_max_path(i);
 					m_v_ref_path(i) = 0;
 				}
 			}
@@ -1009,7 +1008,6 @@ namespace Maneuver
 
     	if(m_curr_state == IMC::NetRecoveryState::NR_STANDBY ||
     	   m_curr_state == IMC::NetRecoveryState::NR_APPROACH ||
-    	   m_curr_state == IMC::NetRecoveryState::NR_CATCH ||
     	   m_curr_state == IMC::NetRecoveryState::NR_END)
     	{
     		v_path(0) = m_args.Kp(0)*e_p_path(0) + m_args.Ki(0)*m_p_int_value(0) + m_args.Kd(0)*e_v_path(0);
@@ -1019,11 +1017,11 @@ namespace Maneuver
         	//limit velocity
     		if (v_path.norm_2() > m_args.max_norm_v)
     		{
-    			v_path = abs(m_args.max_norm_v) * v_path/v_path.norm_2();
+    			v_path = sqrt(pow(m_args.max_norm_v,2)) * v_path/v_path.norm_2();
     		}
     	}
     	else if(m_curr_state == IMC::NetRecoveryState::NR_START ||
-    	    	m_curr_state == IMC::NetRecoveryState::NR_CATCH)
+    	     	m_curr_state == IMC::NetRecoveryState::NR_CATCH)
     	{
     		e_p_path(0) = 0;
     		v_path(0) = u_d_along_path;
@@ -1066,7 +1064,7 @@ namespace Maneuver
       Matrix
       getDesiredLocalVelocity(Matrix v_p, double course, double pitch)
       {
-    	return Rzyx(course, pitch, 0)*v_p;
+    	return Rzyx(0.0, pitch, course)*v_p;
       }
 
       virtual void
