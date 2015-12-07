@@ -176,7 +176,7 @@ namespace Control
 
           if (F_des.norm_2() > m_args.max_norm_F)
           {
-        	  F_des = abs(m_args.max_norm_F) * F_des/F_des.norm_2();
+        	  F_des = sqrt(pow(m_args.max_norm_F,2)) * F_des/F_des.norm_2();
           }
           return F_des;
       }
