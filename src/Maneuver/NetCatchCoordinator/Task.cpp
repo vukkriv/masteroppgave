@@ -53,6 +53,8 @@ namespace Maneuver
       //! Disable Z flag, this will utilize new rate controller on some targets
       bool disable_Z;
 
+      // Max vel approach
+      double max_vy_app;
       //! Moving mean window size
       double mean_ws;
       //! Desired velocity of net at impact
@@ -222,25 +224,25 @@ namespace Maneuver
 
  	    param("Offset cross-track", m_args.m_crosstrack_offset)
 	    .visibility(Tasks::Parameter::VISIBILITY_USER)
-	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
+//	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
 	    .defaultValue("0.0")
 	    .description("Cross-track offset");
 
 	    param("Stop at end-of-runway", m_args.enable_stop_endRunway)
 	    .visibility(Tasks::Parameter::VISIBILITY_USER)
-	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
+//	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
 	    .defaultValue("false")
 	    .description("Enable stop at end of runway");
 
  	    param("Enable Mean Window Aircraft", m_args.use_mean_window_aircraft)
 	    .visibility(Tasks::Parameter::VISIBILITY_USER)
-	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
+//	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
  	    .defaultValue("false")
  	    .description("Use mean window on aircraft states");
 
  	    param("Frequency", m_args.m_freq)
 	    .visibility(Tasks::Parameter::VISIBILITY_USER)
-	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
+//	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .defaultValue("1.0")
         .description("Controller frequency");
 
@@ -251,19 +253,19 @@ namespace Maneuver
 
         param("Coordinated Catch", m_args.enable_coord)
 	    .visibility(Tasks::Parameter::VISIBILITY_USER)
-	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
+//	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .defaultValue("false")
         .description("Flag to enable net catch with two multicopters");
 
         param("Enable Catch", m_args.enable_catch)
 	    .visibility(Tasks::Parameter::VISIBILITY_USER)
-	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
+//	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .defaultValue("false")
         .description("Flag to enable catch state of the state-machine");
         
         param("Mean Window Size", m_args.mean_ws)
 	    .visibility(Tasks::Parameter::VISIBILITY_USER)
-	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
+//	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .defaultValue("1.0")
         .description("Number of samples in moving average window");
 
@@ -273,22 +275,26 @@ namespace Maneuver
         param("Maximum Cross-Track Error Net", m_args.eps_ct_n)
         .units(Units::Meter);
 
+        param("Max vel y approach", m_args.max_vy_app)
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .defaultValue("1");
+
         param("Desired collision radius", m_args.m_coll_r)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+//      .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .defaultValue("100.0")
         .units(Units::Meter);
 
         param("Radius at recovery", m_args.m_coll_eps)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        .scope(Tasks::Parameter::SCOPE_MANEUVER)
+//      .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .defaultValue("0.1")
         .units(Units::Meter)
         .description("Desired radius to confirm recovery");
 
         param("Desired switching radius", m_args.m_endCatch_radius)
 	    .visibility(Tasks::Parameter::VISIBILITY_USER)
-	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
+//	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
         .defaultValue("10.0")
         .units(Units::Meter);
 
@@ -744,7 +750,7 @@ namespace Maneuver
       bool
       aircraftApproaching()
       {
-    	  if (m_v_path[AIRCRAFT](0) > 0 && m_p_path[AIRCRAFT](0) < 0)
+    	  if (m_v_path[AIRCRAFT](0) > 0 && m_p_path[AIRCRAFT](0) < 0 && sqrt(pow(m_v_path[AIRCRAFT](1),2)) < m_args.max_vy_app)
     		  return true;
     	  return false;
       }
@@ -885,7 +891,7 @@ namespace Maneuver
 		  state.vy_n = v_n(1);
 		  state.vz_n = v_n(2);
 
-		  state.vx_n_d = m_v_ref_path(0);
+		  state.vx_n_d = m_ud;
 		  state.vy_n_d = m_v_ref_path(1);
 		  state.vz_n_d = m_v_ref_path(2);
 
@@ -970,6 +976,8 @@ namespace Maneuver
     	p_max_path(1) = m_runway.box_width/2;
     	p_max_path(2) = m_runway.box_height/2;
 
+
+
     	if ( m_curr_state == IMC::NetRecoveryState::NR_CATCH ||
     		 m_curr_state == IMC::NetRecoveryState::NR_END)
     	{
@@ -1023,7 +1031,7 @@ namespace Maneuver
     	else if(m_curr_state == IMC::NetRecoveryState::NR_START ||
     	     	m_curr_state == IMC::NetRecoveryState::NR_CATCH)
     	{
-    		e_p_path(0) = 0;
+     		e_p_path(0) = 0;
     		v_path(0) = u_d_along_path;
 
         	Matrix v_path_yz = Matrix(2,1,0.0);
@@ -1039,6 +1047,7 @@ namespace Maneuver
 			v_path(1) = v_path_yz(0);
 			v_path(2) = v_path_yz(1);
     	}
+
 
     	static double startPrint = 0;
         if (Clock::get() - startPrint > 0.3)
