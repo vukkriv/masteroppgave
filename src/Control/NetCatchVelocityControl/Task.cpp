@@ -50,6 +50,7 @@ namespace Control
       //!velocity Controller parameters
       Matrix Kp;
 	  Matrix Ki;
+	  Matrix Kd;
 
 	  double max_norm_F;
 
@@ -70,6 +71,7 @@ namespace Control
       //! Last EstimatedLocalState received
       IMC::DesiredVelocity m_v_des;
       IMC::EstimatedLocalState m_est_l_state;
+      IMC::Acceleration m_a_est;
 
       Matrix m_v_int_value;
 
@@ -105,6 +107,11 @@ namespace Control
         .visibility(Tasks::Parameter::VISIBILITY_USER)
         .description("Velocity Controller tuning parameter Ki");
 
+        param("Kd Velocity Control", m_args.Kd)
+        .defaultValue("0.0,0.0,0.0")
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .description("Velocity Controller tuning parameter Kd");
+
         param("Maximum Normalised Force", m_args.max_norm_F)
         .defaultValue("5.0")
         .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -118,6 +125,7 @@ namespace Control
         // Bind incoming IMC messages
         bind<IMC::DesiredVelocity>(this);
         bind<IMC::EstimatedLocalState>(this);
+        bind<IMC::Acceleration>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -153,9 +161,15 @@ namespace Control
 		  }
  	  }
 
+      void
+      consume(const IMC::Acceleration* msg)
+      {
+    	  m_a_est = *msg;
+      }
+
       //! Control velocity in NED frame
       Matrix
-	  vel_con(Matrix v_est, Matrix v_des)
+	  vel_con(Matrix v_est, Matrix a_est, Matrix v_des)
       {
           static double startPrint = 0;
           if (Clock::get() - startPrint > 1)
@@ -166,13 +180,14 @@ namespace Control
           }
 
     	  Matrix e_v_est = v_des-v_est;
+    	  Matrix e_a_est = -a_est;
 
 		  m_v_int_value = m_v_int_value + e_v_est*m_time_diff;
 
 		  Matrix F_des = Matrix(3,1,0.0);
-		  F_des(0) = m_args.Kp(0)*e_v_est(0) + m_args.Ki(0)*m_v_int_value(0);
-		  F_des(1) = m_args.Kp(1)*e_v_est(1) + m_args.Ki(1)*m_v_int_value(1);
-		  F_des(2) = m_args.Kp(2)*e_v_est(2) + m_args.Ki(2)*m_v_int_value(2);
+		  F_des(0) = m_args.Kp(0)*e_v_est(0) + m_args.Ki(0)*m_v_int_value(0) + m_args.Kd(0)*e_a_est(0);
+		  F_des(1) = m_args.Kp(1)*e_v_est(1) + m_args.Ki(1)*m_v_int_value(1) + m_args.Kd(1)*e_a_est(1);
+		  F_des(2) = m_args.Kp(2)*e_v_est(2) + m_args.Ki(2)*m_v_int_value(2) + m_args.Kd(2)*e_a_est(2);
 
           if (F_des.norm_2() > m_args.max_norm_F)
           {
@@ -227,12 +242,17 @@ namespace Control
 		v_est(1) = m_est_l_state.vy;
 		v_est(2) = m_est_l_state.vz;
 
+		Matrix a_est = Matrix(3,1,0);
+		a_est(0) = m_a_est.x;
+		a_est(1) = m_a_est.y;
+		a_est(2) = m_a_est.z;
+
     	Matrix v_des = Matrix(3,1,0);
     	v_des(0) = m_v_des.u;
     	v_des(1) = m_v_des.v;
     	v_des(2) = m_v_des.w;
 
-    	Matrix F_des   = vel_con(v_est,v_des);
+    	Matrix F_des   = vel_con(v_est,a_est,v_des);
 
     	sendDesiredForce(F_des);
 
