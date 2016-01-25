@@ -126,7 +126,7 @@ struct Task: public DUNE::Tasks::Task
 
 		init_done =  false;
 		bind<IMC::BeaconDistance>(this);
-		bind<IMC::RtkFix>(this);
+		bind<IMC::GpsFixRtk>(this);
 	}
 
 	//! Update internal state with new parameter values.
@@ -180,7 +180,7 @@ struct Task: public DUNE::Tasks::Task
 		}
 	}
 	void
-	consume(const IMC::RtkFix* rtk)
+	consume(const IMC::GpsFixRtk* rtk)
 	{
 		if (rtk->RTK_FIXED)
 		{
