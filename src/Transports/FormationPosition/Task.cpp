@@ -70,7 +70,7 @@ namespace Transports
       fp32_t m_ref_hae;
       bool m_ref_valid;
       //! Previous RtkFix received
-      IMC::RtkFix m_prev_RtkFix;
+      IMC::GpsFixRtk m_prev_RtkFix;
 
       //! Constructor.
       //! @param[in] name task name.
@@ -116,7 +116,7 @@ namespace Transports
         .description("Threshold for distance between two consecutive RTK Fixes");
 
         // Bind to incoming IMC messages
-        bind<IMC::RtkFix>(this);
+        bind<IMC::GpsFixRtk>(this);
         bind<IMC::EstimatedState>(this);
         bind<IMC::FormCoord>(this);
       }
@@ -191,7 +191,7 @@ namespace Transports
 
 
       void
-      consume(const IMC::RtkFix* msg)
+      consume(const IMC::GpsFixRtk* msg)
       {
         spew("Got RTK Fix");
 
@@ -199,15 +199,15 @@ namespace Transports
         {
           switch (msg->type)
           {
-            case IMC::RtkFix::RTK_NONE:
+            case IMC::GpsFixRtk::RTK_NONE:
               break;
-            case IMC::RtkFix::RTK_OBS:
+            case IMC::GpsFixRtk::RTK_OBS:
               break;
-            case IMC::RtkFix::RTK_FLOAT:
+            case IMC::GpsFixRtk::RTK_FLOAT:
               break;
-            case IMC::RtkFix::RTK_FIXED:
+            case IMC::GpsFixRtk::RTK_FIXED:
               // Check for jump in fix
-              if (m_prev_RtkFix.type == IMC::RtkFix::RTK_FIXED)
+              if (m_prev_RtkFix.type == IMC::GpsFixRtk::RTK_FIXED)
               {
                 Matrix diff_ned(3,1,0);
                 diff_ned(0) = msg->n - m_prev_RtkFix.n;
