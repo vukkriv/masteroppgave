@@ -64,7 +64,7 @@ namespace Sensors
       //! GPS Fix message.
       IMC::GpsFix m_fix;
       //! RTK Fix message.
-      IMC::RtkFix m_rtkfix;
+      IMC::GpsFixRtk m_rtkfix;
       //! Task arguments.
       Arguments m_args;
       //! Input watchdog.
@@ -393,15 +393,15 @@ namespace Sensors
         {
           if(Q == 1) // FIX
           {
-            m_rtkfix.type = IMC::RtkFix::RTK_FIXED;
+            m_rtkfix.type = IMC::GpsFixRtk::RTK_FIXED;
           }
           else if(Q == 2) // FLOAT
           {
-            m_rtkfix.type = IMC::RtkFix::RTK_FLOAT;
+            m_rtkfix.type = IMC::GpsFixRtk::RTK_FLOAT;
           }
           else
           {
-            m_rtkfix.type = IMC::RtkFix::RTK_NONE;
+            m_rtkfix.type = IMC::GpsFixRtk::RTK_NONE;
           }
 
         }
@@ -414,6 +414,14 @@ namespace Sensors
         {
           // Invert Z axis
           m_rtkfix.d = -m_rtkfix.d;
+
+          // Set validity flags
+          m_rtkfix.validity |= IMC::GpsFixRtk::RFV_VALID_POS;
+        }
+        else
+        {
+          // Disable validity flags
+          m_rtkfix.validity &= ~IMC::GpsFixRtk::RFV_VALID_POS;
         }
         // Set North,East and Down velocity
         if (m_args.ned_velocity_available
@@ -423,9 +431,20 @@ namespace Sensors
         {
           //Invert Z axis
           m_rtkfix.v_d = -m_rtkfix.v_d;
+
+          // Set validity flags
+          m_rtkfix.validity |= IMC::GpsFixRtk::RFV_VALID_VEL;
+        }
+        else
+        {
+          // Disable validity flags
+          m_rtkfix.validity &= ~IMC::GpsFixRtk::RFV_VALID_VEL;
         }
         // Set time of week (TOW)
         readDecimal(parts[1],m_rtkfix.tow);
+
+        // Sat validity flags
+        m_rtkfix.validity |= IMC::GpsFixRtk::RFV_VALID_TIME;
 
         m_wdog.reset();
         dispatch(m_rtkfix);
