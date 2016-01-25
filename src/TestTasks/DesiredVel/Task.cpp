@@ -62,6 +62,7 @@ namespace TestTasks
         m_last_update = Clock::get();
         //inf("timestep: %f \n ",timestep);
 
+        (void) timestep;
         m_setpoint.x = 10;
         m_setpoint.y = 20;
         m_setpoint.z = 30;
