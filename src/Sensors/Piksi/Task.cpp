@@ -121,7 +121,7 @@ namespace Sensors
       uint16_t m_udp_port;
       bool m_error_base_missing_data;
       //! Navdata from Piksi - Rover
-      IMC::RtkFix m_rtk_fix;
+      IMC::GpsFixRtk m_rtk_fix;
       IMC::GpsFix m_gps_fix;
       uint16_t m_gps_week;
       double m_last_baseline_time;
@@ -596,12 +596,12 @@ namespace Sensors
               if (now - m_base_last_pkt_time >= m_args.observations_timeout)
               {
                 // We don't have a baseline solution
-                m_rtk_fix.type = IMC::RtkFix::RTK_NONE;
+                m_rtk_fix.type = IMC::GpsFixRtk::RTK_NONE;
               }
               else
               {
                 // We don't have a baseline solution, but we are receving observation data from BASE
-                m_rtk_fix.type = IMC::RtkFix::RTK_OBS;
+                m_rtk_fix.type = IMC::GpsFixRtk::RTK_OBS;
               }
 
               // Set time for baseline so that we only send "empty" RtkFix every "baseline_timeout"
@@ -785,13 +785,18 @@ namespace Sensors
         m_rtk_fix.e = m_pos_scale*(fp32_t)msg.e;
         m_rtk_fix.d = m_pos_scale*(fp32_t)msg.d;
         m_rtk_fix.satellites = (uint8_t)msg.n_sats;
+
+        // Set validity
+        m_rtk_fix.validity |= IMC::GpsFixRtk::RFV_VALID_POS;
+        m_rtk_fix.validity |= IMC::GpsFixRtk::RFV_VALID_TIME;
+
         switch (msg.flags)
         {
           case 0:
-            m_rtk_fix.type = IMC::RtkFix::RTK_FLOAT;
+            m_rtk_fix.type = IMC::GpsFixRtk::RTK_FLOAT;
             break;
           case 1:
-            m_rtk_fix.type = IMC::RtkFix::RTK_FIXED;
+            m_rtk_fix.type = IMC::GpsFixRtk::RTK_FIXED;
             break;
         }
 
@@ -897,6 +902,9 @@ namespace Sensors
         m_rtk_fix.v_n = m_vel_scale*(fp32_t)msg.n;
         m_rtk_fix.v_e = m_vel_scale*(fp32_t)msg.e;
         m_rtk_fix.v_d = m_vel_scale*(fp32_t)msg.d;
+
+        // Set validity
+        m_rtk_fix.validity |= IMC::GpsFixRtk::RFV_VALID_VEL;
 
         if (m_dispatch_gpsfix)
         {
