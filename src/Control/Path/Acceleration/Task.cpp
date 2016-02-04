@@ -283,7 +283,7 @@ namespace Control
         //! Input shaper preferences
         InputFilterConfig m_input_cfg;
         //! Translational setpoint for logging
-        IMC::LinearSetpoint m_setpoint_log;
+        IMC::DesiredLinearState m_setpoint_log;
         //! Previous controller output
         Matrix m_prev_controller_output;
         //! Last Estimated State received
