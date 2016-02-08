@@ -161,7 +161,7 @@ namespace Navigation
 
         bool usingRtk()
         {
-          return (m_navsources.mask && IMC::NS_GNSS_RTK);
+          return (m_navsources.mask & IMC::NS_GNSS_RTK);
         }
 
         void
