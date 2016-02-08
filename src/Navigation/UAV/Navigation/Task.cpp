@@ -184,15 +184,16 @@ namespace Navigation
         void
         updateRtkTimers(void)
         {
+
+          if (m_rtk.type >= m_rtk_fix_level_deactivate)
+            m_rtk_wdog_keep_available.reset();
+
+
           if (m_rtk_available)
           {
-            if (m_rtk.type >= m_rtk_fix_level_deactivate)
-              m_rtk_wdog_keep_available.reset();
 
-            // If we are at the lower level but not at the activation level, we have a timeout
             if (m_rtk.type >= m_rtk_fix_level_activate)
               m_rtk_wdog_deactivation.reset();
-
           }
           else
           {
@@ -261,7 +262,7 @@ namespace Navigation
             debug("GPS RTK Unavailable: To long time in lower fix type. ");
           }
 
-          if (!was_rtk_available && m_rtk_wdog_activation.overflow())
+          if (!was_rtk_available && m_rtk_wdog_activation.overflow() && !m_rtk_wdog_keep_available.overflow())
           {
             m_rtk_available = true;
             inf("GPS RTK Available. ");
