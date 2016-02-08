@@ -54,6 +54,8 @@ namespace Sensors
       //! Solution Format.
       std::string sol_format;
       bool ned_velocity_available;
+      //! Nest identification
+      std::string nest_ID;
 
     };
 
@@ -107,12 +109,17 @@ namespace Sensors
         param("Rtk Velocity Available", m_args.ned_velocity_available)
         .defaultValue("False")
         .description("True if an edited version of RTKlib is used, which also outputs velocity information. ");
+        
+        param("Nest ID", m_args.nest_ID)
+        .defaultValue("ntnu-nest-02")
+        .description("Nest identification");
 
         // Initialize messages.
         clearMessages();
 
         bind<IMC::DevDataText>(this);
         bind<IMC::IoEvent>(this);
+        bind<IMC::GpsFixRtk>(this);
       }
 
       void
@@ -200,6 +207,17 @@ namespace Sensors
           processSentence(msg->value);
       }
 
+      void
+      consume(const IMC::GpsFixRtk* msg)
+      {
+        if (resolveSystemId(msg->getSourceEntity()) == m_args.nest_ID)
+        {
+            m_rtkfix.base_lat = msg->base_lat;
+            m_rtkfix.base_lon = msg->base_lon;
+            m_rtkfix.base_height = msg->base_height;
+            m_rtkfix.validity = msg->validity;
+        }
+      }
       void
       consume(const IMC::IoEvent* msg)
       {
