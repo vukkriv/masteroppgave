@@ -47,6 +47,8 @@ namespace Simulators
         DUNE::Tasks::Task(name, ctx)
       {
         bind<IMC::GpsFixRtk>(this);
+
+        m_fix.validity |= IMC::GpsFix::GFV_VALID_POS;
       }
 
       //! Update internal state with new parameter values.
@@ -77,6 +79,7 @@ namespace Simulators
       void
       onResourceInitialization(void)
       {
+        setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
       }
 
       //! Release resources.
@@ -105,6 +108,7 @@ namespace Simulators
         m_fix.lat = 0.0;
         while (!stopping())
         {
+          waitForMessages(1.0);
           m_fix.lat += 0.1;
           dispatch(m_fix);
           spew("Lat is now %f", m_fix.lat);
