@@ -61,7 +61,7 @@ namespace Navigation
         //! Last received RTK Fix message
         IMC::GpsFixRtk m_rtk;
         //! Input watchdog.
-        Time::Counter<float> m_rtk_wdog_keep_available;
+        Time::Counter<float> m_rtk_wdog_comm_timeout;
         //! Input watchdog for lower fix level
         Time::Counter<float> m_rtk_wdog_deactivation;
         //! Timer for minimum time needed at activation fix level
@@ -153,7 +153,7 @@ namespace Navigation
         onResourceInitialization(void)
         {
           setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
-          m_rtk_wdog_keep_available.setTop(m_args.rtk_tout);
+          m_rtk_wdog_comm_timeout.setTop(m_args.rtk_tout);
           m_rtk_wdog_deactivation.setTop(m_args.rtk_tout_lowerlevel);
           m_rtk_wdog_activation.setTop(m_args.rtk_min_fix_time);
         }
@@ -191,7 +191,7 @@ namespace Navigation
         {
 
           if (m_rtk.type >= m_rtk_fix_level_deactivate)
-            m_rtk_wdog_keep_available.reset();
+            m_rtk_wdog_comm_timeout.reset();
 
 
           if (m_rtk_available)
@@ -281,7 +281,7 @@ namespace Navigation
         {
           bool was_rtk_available = m_rtk_available;
 
-          if ( was_rtk_available && m_rtk_wdog_keep_available.overflow())
+          if ( was_rtk_available && m_rtk_wdog_comm_timeout.overflow())
           {
             m_rtk_available = false;
             debug("GPS RTK Unavailable: Timeout. ");
@@ -293,7 +293,7 @@ namespace Navigation
             debug("GPS RTK Unavailable: To long time in lower fix type. ");
           }
 
-          if (!was_rtk_available && m_rtk_wdog_activation.overflow() && !m_rtk_wdog_keep_available.overflow())
+          if (!was_rtk_available && m_rtk_wdog_activation.overflow() && !m_rtk_wdog_comm_timeout.overflow())
           {
             m_rtk_available = true;
             inf("GPS RTK Available. ");
@@ -367,7 +367,7 @@ namespace Navigation
               // Reset all timers
               m_rtk_wdog_activation.reset();
               m_rtk_wdog_deactivation.reset();
-              m_rtk_wdog_keep_available.reset();
+              m_rtk_wdog_comm_timeout.reset();
             }
 
 
