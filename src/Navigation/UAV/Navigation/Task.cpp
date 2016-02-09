@@ -128,6 +128,7 @@ namespace Navigation
             m_rtk_fix_level_deactivate = IMC::GpsFixRtk::RTK_FLOAT;
           else
             m_rtk_fix_level_deactivate = IMC::GpsFixRtk::RTK_FIXED;
+
         }
 
         //! Reserve entity identifiers.
@@ -189,6 +190,9 @@ namespace Navigation
         void
         updateRtkTimers(void)
         {
+
+          if (m_rtk_wdog_comm_timeout.overflow())
+            m_rtk_wdog_activation.reset();
 
           if (m_rtk.type >= m_rtk_fix_level_deactivate)
             m_rtk_wdog_comm_timeout.reset();
