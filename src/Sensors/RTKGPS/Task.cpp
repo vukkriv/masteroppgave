@@ -56,6 +56,8 @@ namespace Sensors
       bool ned_velocity_available;
       //! Nest identification
       std::string base_system_name;
+      //! Nest position timeout
+      float rtk_base_position_timeout;
 
     };
 
@@ -81,6 +83,8 @@ namespace Sensors
       Reader* m_reader;
       //! ID of system to accept base location from
       unsigned m_base_sys_id;
+      //! Input watchdog for nest position
+      Time::Counter<float> m_rtk_wdog_base_available;
 
       Task(const std::string& name, Tasks::Context& ctx):
         Tasks::Task(name, ctx),
@@ -117,6 +121,9 @@ namespace Sensors
         .defaultValue("ntnu-nest-02")
         .description("Base system name");
 
+        param("RTK Base Position Timeout", m_args.rtk_base_position_timeout)
+        .defaultValue("10");
+
         // Initialize messages.
         clearMessages();
 
@@ -124,7 +131,17 @@ namespace Sensors
         bind<IMC::IoEvent>(this);
         bind<IMC::GpsFixRtk>(this);
       }
+      //! Reserve entity identifiers.
+      void
+      onEntityReservation(void)
+      {
+      }
 
+      //! Resolve entity names.
+      void
+      onEntityResolution(void)
+      {
+      }
       void
       onResourceAcquisition(void)
       {
@@ -207,6 +224,7 @@ namespace Sensors
 
         setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
         m_wdog.setTop(m_args.inp_tout);
+        m_rtk_wdog_base_available.setTop(m_args.rtk_base_position_timeout);
       }
 
       void
@@ -235,6 +253,7 @@ namespace Sensors
             m_rtkfix.base_lon = msg->base_lon;
             m_rtkfix.base_height = msg->base_height;
             m_rtkfix.validity |= IMC::GpsFixRtk::RFV_VALID_BASE;
+            m_rtk_wdog_base_available.reset();
         }
       }
       void
@@ -500,6 +519,11 @@ namespace Sensors
             setEntityState(IMC::EntityState::ESTA_ERROR, Status::CODE_COM_ERROR);
             err("Restart due to watchdog overflow");
             throw RestartNeeded(DTR(Status::getString(CODE_COM_ERROR)), 5);
+          }
+          if (m_rtk_wdog_base_available.overflow())
+          {
+            m_rtkfix.validity |= ~IMC::GpsFixRtk::RFV_VALID_BASE;
+            debug("Base Position Unavailable. Timeout");
           }
         }
       }
