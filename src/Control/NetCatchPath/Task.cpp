@@ -33,7 +33,6 @@ namespace Control
   namespace NetCatchPath
   {
     using DUNE_NAMESPACES;
-
     //! %Task arguments.
     struct Arguments
     {
@@ -47,7 +46,7 @@ namespace Control
     //! Required loops.
     static const uint32_t c_required = IMC::CL_SPEED;
 
-    struct Task: public DUNE::Control::BasicUAVAutopilot
+    struct Task : public DUNE::Control::BasicUAVAutopilot
     {
       //! Task arguments.
       Arguments m_args;
@@ -55,7 +54,16 @@ namespace Control
       //! Last desired path received
       IMC::DesiredPath m_dp;
       //! Last estimated state received
-      IMC::EstimatedState m_estate;
+      IMC::EstimatedLocalState m_estate;
+
+      //! Last desired heading
+      IMC::DesiredHeading m_desired_heading;
+      //! Last desired velocity
+      IMC::DesiredVelocity m_desired_velocity;
+
+      //! Last desired course and pitch angle
+      double m_psi_d;
+      double m_theta_d;
 
       //! Last received start WP
       Matrix WP_start;
@@ -67,32 +75,34 @@ namespace Control
       double m_theta_k;
       //! Desired velocity along the path
       double m_ud;
-      //! Desired path receceived
+      //! Desired path received
       bool m_initialized;
+
+      double m_heading_test;
+      bool cw_turn;
 
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
-      Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Control::BasicUAVAutopilot(name,ctx, c_controllable, c_required)
+      Task(const std::string& name, Tasks::Context& ctx) :
+          DUNE::Control::BasicUAVAutopilot(name, ctx, c_controllable,
+                                           c_required), m_heading_test(0.0), cw_turn(
+              false)
       {
-  		param("Path Controller", m_args.use_controller)
-  		.defaultValue("false")
-  		.description("Enable Path Controller");
+        param("Path Controller", m_args.use_controller).visibility(
+            Tasks::Parameter::VISIBILITY_USER).scope(
+            Tasks::Parameter::SCOPE_MANEUVER).defaultValue("false").description(
+            "Simple LOS path controller");
 
-        param("Delta Y", m_args.m_Delta_y)
-        .defaultValue("1.0")
-        .units(Units::Meter)
-        .description("Look-a-head distance LOS y-direction");
+        param("Delta Y", m_args.m_Delta_y).defaultValue("1.0").units(
+            Units::Meter).description("Look-a-head distance LOS y-direction");
 
-        param("Delta Z", m_args.m_Delta_z)
-        .defaultValue("1.0")
-        .units(Units::Meter)
-        .description("Look-a-head distance LOS z-direction");
+        param("Delta Z", m_args.m_Delta_z).defaultValue("1.0").units(
+            Units::Meter).description("Look-a-head distance LOS z-direction");
 
         // Bind incoming IMC messages
-        bind<IMC::DesiredPath>(this);        
-        bind<IMC::EstimatedState>(this);        
+        bind<IMC::DesiredPath>(this);
+        bind<IMC::EstimatedLocalState>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -133,10 +143,10 @@ namespace Control
       onResourceRelease(void)
       {
         BasicUAVAutopilot::onResourceRelease();
-      }      
+      }
 
       void
-      consume(const IMC::EstimatedState* estate)
+      consume(const IMC::EstimatedLocalState* estate)
       {
         // Allow only EstimatedState from the same vehicle.
         if (estate->getSource() != getSystemId())
@@ -148,8 +158,8 @@ namespace Control
       consume(const IMC::DesiredPath* dp)
       {
         trace("Got DesiredPath \nfrom '%s' at '%s'",
-             resolveEntity(dp->getSourceEntity()).c_str(),
-             resolveSystemId(dp->getSource()));
+              resolveEntity(dp->getSourceEntity()).c_str(),
+              resolveSystemId(dp->getSource()));
 
         //TODO: check somehow if this is sent from the NetCatchCoordinator 
         m_dp = *dp;
@@ -158,103 +168,135 @@ namespace Control
 
         //Testing
         /*       
-        if (m_initialized)
-        {
-          Matrix position = Matrix(3,1,0);
-          Matrix u = getDesiredVelocity(position);
-          sendDesiredVelocity(u);
-        } 
-        */       
+         if (m_initialized)
+         {
+         Matrix position = Matrix(3,1,0);
+         Matrix u = getDesiredVelocity(position);
+         sendDesiredVelocity(u);
+         }
+         */
       }
 
-      void 
+      void
       initDesiredPath(const IMC::DesiredPath* dp)
       {
-        WP_start = Matrix(3,1,0); //NED
-        WP_end   = Matrix(3,1,0); //NED
+        WP_start = Matrix(3, 1, 0); //NED
+        WP_end = Matrix(3, 1, 0); //NED
 
-        WGS84::displacement(m_estate.lat, m_estate.lon, 0,
-                    dp->start_lat, dp->start_lon, 0,
-                    &WP_start(0), &WP_start(1));
+        WGS84::displacement(m_estate.lat, m_estate.lon, 0, dp->start_lat,
+                            dp->start_lon, 0, &WP_start(0), &WP_start(1));
         WP_start(2) = dp->start_z;
 
-        WGS84::displacement(m_estate.lat, m_estate.lon, 0,
-                            dp->end_lat, dp->end_lon, 0,
-                            &WP_end(0), &WP_end(1));
+        WGS84::displacement(m_estate.lat, m_estate.lon, 0, dp->end_lat,
+                            dp->end_lon, 0, &WP_end(0), &WP_end(1));
         WP_end(2) = dp->end_z;
 
-
-
         Matrix deltaWP = WP_end - WP_start;
-        double deltaWP_NE = deltaWP.get(0,1,0,0).norm_2(); 
-        
-        m_alpha_k =  atan2(deltaWP(1),deltaWP(0));
-        m_theta_k = -atan2(deltaWP_NE,deltaWP(2)) + Angles::radians(90);
+        double deltaWP_NE = deltaWP.get(0, 1, 0, 0).norm_2();
+
+        m_alpha_k = atan2(deltaWP(1), deltaWP(0));
+        m_theta_k = -atan2(deltaWP_NE, deltaWP(2)) + Angles::radians(90);
         m_ud = dp->speed;
-        debug("m_alpha_k: %f",m_alpha_k);
-        debug("m_theta_k: %f",m_theta_k);        
-        debug("m_ud: %f",m_ud);        
+        debug("m_alpha_k: %f", m_alpha_k);
+        debug("m_theta_k: %f", m_theta_k);
+        debug("m_ud: %f", m_ud);
       }
 
       Matrix
-      getPositionOfNet(const IMC::EstimatedState* msg)
+      getPositionOfNet()
       {
-        Matrix pos(3,1,0);
-        pos(0)= msg->x;
-        pos(1)= msg->y;
-        pos(2)= msg->z;
+        Matrix pos(3, 1, 0);
+        pos(0) = m_estate.x;
+        pos(1) = m_estate.y;
+        pos(2) = m_estate.z;
         return pos;
       }
 
       Matrix
       getDesiredVelocity(Matrix position)
       {
-        Matrix u_d_p(3,1,0);
+        Matrix u_d_p(3, 1, 0);
         u_d_p(0) = m_ud;
+        Matrix R = transpose(Rzyx(0.0, -m_theta_k, m_alpha_k));
+        Matrix eps = R * (position - WP_start);
+        spew("eps: [%f,%f,%f]: ", eps(0), eps(1), eps(2));
 
-        Matrix eps = transpose(Rzyx(0,-m_theta_k,m_alpha_k))*(position-WP_start);
+        m_theta_d = m_theta_k + atan2(-eps(2), m_args.m_Delta_z);
+        m_psi_d = m_alpha_k + atan2(-eps(1), m_args.m_Delta_y);
 
-        double theta_d = m_theta_k + atan2(-eps(2),m_args.m_Delta_z);
-        double psi_d = m_alpha_k + atan2(-eps(1),m_args.m_Delta_y);
-
-        Matrix u_d_n = Rzyx(0,-theta_d,psi_d)*u_d_p;
+        spew("Theta_d, psi_d: [%f,%f]: ", m_theta_d, m_psi_d);
+        Matrix u_d_n = Rzyx(0, m_theta_d, m_psi_d) * u_d_p;
 
         return u_d_n;
       }
 
-      void 
+      void
       sendDesiredVelocity(Matrix velocity)
       {
-            IMC::DesiredVelocity d_vel;
-            d_vel.u = velocity(0);
-            d_vel.v = velocity(1);
-            d_vel.w = velocity(2);
-            debug("Dispatch desired velocity: [%f,%f,%f]: ",d_vel.u,d_vel.v,d_vel.w);
-            dispatch(d_vel);
+        m_desired_velocity.u = velocity(0);
+        m_desired_velocity.v = velocity(1);
+        m_desired_velocity.w = velocity(2);
+        spew("Dispatch desired velocity: [%f,%f,%f]: ", m_desired_velocity.u,
+             m_desired_velocity.v, m_desired_velocity.w);
+        dispatch(m_desired_velocity);
+      }
+
+      void
+      sendDesiredHeading()
+      {
+        double step = 0.001;
+        if (m_heading_test >= Angles::radians(179))
+        {
+          cw_turn = false;
+        }
+        else if (m_heading_test <= Angles::radians(1))
+        {
+          cw_turn = true;
+        }
+
+        if (cw_turn)
+        {
+          m_heading_test = m_heading_test + step;
+        }
+        else
+        {
+          m_heading_test = m_heading_test - step;
+        }
+        m_desired_heading.value = m_heading_test;
+        debug("Dispatch desired heading: %f [rad]: ", m_desired_heading.value);
+        dispatch(m_desired_heading);
       }
 
       void
       onEstimatedState(const double timestep, const IMC::EstimatedState* msg)
       {
-          //calculate desired velocity to be dispatched to inner control loop
-          //assume IMC::EstimatedState* msg gives the state of the net?
-          // or should we calculate the net position here?
-
-          //("Timestep: %f",timestep);
-          if (m_initialized)
-          {
-            Matrix position = getPositionOfNet(msg);
-            Matrix u = getDesiredVelocity(position);
-            sendDesiredVelocity(u);
-          }
+        //calculate desired velocity to be dispatched to inner control loop
+        //assume IMC::EstimatedState* msg gives the state of the net?
+        // or should we calculate the net position here?
+        //("Timestep: %f",timestep);
+        if (!m_args.use_controller)
+          return;
+        if (m_initialized)
+        {
+          Matrix position = getPositionOfNet();
+          Matrix u = 0 * getDesiredVelocity(position);
+          sendDesiredVelocity(u);
+          sendDesiredHeading();
+        }
       }
+
       //! @return  Rotation matrix.
-      Matrix Rzyx(double phi, double theta, double psi) const
+      Matrix
+      Rzyx(double phi, double theta, double psi) const
       {
-        double R_en_elements[] = {cos(psi)*cos(theta), (-sin(psi)*cos(phi))+(cos(psi)*sin(theta)*sin(psi)), (sin(psi)*sin(phi))+(cos(psi)*cos(phi)*sin(theta)) ,
-            sin(psi)*cos(theta), (cos(psi)*cos(phi))+(sin(phi)*sin(theta)*sin(psi)), (-cos(psi)*sin(phi))+(sin(theta)*sin(psi)*cos(phi)),
-            -sin(theta), cos(theta)*sin(phi), cos(theta)*cos(phi)};
-        return Matrix(R_en_elements,3,3);
+        double R_en_elements[] =
+          { cos(psi) * cos(theta), (-sin(psi) * cos(phi))
+              + (cos(psi) * sin(theta) * sin(phi)), (sin(psi) * sin(phi))
+              + (cos(psi) * cos(phi) * sin(theta)), sin(psi) * cos(theta), (cos(
+              psi) * cos(phi)) + (sin(phi) * sin(theta) * sin(psi)), (-cos(psi)
+              * sin(phi)) + (sin(theta) * sin(psi) * cos(phi)), -sin(theta),
+              cos(theta) * sin(phi), cos(theta) * cos(phi) };
+        return Matrix(R_en_elements, 3, 3);
       }
     };
   }
