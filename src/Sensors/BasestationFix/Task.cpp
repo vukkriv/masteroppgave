@@ -84,7 +84,7 @@ namespace Sensors
             m_rtkfix.base_lat = m_fix.lat;
             m_rtkfix.base_lon = m_fix.lon;
             m_rtkfix.base_height = m_fix.height;
-            m_rtkfix.validity = 1;
+            m_rtkfix.validity |= IMC::GpsFixRtk::RFV_VALID_BASE;
             
             //Send base pos to all rovers
             dispatch(m_rtkfix);
@@ -127,6 +127,7 @@ namespace Sensors
       void
       onResourceInitialization(void)
       {
+        setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
       }
 
       //! Release resources.
@@ -148,7 +149,12 @@ namespace Sensors
       {
         while (!stopping())
         {
-          Delay::wait(10.0);
+
+          // Handle IMC messages from bus
+          ///consumeMessages();
+          waitForMessages(1.0);
+
+          //Delay::wait(10.0);
           if (m_args.base_is_fixed)
           {
             dispatch(m_rtkfix);
