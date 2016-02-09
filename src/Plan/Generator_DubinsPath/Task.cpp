@@ -423,9 +423,9 @@ struct Task: public DUNE::Tasks::Task
 			land_lon 	        	= Angles::radians(params.get("land_lon", 0.0));
 			land_heading 			= Angles::radians(params.get("land_heading", 0.0));
 			double net_height 		= params.get("net_height", 0.0);
-			double min_turn_radius 	= params.get("min_turn_radius", 0.0);
-			double attack_angle 	= Angles::radians(params.get("attack_angle", 0.0));
-			double descend_angle 	= Angles::radians(params.get("descend_angle", 0.0));
+			double min_turn_radius 	        = params.get("min_turn_radius", 0.0);
+			double attack_angle 	        = Angles::radians(params.get("attack_angle", 0.0));
+			double descend_angle 	        = Angles::radians(params.get("descend_angle", 0.0));
 			if(attack_angle > descend_angle){
 				inf("error: attack_angle greater then descend_angle");
 				attack_angle		= descend_angle;
@@ -435,20 +435,20 @@ struct Task: public DUNE::Tasks::Task
 			inf("\n\nLan_lat:\t%f\nLand_lon:\t%f\nLand_heading:\t%f\n",Angles::degrees(land_lat),Angles::degrees(land_lon),Angles::degrees(land_heading));
 
 			double dist_behind 		= params.get("dist_behind", 0.0);
-			double dist_infront 	= params.get("dist_infront", 0.0);
+			double dist_infront 	        = params.get("dist_infront", 0.0);
 			double speed12	 		= params.get("speed12", 0.0);
 			double speed345	 		= params.get("speed345", 0.0);
 			double ground_level		= params.get("ground_level", 0.0); // Should be same as init value in JSBSim to avoid crash
 
-			int z_unit				= (params.get("z_unit") == "height") ? IMC::Z_HEIGHT : IMC::Z_ALTITUDE;
+	                int z_unit			= (params.get("z_unit") == "height") ? IMC::Z_HEIGHT : IMC::Z_ALTITUDE;
 
 			ignore_evasive			= (params.get("ignore_evasive") == "true") ? true : false;
 
-			R_dubins   				= 20*min_turn_radius; // Global (Dubins path radius)
+			R_dubins   			= 20*min_turn_radius; // Global (Dubins path radius)
 
 			double height			= (m_estate != NULL) ? m_estate->height - m_estate->z : 100;
 			double min_height		= MIN_DESCEND_HEIGHT + -dist_infront*tan(attack_angle) + ground_level;
-			double original_height	= height;
+			double original_height	        = height;
 
 			if(height < min_height){
 				height			= min_height;
@@ -567,7 +567,7 @@ struct Task: public DUNE::Tasks::Task
 
 
 				// 3
-				go_near 			= new IMC::Goto();
+				go_near 		= new IMC::Goto();
 				go_near->lat 		= wp3_lat;
 				go_near->lon 		= wp3_lon;
 				go_near->z   		= wp3_h;
@@ -579,7 +579,7 @@ struct Task: public DUNE::Tasks::Task
 				delete go_near;
 
 				// 2
-				go_near 			= new IMC::Goto();
+				go_near 		= new IMC::Goto();
 				go_near->lat 		= wp2_lat;
 				go_near->lon 		= wp2_lon;
 				go_near->z   		= wp2_h;
@@ -591,7 +591,7 @@ struct Task: public DUNE::Tasks::Task
 				delete go_near;
 
 				// 1
-				go_near 			= new IMC::Goto();
+				go_near 		= new IMC::Goto();
 				go_near->lat 		= wp1_lat;
 				go_near->lon 		= wp1_lon;
 				go_near->z   		= wp1_h;
@@ -603,7 +603,7 @@ struct Task: public DUNE::Tasks::Task
 				delete go_near;
 
 				// 0
-				go_near 			= new IMC::Goto();
+				go_near 		= new IMC::Goto();
 				go_near->lat 		= wp0_lat;
 				go_near->lon 		= wp0_lon;
 				go_near->z   		= wp0_h;
@@ -641,11 +641,11 @@ struct Task: public DUNE::Tasks::Task
 				net_hor    = WP[xx][3]; 		 // Global
 
 				for (int i=0; i<2; i++){
-					double a 	   		= sqrt(pow(WP[xx][i]-WP[xx][i+2],2) + pow(WP[yy][i]-WP[yy][i+2],2));
+					double a 	   	= sqrt(pow(WP[xx][i]-WP[xx][i+2],2) + pow(WP[yy][i]-WP[yy][i+2],2));
 					double b           	= sqrt(pow(WP[xx][i]-WP[xx][i+1],2) + pow(WP[yy][i]-WP[yy][i+1],2));
 					double c           	= sqrt(pow(WP[xx][i+1]-WP[xx][i+2],2) + pow(WP[yy][i+1]-WP[yy][i+2],2));
 					double cos_2_alpha 	= (-a*a+b*b+c*c)/(2*b*c);
-					double alpha        = acos(cos_2_alpha)/2;
+					double alpha            = acos(cos_2_alpha)/2;
 
 					// Distance from WP to switching between circle and straight line
 					double R_tangent   	= R_dubins/tan(alpha);
@@ -667,10 +667,10 @@ struct Task: public DUNE::Tasks::Task
 					double circ_c      	= sqrt(pow((x1-x2),2) + pow((y1-y2),2));
 					double cosAlpha    	= (circ_c*circ_c)/(2*R_dubins*circ_c);
 
-					double u1	   		= (x2-x1)/circ_c; 	// Unit vector
-					double u2	   		= (y2-y1)/circ_c; 	// Unit vector
-					double pu1	   		= u2; 		 		// Perpendicular vector to unit vector
-					double pu2	   		= -u1;		 		// Perpendicular vector to unit vector
+					double u1	   	= (x2-x1)/circ_c; 	// Unit vector
+					double u2	   	= (y2-y1)/circ_c; 	// Unit vector
+					double pu1	   	= u2; 		 	// Perpendicular vector to unit vector
+					double pu2	   	= -u1;		 	// Perpendicular vector to unit vector
 
 					double intersectX1 	= x1 + u1 * (R_dubins*cosAlpha) + pu1 * (R_dubins*sqrt(1-cosAlpha*cosAlpha));
 					double intersectY1 	= y1 + u2 * (R_dubins*cosAlpha) + pu2 * (R_dubins*sqrt(1-cosAlpha*cosAlpha));
@@ -735,7 +735,7 @@ struct Task: public DUNE::Tasks::Task
 			double displace_N		= params.get("displace_N", 0.0);
 			double displace_E		= params.get("displace_E", 0.0);
 			double displace_Up		= params.get("displace_Up", 0.0);
-			int curWP				= params.get("curWP", 0);
+			int curWP			= params.get("curWP", 0);
 
 			//inf("\n\nLan_lat:\t%f\nLand_lon:\t%f\nLand_heading:\t%f\n",Angles::degrees(land_lat),Angles::degrees(land_lon),Angles::degrees(new_heading));
 			//inf("\n\nCurWP:\t\t%i\nN:\t\t%f\nE:\t\t%f\nLand_heading:\t%f\n",curWP,displace_N,displace_E,Angles::degrees(new_heading));
@@ -899,7 +899,7 @@ struct Task: public DUNE::Tasks::Task
 			delete go_near;
 
 			// 1
-			go_near 			= new IMC::Goto();
+			go_near 		= new IMC::Goto();
 			go_near->lat 		= wp1_lat;
 			go_near->lon 		= wp1_lon;
 			go_near->z   		= wp1_h;
@@ -911,7 +911,7 @@ struct Task: public DUNE::Tasks::Task
 
 			// 1.1
 			// This loiter is meant to trigger an abort from Evasive
-			IMC::Loiter* lo_near= new IMC::Loiter();
+			IMC::Loiter* lo_near    = new IMC::Loiter();
 			lo_near->lat 		= wp1_lat;
 			lo_near->lon 		= wp1_lon;
 			lo_near->z   		= wp1_h;
@@ -977,7 +977,7 @@ bool initiateValues(double &p_net_hor, double &p_R, double p_WP[2][5], double p_
 
 	p_land_lat 		= land_lat;
 	p_land_lon 		= land_lon;
-	p_land_heading 	= land_heading;
+	p_land_heading 	        = land_heading;
 
 	return true;
 } 	
