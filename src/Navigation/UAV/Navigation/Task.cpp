@@ -41,6 +41,7 @@ namespace Navigation
       using DUNE_NAMESPACES;
 
       struct Arguments {
+        bool use_rtk;
         float rtk_tout;
         float rtk_tout_lowerlevel;
         float rtk_min_fix_time;
@@ -60,7 +61,7 @@ namespace Navigation
         //! Last received RTK Fix message
         IMC::GpsFixRtk m_rtk;
         //! Input watchdog.
-        Time::Counter<float> m_rtk_wdog_keep_available;
+        Time::Counter<float> m_rtk_wdog_comm_timeout;
         //! Input watchdog for lower fix level
         Time::Counter<float> m_rtk_wdog_deactivation;
         //! Timer for minimum time needed at activation fix level
@@ -83,6 +84,10 @@ namespace Navigation
           m_rtk_fix_level_deactivate(IMC::GpsFixRtk::RTK_FIXED),
           m_rtk_available(false)
         {
+
+          param("Use RTK If Available", m_args.use_rtk)
+          .defaultValue("false")
+          .visibility(Parameter::VISIBILITY_USER);
 
           param("RTK - Timeout", m_args.rtk_tout)
           .defaultValue("1.0");
@@ -123,6 +128,7 @@ namespace Navigation
             m_rtk_fix_level_deactivate = IMC::GpsFixRtk::RTK_FLOAT;
           else
             m_rtk_fix_level_deactivate = IMC::GpsFixRtk::RTK_FIXED;
+
         }
 
         //! Reserve entity identifiers.
@@ -148,7 +154,7 @@ namespace Navigation
         onResourceInitialization(void)
         {
           setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
-          m_rtk_wdog_keep_available.setTop(m_args.rtk_tout);
+          m_rtk_wdog_comm_timeout.setTop(m_args.rtk_tout);
           m_rtk_wdog_deactivation.setTop(m_args.rtk_tout_lowerlevel);
           m_rtk_wdog_activation.setTop(m_args.rtk_min_fix_time);
         }
@@ -185,8 +191,11 @@ namespace Navigation
         updateRtkTimers(void)
         {
 
+          if (m_rtk_wdog_comm_timeout.overflow())
+            m_rtk_wdog_activation.reset();
+
           if (m_rtk.type >= m_rtk_fix_level_deactivate)
-            m_rtk_wdog_keep_available.reset();
+            m_rtk_wdog_comm_timeout.reset();
 
 
           if (m_rtk_available)
@@ -209,9 +218,25 @@ namespace Navigation
         void
         consume(const IMC::GpsFixRtk* rtkfix)
         {
+          // Only care about fixes from ourselves
+          if (rtkfix->getSource() != getSystemId())
+            return;
+
+          // Only care if position is valid
+          if (!(rtkfix->validity & IMC::GpsFixRtk::RFV_VALID_POS))
+            return;
+
+          // Only care if Base pos is valid
+          if (!(rtkfix->validity & IMC::GpsFixRtk::RFV_VALID_BASE))
+          {
+            spew("Ignored RtkFix message: Invalid base. ");
+            return;
+          }
+
           m_rtk = *rtkfix;
 
           updateRtkTimers();
+
 
 
           // Just check if using rtk or not
@@ -230,11 +255,20 @@ namespace Navigation
             m_estate.y = m_rtk.e;
             m_estate.z = m_rtk.d;
 
-            m_estate.vx = m_rtk.v_n;
-            m_estate.vy = m_rtk.v_e;
-            m_estate.vz = m_rtk.v_d;
+            if (m_rtk.validity & IMC::GpsFixRtk::RFV_VALID_VEL)
+            {
+              m_estate.vx = m_rtk.v_n;
+              m_estate.vy = m_rtk.v_e;
+              m_estate.vz = m_rtk.v_d;
+            }
 
             sendStateAndSource();
+
+            spew("Sending state using RTK. ");
+          }
+          else
+          {
+            spew("Got RTKFix message, but not using it.  ");
           }
         }
 
@@ -245,12 +279,13 @@ namespace Navigation
           dispatch(m_navsources);
         }
 
+
         void
         checkRtkTimersUpdateAvailable(void)
         {
           bool was_rtk_available = m_rtk_available;
 
-          if ( was_rtk_available && m_rtk_wdog_keep_available.overflow())
+          if ( was_rtk_available && m_rtk_wdog_comm_timeout.overflow())
           {
             m_rtk_available = false;
             debug("GPS RTK Unavailable: Timeout. ");
@@ -262,11 +297,25 @@ namespace Navigation
             debug("GPS RTK Unavailable: To long time in lower fix type. ");
           }
 
-          if (!was_rtk_available && m_rtk_wdog_activation.overflow() && !m_rtk_wdog_keep_available.overflow())
+          if (!was_rtk_available && m_rtk_wdog_activation.overflow() && !m_rtk_wdog_comm_timeout.overflow())
           {
             m_rtk_available = true;
             inf("GPS RTK Available. ");
           }
+        }
+
+        void
+        enableRtk(void)
+        {
+          m_navsources.mask |= NS_GNSS_RTK;
+          m_navsources.mask &= ~(NS_EXTERNAL_FULLSTATE | NS_EXTERNAL_POSREF);
+        }
+
+        void
+        disableRtk(void)
+        {
+          m_navsources.mask &= ~NS_GNSS_RTK;
+          m_navsources.mask |= (NS_EXTERNAL_FULLSTATE | NS_EXTERNAL_POSREF);
         }
 
         //! Main loop.
@@ -277,33 +326,52 @@ namespace Navigation
           {
             waitForMessages(1.0);
 
-            bool was_rtk_available = m_rtk_available;
-
             checkRtkTimersUpdateAvailable();
 
-            // Check if we have a switch to report
-            if (m_rtk_available != was_rtk_available)
+
+
+            // Check if there is a change in rtk usage
+            bool didChangeUsage = false;
+
+            // If not available, and are using, disable. (don't care m_args.use_rtk)
+            if (!m_rtk_available && usingRtk())
             {
+              disableRtk();
+              didChangeUsage = true;
+              inf("Disable RTK. No longer available.");
+            }
 
+            // If should use, is available and not currently using
+            else if (m_args.use_rtk && m_rtk_available && !usingRtk())
+            {
+              enableRtk();
+              didChangeUsage = true;
+              inf("Enabled use of RTK.");
+            }
 
-              if (!m_rtk_available &&  was_rtk_available)
-              {
-                m_navsources.mask &= ~NS_GNSS_RTK;
-                m_navsources.mask |= (NS_EXTERNAL_FULLSTATE | NS_EXTERNAL_POSREF);
-              }
+            // If not supposed to use, and are currently using, disable. availability don't care.
+            else if (!m_args.use_rtk && usingRtk())
+            {
+              disableRtk();
+              didChangeUsage = true;
+              inf("Disable RTK. Disabled by parameter. ");
+            }
 
-              if ( m_rtk_available && !was_rtk_available)
-              {
-                m_navsources.mask |= NS_GNSS_RTK;
-                m_navsources.mask &= ~(NS_EXTERNAL_FULLSTATE | NS_EXTERNAL_POSREF);
-              }
+            // Passthrough scenarios: use           &&  available &&  using
+            //                        (use || !use) && !available && !using
+            //
+            // Three states => 8 total states. All covered.
+
+            // Check if we have a switch to report
+            if (didChangeUsage)
+            {
 
               dispatch(m_navsources);
 
               // Reset all timers
               m_rtk_wdog_activation.reset();
               m_rtk_wdog_deactivation.reset();
-              m_rtk_wdog_keep_available.reset();
+              m_rtk_wdog_comm_timeout.reset();
             }
 
 
