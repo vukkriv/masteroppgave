@@ -38,6 +38,7 @@ namespace Simulators
       bool enable;
       std::string fix_level;
       std::string base_sys_name;
+      bool require_base;
     };
 
     struct Task: public DUNE::Tasks::Periodic
@@ -68,6 +69,7 @@ namespace Simulators
       {
 
         param("Enable", m_args.enable)
+        .visibility(Parameter::VISIBILITY_USER)
         .defaultValue("true");
 
         param("Fix Level", m_args.fix_level)
@@ -76,6 +78,10 @@ namespace Simulators
 
         param("Base System Name", m_args.base_sys_name)
         .defaultValue("ntnu-nest-02");
+
+        param("Require Base Pos", m_args.require_base)
+        .visibility(Parameter::VISIBILITY_USER)
+        .defaultValue("true");
 
 
         m_navdata.clear();
@@ -142,11 +148,16 @@ namespace Simulators
       void
       consume(const IMC::GpsFixRtk* msg)
       {
+
         if (msg->getSource() != m_base_id)
           return;
 
         if (!(msg->validity & IMC::GpsFixRtk::RFV_VALID_BASE))
           return;
+
+        if (!m_got_base_pos)
+          inf("Got base location.");
+
 
         m_got_base_pos = true;
 
@@ -193,12 +204,16 @@ namespace Simulators
           m_rtk.e += dy;
           m_rtk.d += dz;
         }
-        else
+        else if(!m_args.require_base)
         {
           m_rtk.base_lat = m_navdata.state->lat;
           m_rtk.base_lon = m_navdata.state->lon;
           m_rtk.base_height = m_navdata.state->height;
           m_rtk.validity |= IMC::GpsFixRtk::RFV_VALID_BASE;
+        }
+        else
+        {
+          m_rtk.validity &= ~IMC::GpsFixRtk::RFV_VALID_BASE;
         }
 
 
