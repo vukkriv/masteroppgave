@@ -37,6 +37,7 @@ namespace Simulators
     struct Arguments {
       bool enable;
       std::string fix_level;
+      std::string base_sys_name;
     };
 
     struct Task: public DUNE::Tasks::Periodic
@@ -49,6 +50,10 @@ namespace Simulators
       IMC::GpsFixRtk m_rtk;
       //! Fix level to send
       IMC::GpsFixRtk::TypeEnum m_fix_type;
+      //! Id of base system
+      unsigned m_base_id;
+      //! If received
+      bool m_got_base_pos;
 
 
 
@@ -57,7 +62,9 @@ namespace Simulators
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Periodic(name, ctx),
-        m_fix_type(IMC::GpsFixRtk::RTK_NONE)
+        m_fix_type(IMC::GpsFixRtk::RTK_NONE),
+        m_base_id(0),
+        m_got_base_pos(false)
       {
 
         param("Enable", m_args.enable)
@@ -67,12 +74,16 @@ namespace Simulators
         .values("Fix,Float,None")
         .defaultValue("Fix");
 
+        param("Base System Name", m_args.base_sys_name)
+        .defaultValue("ntnu-nest-02");
+
 
         m_navdata.clear();
         m_rtk.clear();
 
 
         bind<IMC::ExternalNavData>(this);
+        bind<IMC::GpsFixRtk>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -85,6 +96,11 @@ namespace Simulators
           m_fix_type = IMC::GpsFixRtk::RTK_FLOAT;
         else
           m_fix_type = IMC::GpsFixRtk::RTK_NONE;
+
+        if (paramChanged(m_args.base_sys_name))
+        {
+          m_base_id = resolveSystemName(m_args.base_sys_name);
+        }
       }
 
       //! Reserve entity identifiers.
@@ -124,6 +140,24 @@ namespace Simulators
       }
 
       void
+      consume(const IMC::GpsFixRtk* msg)
+      {
+        if (msg->getSource() != m_base_id)
+          return;
+
+        if (!(msg->validity & IMC::GpsFixRtk::RFV_VALID_BASE))
+          return;
+
+        m_got_base_pos = true;
+
+        m_rtk.base_lat = msg->base_lat;
+        m_rtk.base_lon = msg->base_lon;
+        m_rtk.base_height = msg->base_height;
+
+        m_rtk.validity |= IMC::GpsFixRtk::RFV_VALID_BASE;
+      }
+
+      void
       fillRtkMessage()
       {
 
@@ -143,10 +177,30 @@ namespace Simulators
         m_rtk.v_d = m_navdata.state->vz;
         m_rtk.validity |= IMC::GpsFixRtk::RFV_VALID_VEL;
 
-        m_rtk.base_lat = m_navdata.state->lat;
-        m_rtk.base_lon = m_navdata.state->lon;
-        m_rtk.base_height = m_navdata.state->height;
-        m_rtk.validity |= IMC::GpsFixRtk::RFV_VALID_BASE;
+        if (m_got_base_pos)
+        {
+          // Recalculate position.
+          double dx,dy,dz;
+          WGS84::displacement(m_rtk.base_lat, m_rtk.base_lon, m_rtk.base_height,
+                              m_navdata.state->lat, m_navdata.state->lon, m_navdata.state->height,
+                              &dx, &dy, &dz);
+
+          // NB: This is now done at every iteration. Since these rarely change, dx,dy,dz will remain same
+          // as long as the lat refs do not change, and some logic could be written to check this.
+          // But since it's just a desktop simulation, don'tcare.
+
+          m_rtk.n += dx;
+          m_rtk.e += dy;
+          m_rtk.d += dz;
+        }
+        else
+        {
+          m_rtk.base_lat = m_navdata.state->lat;
+          m_rtk.base_lon = m_navdata.state->lon;
+          m_rtk.base_height = m_navdata.state->height;
+          m_rtk.validity |= IMC::GpsFixRtk::RFV_VALID_BASE;
+        }
+
 
         m_rtk.type = m_fix_type;
       }
