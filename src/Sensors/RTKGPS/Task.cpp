@@ -55,7 +55,7 @@ namespace Sensors
       std::string sol_format;
       bool ned_velocity_available;
       //! Nest identification
-      std::string nest_ID;
+      std::string base_system_name;
 
     };
 
@@ -79,13 +79,16 @@ namespace Sensors
       std::string m_init_line;
       //! Reader thread.
       Reader* m_reader;
+      //! ID of system to accept base location from
+      unsigned m_base_sys_id;
 
       Task(const std::string& name, Tasks::Context& ctx):
         Tasks::Task(name, ctx),
         m_handle(NULL),
         m_llh_output(false),
         m_ned_output(false),
-        m_reader(NULL)
+        m_reader(NULL),
+        m_base_sys_id(0)
       {
         // Define configuration parameters.
         param("Serial Port - Device", m_args.uart_dev)
@@ -110,9 +113,9 @@ namespace Sensors
         .defaultValue("False")
         .description("True if an edited version of RTKlib is used, which also outputs velocity information. ");
         
-        param("Nest ID", m_args.nest_ID)
+        param("Base System Name", m_args.base_system_name)
         .defaultValue("ntnu-nest-02")
-        .description("Nest identification");
+        .description("Base system name");
 
         // Initialize messages.
         clearMessages();
@@ -140,6 +143,22 @@ namespace Sensors
           throw RestartNeeded(DTR(Status::getString(CODE_COM_ERROR)), 5);
         }
       }
+
+      void
+      onParametersUpdate(void)
+      {
+        if (paramChanged(m_args.base_system_name))
+        {
+          m_base_sys_id = resolveSystemName(m_args.base_system_name);
+
+          if (m_base_sys_id == IMC::AddressResolver::invalid())
+          {
+            war("Unable to resolve system %s", m_args.base_system_name.c_str());
+          }
+        }
+
+      }
+
 
       bool
       openSocket(void)
@@ -210,12 +229,12 @@ namespace Sensors
       void
       consume(const IMC::GpsFixRtk* msg)
       {
-        if (resolveSystemId(msg->getSourceEntity()) == m_args.nest_ID)
+        if (msg->getSource() == m_base_sys_id)
         {
             m_rtkfix.base_lat = msg->base_lat;
             m_rtkfix.base_lon = msg->base_lon;
             m_rtkfix.base_height = msg->base_height;
-            m_rtkfix.validity = msg->validity;
+            m_rtkfix.validity |= IMC::GpsFixRtk::RFV_VALID_BASE;
         }
       }
       void
