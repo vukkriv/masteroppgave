@@ -247,7 +247,8 @@ namespace Sensors
       void
       consume(const IMC::GpsFixRtk* msg)
       {
-        if (msg->getSource() == m_base_sys_id)
+        if (msg->getSource() == m_base_sys_id
+            && (msg->validity & IMC::GpsFixRtk::RFV_VALID_BASE))
         {
             m_rtkfix.base_lat = msg->base_lat;
             m_rtkfix.base_lon = msg->base_lon;
