@@ -193,14 +193,29 @@ namespace Maneuver
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
-      Task(const std::string& name, Tasks::Context& ctx) :
-          PeriodicUAVAutopilot(name, ctx, c_controllable, c_required), m_ud(0), m_initializedCoord(
-              false), m_scope_ref(0), m_ref_lat(0.0), m_ref_lon(0.0), m_ref_hae(
-              0.0), m_ref_valid(false), m_coordinatorEnabled(false), delta_p_path_x(
-              0), delta_p_path_x_mean(0), delta_v_path_x(0), delta_v_path_x_mean(
-              0), m_p_int_value(3, 1, 0.0), m_p_ref_path(3, 1, 0.0), m_v_ref_path(
-              3, 1, 0.0), m_startCatch_radius(0), m_timeout(0), m_u_ref(0.0), m_ad(
-              0.0), m_time_end(Clock::getMsec()), m_time_diff(0)
+      Task(const std::string& name, Tasks::Context& ctx):
+          PeriodicUAVAutopilot(name, ctx, c_controllable, c_required),                           
+              m_ref_lat(0.0), 
+              m_ref_lon(0.0), 
+              m_ref_hae(0.0), 
+              m_ref_valid(false), 
+              m_coordinatorEnabled(false),
+              m_initializedCoord(false),                
+              delta_p_path_x(0), 
+              delta_p_path_x_mean(0), 
+              delta_v_path_x(0), 
+              delta_v_path_x_mean(0),                
+              m_p_ref_path(3, 1, 0.0), 
+              m_v_ref_path(3, 1, 0.0), 
+              m_p_int_value(3, 1, 0.0),
+              m_startCatch_radius(0), 
+              m_timeout(0), 
+              m_u_ref(0.0), 
+              m_ud(0.0), 
+              m_ad(0.0), 
+              m_scope_ref(0),
+              m_time_end(Clock::getMsec()), 
+              m_time_diff(0)
       {
         param("Path Controller", m_args.use_controller).visibility(
             Tasks::Parameter::VISIBILITY_USER).scope(
@@ -1045,7 +1060,7 @@ namespace Maneuver
         if (Clock::get() - startPrint > 0.3)
         {
           spew("Kp: [%f,%f,%f]", m_args.Kp(0), m_args.Kp(1), m_args.Kp(2));
-          spew("m_time_diff: %lu", m_time_diff);
+          spew("m_time_diff: %llu", m_time_diff);
           spew("m_p_int_value: [%f,%f,%f]", m_p_int_value(0), m_p_int_value(1),
                m_p_int_value(2));
           spew("p_ref_path: [%f,%f,%f]", m_p_ref_path(0), m_p_ref_path(1),
