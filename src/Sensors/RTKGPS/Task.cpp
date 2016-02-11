@@ -521,9 +521,9 @@ namespace Sensors
             err("Restart due to watchdog overflow");
             throw RestartNeeded(DTR(Status::getString(CODE_COM_ERROR)), 5);
           }
-          if (m_rtk_wdog_base_available.overflow())
+          if (m_rtk_wdog_base_available.overflow() && (m_rtkfix.validity & IMC::GpsFixRtk::RFV_VALID_BASE))
           {
-            m_rtkfix.validity |= ~IMC::GpsFixRtk::RFV_VALID_BASE;
+            m_rtkfix.validity &= ~IMC::GpsFixRtk::RFV_VALID_BASE;
             debug("Base Position Unavailable. Timeout");
           }
         }
