@@ -188,10 +188,15 @@ namespace Control
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
-      Task(const std::string& name, Tasks::Context& ctx) :
-          PeriodicUAVAutopilot(name, ctx, c_controllable, c_required), m_v_int_value(
-              3, 1, 0.0), m_time_end(0.0), m_time_diff(0.0), m_curr_heading(
-              0.0), m_i(0), m_N(0), m_L(0)
+      Task(const std::string& name, Tasks::Context& ctx):
+        PeriodicUAVAutopilot(name, ctx, c_controllable, c_required),       
+        m_i(0), 
+        m_N(0), 
+        m_L(0),
+        m_curr_heading(0.0),
+        m_v_int_value(3, 1, 0.0),
+        m_time_end(0.0), 
+        m_time_diff(0.0) 
       {
         param("Formation Controller", m_args.use_controller).visibility(
             Tasks::Parameter::VISIBILITY_USER).scope(
@@ -528,9 +533,12 @@ namespace Control
 
         //spew("New desired formation.");
         double now = Clock::getSinceEpoch();
-        double diff = now - m_last_heading_update(m_i);	//m_i is me
+        
 
         m_curr_heading = m_desired_heading.value;
+
+        //low pass filterd heading
+        //double diff = now - m_last_heading_update(m_i); //m_i is me
         //m_curr_heading = lowPassSmoothing(m_curr_heading, m_desired_heading.value, diff, m_args.heading_smoothing_T);
 
         m_x_c = Rzyx(0, 0, m_curr_heading) * m_x_c_default;
@@ -590,8 +598,6 @@ namespace Control
           last_print = now;
         }
 
-
-
         bool id_found = false;
         for (unsigned int uav = 0; uav < m_N; uav++)
         {
@@ -601,7 +607,6 @@ namespace Control
 
             // Get current time and time of transmission
             double stamp = msg->ots;
-            double now = Clock::getSinceEpoch();
 
             // Calculate update frequency
             double diff = now - m_last_pos_update(uav);
@@ -792,10 +797,9 @@ namespace Control
             id_found = true;
             // Get current time and time of transmission
             //double stamp = msg->ots;
-            double now = Clock::getSinceEpoch();
 
             // Calculate update frequency
-            double diff = now - m_last_heading_update(uav);
+            //double diff = now - m_last_heading_update(uav);
             /*
              if (diff > 0)
              {
