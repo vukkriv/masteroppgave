@@ -30,98 +30,101 @@
 
 namespace Control
 {
-  namespace FormationPathControl
+  namespace Formation
   {
-    using DUNE_NAMESPACES;
-    //! Controllable loops.
-    static const uint32_t c_controllable = IMC::CL_PATH;
-    //! Required loops.
-    static const uint32_t c_required = IMC::CL_SPEED;
-
-    struct Arguments
+    namespace Path
     {
-      //! Use Formation Controller
-      bool use_controller;
+      using DUNE_NAMESPACES;
+      //! Controllable loops.
+      static const uint32_t c_controllable = IMC::CL_PATH;
+      //! Required loops.
+      static const uint32_t c_required = IMC::CL_SPEED;
 
-    };
-
-    struct Task : public DUNE::Control::PeriodicUAVAutopilot
-    {
-      //! Task arguments
-      Arguments m_args;
-
-      //! Constructor.
-      //! @param[in] name task name.
-      //! @param[in] ctx context.
-      Task(const std::string& name, Tasks::Context& ctx):
-        PeriodicUAVAutopilot(name, ctx, c_controllable, c_required)
+      struct Arguments
       {
-        param("Formation Path Controller", m_args.use_controller)
-        .visibility(Tasks::Parameter::VISIBILITY_USER)
-        .scope(Tasks::Parameter::SCOPE_MANEUVER)
-        .defaultValue("false")
-        .description("Enable Formation Path Controller.");
-      }
+        //! Use Formation Controller
+        bool use_controller;
 
-      //! Update internal state with new parameter values.
-      void
-      onUpdateParameters(void)
+      };
+
+      struct Task : public DUNE::Control::PeriodicUAVAutopilot
       {
-      }
+        //! Task arguments
+        Arguments m_args;
 
-      //! Reserve entity identifiers.
-      void
-      onEntityReservation(void)
-      {
-      }
+        //! Constructor.
+        //! @param[in] name task name.
+        //! @param[in] ctx context.
+        Task(const std::string& name, Tasks::Context& ctx):
+          PeriodicUAVAutopilot(name, ctx, c_controllable, c_required)
+        {
+          param("Formation Path Controller", m_args.use_controller)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .defaultValue("false")
+          .description("Enable Formation Path Controller.");
+        }
 
-      //! Resolve entity names.
-      void
-      onEntityResolution(void)
-      {
-      }
+        //! Update internal state with new parameter values.
+        void
+        onUpdateParameters(void)
+        {
+        }
 
-      //! Acquire resources.
-      void
-      onResourceAcquisition(void)
-      {
-      }
+        //! Reserve entity identifiers.
+        void
+        onEntityReservation(void)
+        {
+        }
 
-      //! Initialize resources.
-      void
-      onResourceInitialization(void)
-      {
-      }
+        //! Resolve entity names.
+        void
+        onEntityResolution(void)
+        {
+        }
 
-      //! Release resources.
-      void
-      onResourceRelease(void)
-      {
-      }
+        //! Acquire resources.
+        void
+        onResourceAcquisition(void)
+        {
+        }
 
-      //! Main loop.
-      void
-      task(void)
-      {
-        if (!m_args.use_controller || !isActive())
-          return;
+        //! Initialize resources.
+        void
+        onResourceInitialization(void)
+        {
+        }
 
-      }
+        //! Release resources.
+        void
+        onResourceRelease(void)
+        {
+        }
 
-      //! @return  Rotation matrix.
-      Matrix
-      Rzyx(double phi, double theta, double psi) const
-      {
-        double R_en_elements[] =
-          { cos(psi) * cos(theta), (-sin(psi) * cos(phi))
-              + (cos(psi) * sin(theta) * sin(phi)), (sin(psi) * sin(phi))
-              + (cos(psi) * cos(phi) * sin(theta)), sin(psi) * cos(theta), (cos(
-              psi) * cos(phi)) + (sin(phi) * sin(theta) * sin(psi)), (-cos(psi)
-              * sin(phi)) + (sin(theta) * sin(psi) * cos(phi)), -sin(theta),
-              cos(theta) * sin(phi), cos(theta) * cos(phi) };
-        return Matrix(R_en_elements, 3, 3);
-      }
-    };
+        //! Main loop.
+        void
+        task(void)
+        {
+          if (!m_args.use_controller || !isActive())
+            return;
+
+        }
+
+        //! @return  Rotation matrix.
+        Matrix
+        Rzyx(double phi, double theta, double psi) const
+        {
+          double R_en_elements[] =
+            { cos(psi) * cos(theta), (-sin(psi) * cos(phi))
+                + (cos(psi) * sin(theta) * sin(phi)), (sin(psi) * sin(phi))
+                + (cos(psi) * cos(phi) * sin(theta)), sin(psi) * cos(theta), (cos(
+                psi) * cos(phi)) + (sin(phi) * sin(theta) * sin(psi)), (-cos(psi)
+                * sin(phi)) + (sin(theta) * sin(psi) * cos(phi)), -sin(theta),
+                cos(theta) * sin(phi), cos(theta) * cos(phi) };
+          return Matrix(R_en_elements, 3, 3);
+        }
+      };
+    }
   }
 }
 
