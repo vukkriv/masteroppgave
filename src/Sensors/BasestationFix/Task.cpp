@@ -62,6 +62,7 @@ namespace Sensors
         
         param("BaseIsFixed", m_args.base_is_fixed)
         .defaultValue("False")
+        .visibility(Parameter::VISIBILITY_USER)
         .description("When set to true by operator, ");
         
         clearMessages();
