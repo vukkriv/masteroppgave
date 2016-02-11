@@ -79,7 +79,7 @@ namespace Sensors
         if ((paramChanged(m_args.base_is_fixed)) && (m_args.base_is_fixed == true))
         {
           //Base pos has been locked by the operator
-          if (m_fix.validity &= IMC::GpsFix::GFV_VALID_POS)
+          if (m_fix.validity & IMC::GpsFix::GFV_VALID_POS)
           {
             //GPS pos is valid
             //Set the gps pos of the base
@@ -106,10 +106,11 @@ namespace Sensors
       {
         debug("Consuming GPS-Fix");
 
+
+
         // Defining origin.
-        m_fix.lat = msg->lat;
-        m_fix.lon = msg->lon;
-        m_fix.height = msg->height;
+        m_fix = *msg;
+
 
         spew("Im at lat %f lon %f", m_fix.lat, m_fix.lon);
       }
