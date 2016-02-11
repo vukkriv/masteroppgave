@@ -105,11 +105,14 @@ namespace Simulators
       void
       onMain(void)
       {
-        m_fix.lat = 0.0;
+        //CMAC
+        m_fix.lat = Angles::radians(-35.363261);
+        m_fix.lon = Angles::radians(149.165230);
+        m_fix.height = 584.353;
         while (!stopping())
         {
           waitForMessages(1.0);
-          m_fix.lat += 0.1;
+          m_fix.lat += 0.000001;
           dispatch(m_fix);
           spew("Lat is now %f", m_fix.lat);
           Delay::wait(1.0);
