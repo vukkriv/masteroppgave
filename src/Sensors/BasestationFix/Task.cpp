@@ -75,11 +75,12 @@ namespace Sensors
       onUpdateParameters(void)
       {
         debug("Updating parameters");
-        if (paramChanged(m_args.base_is_fixed))
+        if ((paramChanged(m_args.base_is_fixed)) && (m_args.base_is_fixed == true))
         {
-          if (m_args.base_is_fixed == true)
+          //Base pos has been locked by the operator
+          if (m_fix.validity &= IMC::GpsFix::GFV_VALID_POS)
           {
-            //Base pos has been locked by the operator
+            //GPS pos is valid
             //Set the gps pos of the base
             m_rtkfix.base_lat = m_fix.lat;
             m_rtkfix.base_lon = m_fix.lon;
@@ -87,7 +88,14 @@ namespace Sensors
             m_rtkfix.validity |= IMC::GpsFixRtk::RFV_VALID_BASE;
             
             //Send base pos to all rovers
+            debug("Dispatching base position");
             dispatch(m_rtkfix);
+          }
+          else
+          {
+            //GPS pos is not valid
+            debug("Unfixing base due to invalid GPS pos");
+            m_args.base_is_fixed = false;
           }
         }
       }
@@ -157,6 +165,7 @@ namespace Sensors
           //Delay::wait(10.0);
           if (m_args.base_is_fixed)
           {
+            debug("Dispatching base position");
             dispatch(m_rtkfix);
           }
           //waitForMessages(1.0);
