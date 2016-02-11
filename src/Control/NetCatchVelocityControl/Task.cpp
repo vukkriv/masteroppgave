@@ -112,10 +112,10 @@ namespace Control
         .visibility(Tasks::Parameter::VISIBILITY_USER)
         .description("Velocity Controller tuning parameter Kd");
 
-        param("Maximum Normalised Force", m_args.max_norm_F)
+        param("Maximum Normalized Force", m_args.max_norm_F)
         .defaultValue("5.0")
         .visibility(Tasks::Parameter::VISIBILITY_USER)
-        .description("Maximum Normalised Force of the Copter");
+        .description("Maximum Normalized Force of the Vehicle");
 
         param("Disable Z flag", m_args.disable_Z)
         .defaultValue("false")

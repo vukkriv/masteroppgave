@@ -33,8 +33,7 @@ namespace Maneuver
   namespace FormationCoordinator
   {
     using DUNE_NAMESPACES;
-
-    struct Task: public DUNE::Tasks::Task
+    struct Task : public DUNE::Tasks::Task
     {
       //! Formation coordination message
       IMC::FormCoord m_form_coord;
@@ -48,8 +47,8 @@ namespace Maneuver
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
-      Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Task(name, ctx)
+      Task(const std::string& name, Tasks::Context& ctx) :
+          DUNE::Tasks::Task(name, ctx)
       {
         bind<IMC::PlanControl>(this);
         bind<IMC::PlanDB>(this);
@@ -104,68 +103,77 @@ namespace Maneuver
         //msg->toText(std::cout);
 
         // Ignore if not reply for this entity
-        if (msg->getDestination() != getSystemId() || msg->getDestinationEntity() != getEntityId())
+        if (msg->getDestination() != getSystemId()
+            || msg->getDestinationEntity() != getEntityId())
         {
           trace("Ignoring PlanDB with other destination");
           return;
         }
 
-        if (msg->type == IMC::PlanDB::DBT_SUCCESS && msg->op == IMC::PlanDB::DBOP_GET)
+        if (msg->type == IMC::PlanDB::DBT_SUCCESS
+            && msg->op == IMC::PlanDB::DBOP_GET)
         {
-          debug("Got plan from DB, checking if Formation Controller is activated...");
+          debug(
+              "Got plan from DB, checking if Formation Controller is activated...");
           // Check if plan has activated Formation Controller
           bool is_formation_control = false;
           try
+          {
+            const IMC::SetEntityParameters* t_sep;
+            const IMC::PlanSpecification* planspec =
+                static_cast<const IMC::PlanSpecification*>(msg->arg.get());
+            IMC::MessageList<IMC::PlanManeuver>::const_iterator it =
+                planspec->maneuvers.begin();
+            for (; it != planspec->maneuvers.end(); it++)
             {
-              const IMC::SetEntityParameters* t_sep;
-              const IMC::PlanSpecification* planspec = static_cast<const IMC::PlanSpecification*>(msg->arg.get());
-              IMC::MessageList<IMC::PlanManeuver>::const_iterator it = planspec->maneuvers.begin();
-              for (; it != planspec->maneuvers.end(); it++ )
+              IMC::MessageList<IMC::Message>::const_iterator it_sa =
+                  (*it)->start_actions.begin();
+              for (; it_sa != (*it)->start_actions.end(); it_sa++)
               {
-                IMC::MessageList<IMC::Message>::const_iterator it_sa = (*it)->start_actions.begin();
-                for (; it_sa != (*it)->start_actions.end(); it_sa++ )
+                t_sep = static_cast<const IMC::SetEntityParameters*>(*it_sa);
+                if (t_sep->name.compare("Formation Controller") == 0)
                 {
-                  t_sep = static_cast<const IMC::SetEntityParameters*>(*it_sa);
-                  if (t_sep->name.compare("Formation Controller") == 0)
+                  IMC::MessageList<IMC::EntityParameter>::const_iterator it_ep =
+                      t_sep->params.begin();
+                  for (; it_ep != t_sep->params.end(); it_ep++)
                   {
-                    IMC::MessageList<IMC::EntityParameter>::const_iterator it_ep = t_sep->params.begin();
-                    for (; it_ep != t_sep->params.end(); it_ep++ )
+                    if ((*it_ep)->name.compare("Formation Controller") == 0
+                        && (*it_ep)->value.compare("true") == 0)
                     {
-                      if ((*it_ep)->name.compare("Formation Controller") == 0 &&
-                          (*it_ep)->value.compare("true") == 0)
-                      {
-                        is_formation_control = true;
-                        break;
-                      }
+                      is_formation_control = true;
+                      break;
                     }
                   }
-                  if (is_formation_control)
-                    break;
                 }
                 if (is_formation_control)
                   break;
               }
+              if (is_formation_control)
+                break;
             }
-            catch (std::exception& e)
-            {
-              err(DTR("Plan specification request failed with uncaught exception: %s"), e.what());
-            }
+          }
+          catch (std::exception& e)
+          {
+            err(DTR(
+                "Plan specification request failed with uncaught exception: %s"),
+                e.what());
+          }
 
-            if (!is_formation_control)
-            {
-              debug("Plan did not activate Formation Controller");
-              return;
-            }
+          if (!is_formation_control)
+          {
+            debug("Plan did not activate Formation Controller");
+            return;
+          }
 
-            debug("Plan started with Formation Controller active!");
-            // Notify vehicles in formation
-            m_form_coord.type = IMC::FormCoord::FCT_REQUEST;
-            m_form_coord.op = IMC::FormCoord::FCOP_START;
-            m_form_coord.lat = m_last_estate.lat;
-            m_form_coord.lon = m_last_estate.lon;
-            m_form_coord.height = m_last_estate.height;
-            dispatch(m_form_coord);
-            debug("Sent Formation Start");
+          debug("Plan started with Formation Controller active!");
+          // Notify vehicles in formation
+          m_form_coord.type = IMC::FormCoord::FCT_REQUEST;
+          m_form_coord.op = IMC::FormCoord::FCOP_START;
+          m_form_coord.lat = m_last_estate.lat;
+          m_form_coord.lon = m_last_estate.lon;
+          m_form_coord.height = m_last_estate.height;
+          dispatch(m_form_coord);
+          debug("Sent Formation Start");
         }
 
       }
@@ -237,7 +245,8 @@ namespace Maneuver
         //pcs->toText(std::cout);
 
         // Check if we just stopped executing a plan
-        if (m_last_pcs.state == IMC::PlanControlState::PCS_EXECUTING && pcs->state == IMC::PlanControlState::PCS_READY)
+        if (m_last_pcs.state == IMC::PlanControlState::PCS_EXECUTING
+            && pcs->state == IMC::PlanControlState::PCS_READY)
         {
           debug("Plan stopped");
           // Check if success
@@ -269,8 +278,8 @@ namespace Maneuver
       consume(const IMC::FormCoord* msg)
       {
         debug("Got FormCoord \nfrom '%s' at '%s'",
-             resolveEntity(msg->getSourceEntity()).c_str(),
-             resolveSystemId(msg->getSource()));
+              resolveEntity(msg->getSourceEntity()).c_str(),
+              resolveSystemId(msg->getSource()));
         // Ignored if sent by self
         if (msg->getSource() == getSystemId())
           return;
@@ -283,46 +292,46 @@ namespace Maneuver
           switch (msg->op)
           {
             case IMC::FormCoord::FCOP_ABORT:
-            {
-              war("Formation Abort!");
-              // Send abort
-              IMC::Abort plan_abort;
-              // Have to set destination, as Vehicle.Supervisor ignores if this destination is not this vehicle
-              plan_abort.setDestination(this->getSystemId());
-              dispatch(plan_abort);
+              {
+                war("Formation Abort!");
+                // Send abort
+                IMC::Abort plan_abort;
+                // Have to set destination, as Vehicle.Supervisor ignores if this destination is not this vehicle
+                plan_abort.setDestination(this->getSystemId());
+                dispatch(plan_abort);
 
-              break;
-            }
+                break;
+              }
             case IMC::FormCoord::FCOP_START:
-            {
-              debug("Formation Start");
-              // Make, send and start formation plan
-              startFormationPlan();
+              {
+                debug("Formation Start");
+                // Make, send and start formation plan
+                startFormationPlan();
 
-              break;
-            }
+                break;
+              }
             case IMC::FormCoord::FCOP_STOP:
-            {
-              debug("Received Formation Stop");
-              // Send request to stop plan
-              IMC::PlanControl plan_ctrl;
-              plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
-              plan_ctrl.op = IMC::PlanControl::PC_STOP;
-              dispatch(plan_ctrl);
+              {
+                debug("Received Formation Stop");
+                // Send request to stop plan
+                IMC::PlanControl plan_ctrl;
+                plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
+                plan_ctrl.op = IMC::PlanControl::PC_STOP;
+                dispatch(plan_ctrl);
 
-              break;
-            }
+                break;
+              }
             case IMC::FormCoord::FCOP_FINISHED:
-            {
-              debug("Received Formation Finished");
-              // TODO: Notify plan success instead of just stopping (failure)
-              // Send request to stop plan
-              IMC::PlanControl plan_ctrl;
-              plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
-              plan_ctrl.op = IMC::PlanControl::PC_STOP;
-              dispatch(plan_ctrl);
-              break;
-            }
+              {
+                debug("Received Formation Finished");
+                // TODO: Notify plan success instead of just stopping (failure)
+                // Send request to stop plan
+                IMC::PlanControl plan_ctrl;
+                plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
+                plan_ctrl.op = IMC::PlanControl::PC_STOP;
+                dispatch(plan_ctrl);
+                break;
+              }
           }
         } // End handle request
         else
@@ -342,49 +351,52 @@ namespace Maneuver
         plan_db.plan_id = "formationPlan";
         plan_db.request_id = 0;
 
-          // Create plan specification
-          IMC::PlanSpecification plan_spec;
-          plan_spec.plan_id = plan_db.plan_id;
-          plan_spec.start_man_id = 1;
-          plan_spec.description = "Plan activating FormationController";
+        // Create plan specification
+        IMC::PlanSpecification plan_spec;
+        plan_spec.plan_id = plan_db.plan_id;
+        plan_spec.start_man_id = 1;
+        plan_spec.description = "Plan activating FormationController";
 
-            // Create plan maneuver
-            IMC::PlanManeuver man_spec;
-            man_spec.maneuver_id = 1;
-              /*
-              // Create custom maneuver (not supported?!)
-              IMC::CustomManeuver c_man;
-              c_man.name = "formationManeuver";
-              */
+        // Create plan maneuver
+        IMC::PlanManeuver man_spec;
+        man_spec.maneuver_id = 1;
+        /*
+         // Create custom maneuver (not supported?!)
+         IMC::CustomManeuver c_man;
+         c_man.name = "formationManeuver";
+         */
 
-              // Create some maneuver
-              IMC::Goto c_man;
+        // Create some maneuver
+        //IMC::Goto c_man;
 
-            man_spec.data.set(c_man);
+        // Create a slave maneuver
+        IMC::SlaveManeuver c_man;
 
-              // Create start actions
-              IMC::SetEntityParameters eparam_start;
-              eparam_start.name = "Formation Controller";
-                IMC::EntityParameter param_t;
-                param_t.name = "Formation Controller";
-                param_t.value = "true";
+        man_spec.data.set(c_man);
 
-              eparam_start.params.push_back(param_t);
+        // Create start actions
+        IMC::SetEntityParameters eparam_start;
+        eparam_start.name = "Formation Controller";
+        IMC::EntityParameter param_t;
+        param_t.name = "Formation Controller";
+        param_t.value = "true";
 
-            man_spec.start_actions.push_back(eparam_start);
+        eparam_start.params.push_back(param_t);
 
-              // Create end actions
-              IMC::SetEntityParameters eparam_stop;
-              eparam_start.name = "Formation Controller";
-                IMC::EntityParameter param_f;
-                param_f.name = "Formation Controller";
-                param_f.value = "false";
+        man_spec.start_actions.push_back(eparam_start);
 
-              eparam_start.params.push_back(param_f);
+        // Create end actions
+        IMC::SetEntityParameters eparam_stop;
+        eparam_start.name = "Formation Controller";
+        IMC::EntityParameter param_f;
+        param_f.name = "Formation Controller";
+        param_f.value = "false";
 
-            man_spec.end_actions.push_back(eparam_stop);
+        eparam_start.params.push_back(param_f);
 
-          plan_spec.maneuvers.push_back(man_spec);
+        man_spec.end_actions.push_back(eparam_stop);
+
+        plan_spec.maneuvers.push_back(man_spec);
 
         plan_db.arg.set(plan_spec);
 
