@@ -34,18 +34,28 @@ namespace Simulators
   {
     using DUNE_NAMESPACES;
 
+    struct Arguments
+    {
+      bool valid_pos;
+    };
+
     struct Task: public DUNE::Tasks::Task
     {
       //! GPS Fix message.
       IMC::GpsFix m_fix;
       //! RTK Fix message.
       IMC::GpsFixRtk m_rtkfix;
+      Arguments m_args;
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Task(name, ctx)
       {
+        param("Valid Position", m_args.valid_pos)
+		.defaultValue("True")
+		.description("Chose whether the position is valid or not ");
+
         bind<IMC::GpsFixRtk>(this);
 
         m_fix.validity |= IMC::GpsFix::GFV_VALID_POS;
@@ -109,6 +119,14 @@ namespace Simulators
         m_fix.lat = Angles::radians(-35.363261);
         m_fix.lon = Angles::radians(149.165230);
         m_fix.height = 584.353;
+        if (m_args.valid_pos)
+        {
+        	m_fix.validity |= IMC::GpsFix::GFV_VALID_POS;
+        }
+        else
+        {
+        	m_fix.validity &= ~IMC::GpsFix::GFV_VALID_POS;
+      	}
         while (!stopping())
         {
           waitForMessages(1.0);

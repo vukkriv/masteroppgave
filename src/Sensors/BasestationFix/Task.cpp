@@ -37,10 +37,9 @@ namespace Sensors
     struct Arguments
     {
       bool base_is_fixed;
-      uint8_t comm_timeout;
-
+      double freq;
     };
-    struct Task: public DUNE::Tasks::Task
+    struct Task: public DUNE::Tasks::Periodic
     {
       //! GPS Fix message.
       IMC::GpsFix m_fix;
@@ -53,18 +52,19 @@ namespace Sensors
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Task(name, ctx)
+        DUNE::Tasks::Periodic(name, ctx)
       {
-        param("Communication Timeout1", m_args.comm_timeout)
-        .defaultValue("5")
-        .units(Units::Second)
-        .description("Timeout for base and local communication.");
-        
         param("BaseIsFixed", m_args.base_is_fixed)
         .defaultValue("False")
         .visibility(Parameter::VISIBILITY_USER)
         .description("When set to true by operator, ");
         
+ 	    param("Frequency", m_args.freq)
+	    .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .defaultValue("1.0")
+        .description("Controller frequency");
+
+        this->setFrequency(m_args.freq);
         clearMessages();
 
         bind<IMC::GpsFix>(this);
@@ -98,6 +98,12 @@ namespace Sensors
             debug("Unfixing base due to invalid GPS pos");
             m_args.base_is_fixed = false;
           }
+        }
+        if (paramChanged(m_args.freq))
+        {
+        	debug("Current frequency: %f",getFrequency());
+        	setFrequency(m_args.freq);
+        	debug("Frequency changed to : %f",getFrequency());
         }
       }
 
@@ -152,14 +158,11 @@ namespace Sensors
 
       //! Main loop.
       void
-      onMain(void)
+      task(void)
       {
-        while (!stopping())
-        {
-
           // Handle IMC messages from bus
           ///consumeMessages();
-          waitForMessages(1.0);
+      //    waitForMessages(1.0);
 
           //Delay::wait(10.0);
           if (m_args.base_is_fixed)
@@ -168,8 +171,7 @@ namespace Sensors
             dispatch(m_rtkfix);
           }
           //waitForMessages(1.0);
-          spew("Im alive! Base_is_fixed %d, timeout %d", m_args.base_is_fixed, m_args.comm_timeout);
-        }
+          spew("Im alive! Base_is_fixed %d", m_args.base_is_fixed);
       }
     };
   }
