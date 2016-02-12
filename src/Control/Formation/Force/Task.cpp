@@ -540,8 +540,8 @@ namespace Control
           m_curr_heading = m_desired_heading.value;
 
           //low pass filterd heading
-          //double diff = now - m_last_heading_update(m_i); //m_i is me
-          //m_curr_heading = lowPassSmoothing(m_curr_heading, m_desired_heading.value, diff, m_args.heading_smoothing_T);
+          double diff = now - m_last_heading_update(m_i); //m_i is me
+          m_curr_heading = lowPassSmoothing(m_curr_heading, m_desired_heading.value, diff, m_args.heading_smoothing_T);
 
           m_x_c = Rzyx(0, 0, m_curr_heading) * m_x_c_default;
 
