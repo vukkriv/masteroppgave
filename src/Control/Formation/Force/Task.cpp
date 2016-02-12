@@ -746,17 +746,14 @@ namespace Control
            */
 
           if (getSystemId() == msg->getSource())
-          {
-
-            //inf("-->consume copter est loc state");
             m_est_l_state = *msg;
-          }
         }
 
         void
         consume(const IMC::Acceleration* msg)
         {
-          m_a_est = *msg;
+          if (getSystemId() == msg->getSource())
+            m_a_est = *msg;
         }
 
         void
