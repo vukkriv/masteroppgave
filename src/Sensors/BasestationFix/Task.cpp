@@ -37,7 +37,6 @@ namespace Sensors
     struct Arguments
     {
       bool base_is_fixed;
-      double freq;
     };
     struct Task: public DUNE::Tasks::Periodic
     {
@@ -59,12 +58,7 @@ namespace Sensors
         .visibility(Parameter::VISIBILITY_USER)
         .description("When set to true by operator, ");
         
- 	    param("Frequency", m_args.freq)
-	    .visibility(Tasks::Parameter::VISIBILITY_USER)
-        .defaultValue("1.0")
-        .description("Controller frequency");
 
-        this->setFrequency(m_args.freq);
         clearMessages();
 
         bind<IMC::GpsFix>(this);
@@ -99,12 +93,7 @@ namespace Sensors
             m_args.base_is_fixed = false;
           }
         }
-        if (paramChanged(m_args.freq))
-        {
-        	debug("Current frequency: %f",getFrequency());
-        	setFrequency(m_args.freq);
-        	debug("Frequency changed to : %f",getFrequency());
-        }
+
       }
 
       void
