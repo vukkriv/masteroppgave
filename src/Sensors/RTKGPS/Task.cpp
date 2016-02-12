@@ -225,6 +225,8 @@ namespace Sensors
         setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
         m_wdog.setTop(m_args.inp_tout);
         m_rtk_wdog_base_available.setTop(m_args.rtk_base_position_timeout);
+
+        m_base_sys_id = resolveSystemName(m_args.base_system_name);
       }
 
       void
@@ -247,14 +249,22 @@ namespace Sensors
       void
       consume(const IMC::GpsFixRtk* msg)
       {
+
+
         if (msg->getSource() == m_base_sys_id
-            && (msg->validity & IMC::GpsFix::GFV_VALID_POS))
+            && (msg->validity & IMC::GpsFixRtk::RFV_VALID_BASE))
         {
+            spew("Received GpsFixRtk from %s",resolveSystemId(msg->getSource()));
             m_rtkfix.base_lat = msg->base_lat;
             m_rtkfix.base_lon = msg->base_lon;
             m_rtkfix.base_height = msg->base_height;
             m_rtkfix.validity |= IMC::GpsFixRtk::RFV_VALID_BASE;
             m_rtk_wdog_base_available.reset();
+        }
+        else
+        {
+          spew("Ignored GpsRtkFix from %s, validty: %d", resolveSystemId(msg->getSource()), msg->validity);
+          spew("Got from: %u, expected: %u", msg->getSource(), m_base_sys_id);
         }
       }
       void
@@ -360,11 +370,11 @@ namespace Sensors
 		    }
 		  }
 
-		  if(m_llh_output)
+		  if(m_llh_output && parts.size()>=15)
 		  {
 		    setGpsFix(parts);
 		  }
-		  else if(m_ned_output)
+		  else if(m_ned_output && parts.size()>=18)
 		  {
 		    setRtkFix(parts);
 		  }
@@ -439,7 +449,7 @@ namespace Sensors
 
         m_wdog.reset();
         dispatch(m_fix);
-        war("GpsFix Message Dispatched!");
+        trace("GpsFix Message Dispatched!");
       }
 
       void setRtkFix(std::vector<std::string>& parts)
@@ -505,7 +515,7 @@ namespace Sensors
 
         m_wdog.reset();
         dispatch(m_rtkfix);
-        war("RtkFix Message Dispatched!");
+        trace("RtkFix Message Dispatched!");
       }
        
       void
