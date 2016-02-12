@@ -121,6 +121,8 @@ namespace Control
         Arguments m_args;
         //! Current state
         IMC::NetRecoveryState::NetRecoveryLevelEnum m_curr_state;
+        //! Desired net heading
+        IMC::DesiredHeading m_heading;
 
         VirtualRunway m_runway;
         Vehicles m_vehicles;
@@ -196,28 +198,28 @@ namespace Control
         //! @param[in] name task name.
         //! @param[in] ctx context.
         Task(const std::string& name, Tasks::Context& ctx):
-            PeriodicUAVAutopilot(name, ctx, c_controllable, c_required),                           
-                m_ref_lat(0.0), 
-                m_ref_lon(0.0), 
-                m_ref_hae(0.0), 
-                m_ref_valid(false), 
-                m_coordinatorEnabled(false),
-                m_initializedCoord(false),                
-                delta_p_path_x(0), 
-                delta_p_path_x_mean(0), 
-                delta_v_path_x(0), 
-                delta_v_path_x_mean(0),                
-                m_p_ref_path(3, 1, 0.0), 
-                m_v_ref_path(3, 1, 0.0), 
-                m_p_int_value(3, 1, 0.0),
-                m_startCatch_radius(0), 
-                m_timeout(0), 
-                m_u_ref(0.0), 
-                m_ud(0.0), 
-                m_ad(0.0), 
-                m_scope_ref(0),
-                m_time_end(Clock::getMsec()), 
-                m_time_diff(0)
+          PeriodicUAVAutopilot(name, ctx, c_controllable, c_required),
+          m_ref_lat(0.0),
+          m_ref_lon(0.0),
+          m_ref_hae(0.0),
+          m_ref_valid(false),
+          m_coordinatorEnabled(false),
+          m_initializedCoord(false),
+          delta_p_path_x(0),
+          delta_p_path_x_mean(0),
+          delta_v_path_x(0),
+          delta_v_path_x_mean(0),
+          m_p_ref_path(3, 1, 0.0),
+          m_v_ref_path(3, 1, 0.0),
+          m_p_int_value(3, 1, 0.0),
+          m_startCatch_radius(0),
+          m_timeout(0),
+          m_u_ref(0.0),
+          m_ud(0.0),
+          m_ad(0.0),
+          m_scope_ref(0),
+          m_time_end(Clock::getMsec()),
+          m_time_diff(0)
         {
           param("Path Controller", m_args.use_controller).visibility(
               Tasks::Parameter::VISIBILITY_USER).scope(
@@ -352,8 +354,15 @@ namespace Control
           std::string copter;
           while (std::getline(lineStream, copter, ','))
           {
-            m_vehicles.no_vehicles++;
-            m_vehicles.copters.push_back(copter);
+            std::stringstream copterStream(copter.c_str());
+            while (std::getline(copterStream, copter, ' '))
+            {
+              if (copter == "list")
+                break;
+              inf("Copter: %s", copter.c_str());
+              m_vehicles.no_vehicles++;
+              m_vehicles.copters.push_back(copter);
+            }
           }
           inf("No vehicles: %d", m_vehicles.no_vehicles);
           inf("Aircraft: %s", m_vehicles.aircraft.c_str());
@@ -404,7 +413,7 @@ namespace Control
           //     resolveSystemId(estate->getSource()));
 
           std::string vh_id = resolveSystemId(estate->getSource());
-          //spew("Received EstimatedLocalState from %s: ",vh_id.c_str());
+          //debug("Received EstimatedLocalState from %s: ",vh_id.c_str());
           int s = getVehicle(vh_id);
           //spew("s=%d",s);
           if (s == INVALID)  //invalid vehicle
@@ -620,8 +629,10 @@ namespace Control
 
           double deltaWP_NE = deltaWP.get(0, 1, 0, 0).norm_2();
 
-          m_runway.alpha = atan2(deltaWP(1), deltaWP(0));
-          m_runway.theta = -atan2(deltaWP_NE, deltaWP(2)) + Angles::radians(90);
+          m_runway.alpha  =  atan2(deltaWP(1), deltaWP(0));
+          m_runway.theta  = -atan2(deltaWP_NE, deltaWP(2)) + Angles::radians(90);
+          m_heading.value = m_runway.alpha;
+          dispatch(m_heading);
         }
 
         void
@@ -1017,7 +1028,7 @@ namespace Control
           Matrix e_v_path = m_v_ref_path - v_n_path;
           m_p_int_value = m_p_int_value + e_p_path * m_time_diff;
 
-          if (m_curr_state == IMC::NetRecoveryState::NR_STANDBY
+          if (   m_curr_state == IMC::NetRecoveryState::NR_STANDBY
               || m_curr_state == IMC::NetRecoveryState::NR_APPROACH
               || m_curr_state == IMC::NetRecoveryState::NR_END)
           {
@@ -1035,7 +1046,7 @@ namespace Control
             }
           }
           else if (m_curr_state == IMC::NetRecoveryState::NR_START
-              || m_curr_state == IMC::NetRecoveryState::NR_CATCH)
+                || m_curr_state == IMC::NetRecoveryState::NR_CATCH)
           {
             e_p_path(0) = 0;
             v_path(0) = u_d_along_path;
@@ -1062,7 +1073,7 @@ namespace Control
           if (Clock::get() - startPrint > 0.3)
           {
             spew("Kp: [%f,%f,%f]", m_args.Kp(0), m_args.Kp(1), m_args.Kp(2));
-            spew("m_time_diff: %llu", m_time_diff);
+            spew("m_time_diff: %lu", m_time_diff);
             spew("m_p_int_value: [%f,%f,%f]", m_p_int_value(0), m_p_int_value(1),
                  m_p_int_value(2));
             spew("p_ref_path: [%f,%f,%f]", m_p_ref_path(0), m_p_ref_path(1),
