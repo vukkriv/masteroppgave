@@ -56,6 +56,10 @@ namespace Control
 
         // Max vel approach
         double max_vy_app;
+
+        // Max pos approach
+        double max_py_app;
+
         //! Moving mean window size
         double mean_ws;
         //! Desired velocity of net at impact
@@ -76,6 +80,7 @@ namespace Control
         Matrix Ki;
         Matrix Kd;
 
+
         double max_norm_v;
 
         //! Frequency of controller
@@ -89,8 +94,8 @@ namespace Control
 
       struct VirtualRunway
       {
-        fp64_t lat_start, lon_start, hae_start;
-        fp64_t lat_end, lon_end, hae_end, z_off_a;
+        fp64_t lat_start, lon_start, altitude_start;
+        fp64_t lat_end, lon_end, altitude_end, z_off_a;
 
         fp32_t box_height, box_width, box_length;
 
@@ -121,6 +126,8 @@ namespace Control
         Arguments m_args;
         //! Current state
         IMC::NetRecoveryState::NetRecoveryLevelEnum m_curr_state;
+        //! Desired net heading
+        IMC::DesiredHeading m_heading;
 
         VirtualRunway m_runway;
         Vehicles m_vehicles;
@@ -196,28 +203,28 @@ namespace Control
         //! @param[in] name task name.
         //! @param[in] ctx context.
         Task(const std::string& name, Tasks::Context& ctx):
-            PeriodicUAVAutopilot(name, ctx, c_controllable, c_required),                           
-                m_ref_lat(0.0), 
-                m_ref_lon(0.0), 
-                m_ref_hae(0.0), 
-                m_ref_valid(false), 
-                m_coordinatorEnabled(false),
-                m_initializedCoord(false),                
-                delta_p_path_x(0), 
-                delta_p_path_x_mean(0), 
-                delta_v_path_x(0), 
-                delta_v_path_x_mean(0),                
-                m_p_ref_path(3, 1, 0.0), 
-                m_v_ref_path(3, 1, 0.0), 
-                m_p_int_value(3, 1, 0.0),
-                m_startCatch_radius(0), 
-                m_timeout(0), 
-                m_u_ref(0.0), 
-                m_ud(0.0), 
-                m_ad(0.0), 
-                m_scope_ref(0),
-                m_time_end(Clock::getMsec()), 
-                m_time_diff(0)
+          PeriodicUAVAutopilot(name, ctx, c_controllable, c_required),
+          m_ref_lat(0.0),
+          m_ref_lon(0.0),
+          m_ref_hae(0.0),
+          m_ref_valid(false),
+          m_coordinatorEnabled(false),
+          m_initializedCoord(false),
+          delta_p_path_x(0),
+          delta_p_path_x_mean(0),
+          delta_v_path_x(0),
+          delta_v_path_x_mean(0),
+          m_p_ref_path(3, 1, 0.0),
+          m_v_ref_path(3, 1, 0.0),
+          m_p_int_value(3, 1, 0.0),
+          m_startCatch_radius(0),
+          m_timeout(0),
+          m_u_ref(0.0),
+          m_ud(0.0),
+          m_ad(0.0),
+          m_scope_ref(0),
+          m_time_end(Clock::getMsec()),
+          m_time_diff(0)
         {
           param("Path Controller", m_args.use_controller).visibility(
               Tasks::Parameter::VISIBILITY_USER).scope(
@@ -227,7 +234,7 @@ namespace Control
           param("Offset cross-track", m_args.m_crosstrack_offset).visibility(
               Tasks::Parameter::VISIBILITY_USER)
   //	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .defaultValue("0.0").description("Cross-track offset");
+          .defaultValue("0.0").description("Cross-track offset, subtract the offset from the y-position of the airplane in the path frame");
 
           param("Stop at end-of-runway", m_args.enable_stop_endRunway).visibility(
               Tasks::Parameter::VISIBILITY_USER)
@@ -274,6 +281,9 @@ namespace Control
               Units::Meter);
 
           param("Max vel y approach", m_args.max_vy_app).visibility(
+              Tasks::Parameter::VISIBILITY_USER).defaultValue("1");
+
+          param("Max pos y approach", m_args.max_py_app).visibility(
               Tasks::Parameter::VISIBILITY_USER).defaultValue("1");
 
           param("Desired collision radius", m_args.m_coll_r).visibility(
@@ -352,8 +362,15 @@ namespace Control
           std::string copter;
           while (std::getline(lineStream, copter, ','))
           {
-            m_vehicles.no_vehicles++;
-            m_vehicles.copters.push_back(copter);
+            std::stringstream copterStream(copter.c_str());
+            while (std::getline(copterStream, copter, ' '))
+            {
+              if (copter == "list")
+                break;
+              inf("Copter: %s", copter.c_str());
+              m_vehicles.no_vehicles++;
+              m_vehicles.copters.push_back(copter);
+            }
           }
           inf("No vehicles: %d", m_vehicles.no_vehicles);
           inf("Aircraft: %s", m_vehicles.aircraft.c_str());
@@ -364,11 +381,22 @@ namespace Control
 
           m_runway.lat_start = msg->start_lat;
           m_runway.lon_start = msg->start_lon;
-          m_runway.hae_start = msg->z;
           m_runway.z_off_a = msg->z_off;
           m_runway.lon_end = msg->end_lon;
           m_runway.lat_end = msg->end_lat;
-          m_runway.hae_end = msg->z;
+
+          switch(msg->z_units)
+          {
+            case IMC::Z_ALTITUDE:
+              m_runway.altitude_start = msg->z;
+              m_runway.altitude_end = msg->z;
+              break;
+            default:
+              war("z_unit not supported, using altitude");
+              m_runway.altitude_start = msg->z;
+              m_runway.altitude_end = msg->z;
+              break;
+          };
 
           m_runway.box_height = msg->lbox_height;
           m_runway.box_width = msg->lbox_width;
@@ -404,7 +432,7 @@ namespace Control
           //     resolveSystemId(estate->getSource()));
 
           std::string vh_id = resolveSystemId(estate->getSource());
-          //spew("Received EstimatedLocalState from %s: ",vh_id.c_str());
+          //debug("Received EstimatedLocalState from %s: ",vh_id.c_str());
           int s = getVehicle(vh_id);
           //spew("s=%d",s);
           if (s == INVALID)  //invalid vehicle
@@ -467,24 +495,6 @@ namespace Control
                   err("Unable to calculate the desired start-radius");
                   return;
                 }
-                if (s == AIRCRAFT)
-                {
-                  /*
-                   spew("v_a: %f",v_a);
-                   spew("p[%d]: [%f,%f,%f]",s,p(0),p(1),p(2));
-                   spew("v[%d]: [%f,%f,%f]",s,v(0),v(1),v(2));
-                   spew("m_runway.start_NED[%d]: [%f,%f,%f]",s,m_runway.start_NED(0),m_runway.start_NED(1),m_runway.start_NED(2));
-                   spew("m_runway.end_NED [%d]: [%f,%f,%f]",s,m_runway.end_NED(0),m_runway.end_NED(1),m_runway.end_NED(2));
-                   spew("m_p_path[%d]: [%f,%f,%f]",s,m_p_path[s](0),m_p_path[s](1),m_p_path[s](2));
-                   spew("m_v_path[%d]: [%f,%f,%f]",s,m_v_path[s](0),m_v_path[s](1),m_v_path[s](2));
-                   spew("m_p_path_mean[%d]: [%f,%f,%f]",s,m_p_path_mean[s](0),m_p_path_mean[s](1),m_p_path_mean[s](2));
-                   spew("m_v_path_mean[%d]: [%f,%f,%f]",s,m_v_path_mean[s](0),m_v_path_mean[s](1),m_v_path_mean[s](2));
-                   spew("delta_p_path_x = %f",delta_p_path_x);
-                   spew("delta_v_path_x = %f",delta_v_path_x);
-                   spew("StartCatch radius: %f",m_startCatch_radius);
-                   spew("\n\n");
-                   */
-                }
 
                 if (startNetRecovery())
                   m_curr_state = IMC::NetRecoveryState::NR_START;
@@ -530,20 +540,10 @@ namespace Control
                 break;
               }
           }
-          //inf("Send current state");
           sendCurrentState();
-          //inf("Current state sent");
           if (last_state != m_curr_state)
             inf("Current state: %d",
                 static_cast<NetRecoveryState::NetRecoveryLevelEnum>(m_curr_state));
-          if (m_curr_state == IMC::NetRecoveryState::NR_STOP)
-          {
-            //inf("test state %d", m_curr_state);
-            //onAutopilotDeactivation();
-            //inf("test state %d", m_curr_state);
-            //m_curr_state = IMC::NetRecoveryState::NR_INIT;
-          }
-          //inf("Here");
         }
 
         void
@@ -607,12 +607,12 @@ namespace Control
           WGS84::displacement(m_ref_lat, m_ref_lon, 0, m_runway.lat_start,
                               m_runway.lon_start, 0, &m_runway.start_NED(0),
                               &m_runway.start_NED(1));
-          m_runway.start_NED(2) = -m_runway.hae_start;
+          m_runway.start_NED(2) = -m_runway.altitude_start;
 
           WGS84::displacement(m_ref_lat, m_ref_lon, 0, m_runway.lat_end,
                               m_runway.lon_end, 0, &m_runway.end_NED(0),
                               &m_runway.end_NED(1));
-          m_runway.end_NED(2) = -m_runway.hae_end;
+          m_runway.end_NED(2) = -m_runway.altitude_end;
 
           Matrix deltaWP = m_runway.end_NED - m_runway.start_NED;
 
@@ -620,15 +620,15 @@ namespace Control
 
           double deltaWP_NE = deltaWP.get(0, 1, 0, 0).norm_2();
 
-          m_runway.alpha = atan2(deltaWP(1), deltaWP(0));
-          m_runway.theta = -atan2(deltaWP_NE, deltaWP(2)) + Angles::radians(90);
+          m_runway.alpha  =  atan2(deltaWP(1), deltaWP(0));
+          m_runway.theta  = -atan2(deltaWP_NE, deltaWP(2)) + Angles::radians(90);
+          m_heading.value = m_runway.alpha;
+          dispatch(m_heading);
         }
 
         void
         calcPathErrors(Matrix p, Matrix v, int s)
         {
-          //spew("p_NED[%d]: [%f,%f,%f]",s,p(0),p(1),p(2));
-
           Matrix R = transpose(Rzyx(0.0, -m_runway.theta, m_runway.alpha));
           Matrix eps = R * (p - m_runway.start_NED);
           Matrix eps_dot = R * v;
@@ -641,7 +641,6 @@ namespace Control
             m_p_path[s](1) = m_p_path[s](1) - m_args.m_crosstrack_offset;
             m_p_path[s](2) = m_p_path[s](2) + m_runway.z_off_a;
           }
-          //spew("m_p_path[%d]: [%f,%f,%f]",s,m_p_path[s](0),m_p_path[s](1),m_p_path[s](2));
 
           Matrix p_n = getNetPosition(m_p);
           Matrix v_n = getNetVelocity(m_v);
@@ -746,6 +745,7 @@ namespace Control
         aircraftApproaching()
         {
           if (m_v_path[AIRCRAFT](0) > 0 && m_p_path[AIRCRAFT](0) < 0
+              && sqrt(pow(m_p_path[AIRCRAFT](1), 2)) < m_args.max_py_app
               && sqrt(pow(m_v_path[AIRCRAFT](1), 2)) < m_args.max_vy_app)
             return true;
           return false;
@@ -763,7 +763,6 @@ namespace Control
 
           if (abs(delta_p) <= m_startCatch_radius)
           {
-            //inf("Start net-catch mission: delta_p_path_x_mean=%f", delta_p_path_x_mean);
             return true;
           }
           return false;
@@ -1017,7 +1016,7 @@ namespace Control
           Matrix e_v_path = m_v_ref_path - v_n_path;
           m_p_int_value = m_p_int_value + e_p_path * m_time_diff;
 
-          if (m_curr_state == IMC::NetRecoveryState::NR_STANDBY
+          if (   m_curr_state == IMC::NetRecoveryState::NR_STANDBY
               || m_curr_state == IMC::NetRecoveryState::NR_APPROACH
               || m_curr_state == IMC::NetRecoveryState::NR_END)
           {
@@ -1035,7 +1034,7 @@ namespace Control
             }
           }
           else if (m_curr_state == IMC::NetRecoveryState::NR_START
-              || m_curr_state == IMC::NetRecoveryState::NR_CATCH)
+                || m_curr_state == IMC::NetRecoveryState::NR_CATCH)
           {
             e_p_path(0) = 0;
             v_path(0) = u_d_along_path;
@@ -1062,7 +1061,7 @@ namespace Control
           if (Clock::get() - startPrint > 0.3)
           {
             spew("Kp: [%f,%f,%f]", m_args.Kp(0), m_args.Kp(1), m_args.Kp(2));
-            spew("m_time_diff: %llu", m_time_diff);
+            spew("m_time_diff: %lu", m_time_diff);
             spew("m_p_int_value: [%f,%f,%f]", m_p_int_value(0), m_p_int_value(1),
                  m_p_int_value(2));
             spew("p_ref_path: [%f,%f,%f]", m_p_ref_path(0), m_p_ref_path(1),
