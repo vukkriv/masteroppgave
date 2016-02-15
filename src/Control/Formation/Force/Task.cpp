@@ -281,9 +281,9 @@ namespace Control
               "Frequency of pos.data prints. Zero => Print on every update.");
 
 
-          param("Print FormPos warning", m_args.print_FormPos_warning).defaultValue("false").visibility(
+          param("Print EstimatedLocalState warning", m_args.print_FormPos_warning).defaultValue("false").visibility(
               Tasks::Parameter::VISIBILITY_USER).description(
-              "Choose whether warning for old FormPos should be received.");
+              "Choose whether warning for old EstimatedLocalState should be received.");
 
           param("Disable Heave flag", m_args.disable_heave).defaultValue("false").visibility(
               Tasks::Parameter::VISIBILITY_USER).description(
@@ -314,7 +314,6 @@ namespace Control
           bind<IMC::EstimatedLocalState>(this);
           bind<IMC::Acceleration>(this);
           bind<IMC::DesiredHeading>(this);
-          bind<IMC::FormPos>(this);
           bind<IMC::FormCoord>(this);
         }
 
@@ -589,14 +588,14 @@ namespace Control
 
         //! Consume Formation Position
         void
-        consume(const IMC::FormPos* msg)
+        consume(const IMC::EstimatedLocalState* msg)
         {
           double now = Clock::getSinceEpoch();
           static double last_print;
           if (!m_args.print_frequency || !last_print
               || (now - last_print) > 1.0 / m_args.print_frequency)
           {
-            spew("Got FormPos from '%s'", resolveSystemId(msg->getSource()));
+            spew("Got EstimatedLocalState from '%s'", resolveSystemId(msg->getSource()));
             last_print = now;
           }
 
@@ -626,7 +625,7 @@ namespace Control
               else
               {
                 if (m_args.print_FormPos_warning)
-                  war("Received old FormPos! Diff = %f seconds", diff);
+                  war("Received old EstimatedLocalState! Diff = %f seconds", diff);
               }
 
               // Calculate update delay
@@ -682,8 +681,10 @@ namespace Control
             }
           }
           if (!id_found)
-            war("Received FormPos from unknown vehicle '%s'",
+            war("Received EstimatedLocalState from unknown vehicle '%s'",
                 resolveSystemId(msg->getSource()));
+          if (getSystemId() == msg->getSource())
+            m_est_l_state = *msg;
         }
 
         void
@@ -735,18 +736,6 @@ namespace Control
             last_print = now;
           }
 
-        }
-
-        void
-        consume(const IMC::EstimatedLocalState* msg)
-        {
-          /*inf("Got EstimatedLocalState \nfrom '%s' at '%s'",
-           resolveEntity(msg->getSourceEntity()).c_str(),
-           resolveSystemId(msg->getSource()));
-           */
-
-          if (getSystemId() == msg->getSource())
-            m_est_l_state = *msg;
         }
 
         void
@@ -811,7 +800,7 @@ namespace Control
                }
                else
                {
-               war("Received old FormPos! Diff = %f seconds",
+               war("Received old EstimatedLocalState! Diff = %f seconds",
                diff);
                }
                */
