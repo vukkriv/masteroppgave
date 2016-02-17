@@ -69,6 +69,8 @@ namespace Sensors
       IMC::GpsFix m_fix;
       //! RTK Fix message.
       IMC::GpsFixRtk m_rtkfix;
+      //! GPS Uncertainty
+      IMC::NavigationUncertainty m_gps_uncertainty;
       //! Task arguments.
       Arguments m_args;
       //! Input watchdog.
@@ -385,6 +387,20 @@ namespace Sensors
 
 
       }
+      void setGpsUncertainty(std::vector<std::string>& parts)
+      {
+        // Set gps position standard deviation
+        if (readDecimal(parts[8],m_gps_uncertainty.x)
+            && readDecimal(parts[7], m_gps_uncertainty.y)
+            && readDecimal(parts[9], m_gps_uncertainty.z))
+        {
+          // Calculate position variance
+          m_gps_uncertainty.x = m_gps_uncertainty.x*m_gps_uncertainty.x;
+          m_gps_uncertainty.y = m_gps_uncertainty.y*m_gps_uncertainty.y;
+          m_gps_uncertainty.z = m_gps_uncertainty.z*m_gps_uncertainty.z;
+        }
+        dispatch(m_gps_uncertainty);
+      }
       void setGpsFix(std::vector<std::string>& parts)
       {
 
@@ -446,6 +462,9 @@ namespace Sensors
           m_fix.lon = Angles::radians(m_fix.lon);
           m_fix.validity |= IMC::GpsFix::GFV_VALID_POS;
         }
+
+        // Set gps uncertainty
+        setGpsUncertainty(parts);
 
         m_wdog.reset();
         dispatch(m_fix);
@@ -512,6 +531,9 @@ namespace Sensors
 
         // Sat validity flags
         m_rtkfix.validity |= IMC::GpsFixRtk::RFV_VALID_TIME;
+
+        // Set gps uncertainty
+        setGpsUncertainty(parts);
 
         m_wdog.reset();
         dispatch(m_rtkfix);
