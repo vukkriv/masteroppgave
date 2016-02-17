@@ -37,6 +37,7 @@ namespace Sensors
     struct Arguments
     {
       bool base_is_fixed;
+      std::string elabel_gps;
     };
     struct Task: public DUNE::Tasks::Periodic
     {
@@ -46,6 +47,8 @@ namespace Sensors
       IMC::GpsFixRtk m_rtkfix;
       //! Task arguments.
       Arguments m_args;
+      //! GPS entity eid.
+      int m_gps_eid;
 
       //! Constructor.
       //! @param[in] name task name.
@@ -58,6 +61,9 @@ namespace Sensors
         .visibility(Parameter::VISIBILITY_USER)
         .description("When set to true by operator, ");
         
+        param("Entity Label - GPS", m_args.elabel_gps)
+        .description("Entity label of 'GpsFix' and 'GroundVelocity' messages");
+
 
         clearMessages();
 
@@ -99,6 +105,9 @@ namespace Sensors
       void
       consume(const IMC::GpsFix* msg)
       {
+        if (msg->getSourceEntity() != m_gps_eid)
+          return;
+
         debug("Consuming GPS-Fix");
 
         // Defining origin.
@@ -117,6 +126,14 @@ namespace Sensors
       void
       onEntityResolution(void)
       {
+        try
+        {
+          m_gps_eid = resolveEntity(m_args.elabel_gps);
+        }
+        catch (...)
+        {
+          m_gps_eid = 0;
+        }
       }
 
       //! Acquire resources.
