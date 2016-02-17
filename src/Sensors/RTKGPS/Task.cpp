@@ -418,6 +418,10 @@ namespace Sensors
           {
             m_fix.type = IMC::GpsFix::GFT_DEAD_RECKONING; // Dead-reckoning = FLOAT
           }
+          else if(Q == 5)
+          {
+            m_fix.type = IMC::GpsFix::GFT_STANDALONE; // Single mode
+          }
         }
 
         //Set UTC Year Month Day
@@ -442,7 +446,7 @@ namespace Sensors
 
         // [HH|MM|SS.FFF] UTC_Time
 
-        if(readDecimal(UTC_Time[0],h)
+        if(UTC_Time.size()>=3 && readDecimal(UTC_Time[0],h)
             && readDecimal(UTC_Time[1],m)
             && readDecimal(UTC_Time[2],s))
         {
