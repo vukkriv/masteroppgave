@@ -291,18 +291,21 @@ namespace Navigation
 
           if ( was_rtk_available && m_rtk_wdog_comm_timeout.overflow())
           {
+            m_navsources.available_mask &= ~NS_GNSS_RTK;
             m_rtk_available = false;
             debug("GPS RTK Unavailable: Timeout. ");
           }
 
           if ( was_rtk_available && m_rtk_wdog_deactivation.overflow())
           {
+            m_navsources.available_mask &= ~NS_GNSS_RTK;
             m_rtk_available = false;
             debug("GPS RTK Unavailable: To long time in lower fix type. ");
           }
 
           if (!was_rtk_available && m_rtk_wdog_activation.overflow() && !m_rtk_wdog_comm_timeout.overflow())
           {
+            m_navsources.available_mask |= NS_GNSS_RTK;
             m_rtk_available = true;
             inf("GPS RTK Available. ");
           }
