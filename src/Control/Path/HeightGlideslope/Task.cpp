@@ -50,7 +50,7 @@ namespace Control
           double phi_h;
           double k_ph;
           double k_ih;
-          double k_hv;
+          double k_r;
 
       };
 
@@ -118,8 +118,8 @@ namespace Control
                .defaultValue("0.0")
                .description("LOS Integral gain for control");
 
-            param("Approach distance gain", m_args.k_hv)
-               .defaultValue("0.7")
+            param("Approach Radius", m_args.k_r)
+               .defaultValue("8.0")
                .description("Approach distance gain");
 
             param("Use controller", m_args.use_controller)
@@ -234,10 +234,12 @@ namespace Control
             spew("timestep is : %f  , integrator-state: %f",timestep,m_integrator);
 
 
-            double h_app = Vg*m_args.k_hv; //LOS Approach distance
+            //double h_app = Vg*m_args.k_hv; //LOS Approach distance
+            double h_error_trimmed = trimValue(abs(h_error),0,m_args.k_r); //Force the look-ahead distance to be within a circle with radius m_args.k_r
+            double h_app = sqrt(m_args.k_r*m_args.k_r - h_error_trimmed*h_error_trimmed);
 
             double los_angle = atan2(m_args.k_ph*h_error + m_args.k_ih*m_integrator,h_app); //Calculate LOS-angle
-            spew("Los_angle: %f",los_angle*(180/3.14159265));
+            inf("Los_angle: %f",los_angle*(180/3.14159265));
 
             double gamma_cmd = glideslope_angle + los_angle; //commanded flight path angle
 
