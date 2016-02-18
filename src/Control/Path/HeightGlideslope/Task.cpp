@@ -48,9 +48,13 @@ namespace Control
     	  bool use_controller; //Flag to enable controller
           double k_vr;
           double phi_h;
-          double k_ph;
-          double k_ih;
-          double k_r;
+          double k_ph_down;
+          double k_ph_up;
+          double k_ih_down;
+          double k_ih_up;
+          double k_r_up;
+          double k_r_down;
+
 
       };
 
@@ -70,16 +74,16 @@ namespace Control
         double glideslope_angle;
         double glideslope_start_z;
         bool glideslope_up;
+        double los_angle;
         bool glideslope_down;
         double desired_z_last;
-        double h_error_avg;
-        long counter;
         bool first_waypoint;
         double start_time;
         bool m_first_run;
         double last_end_z;
         bool m_shifting_waypoint;
         double state_z_shifting;
+        double last_glideslope_angle;
 
 
 
@@ -95,7 +99,7 @@ namespace Control
           glideslope_down(0),
           desired_z_last(0.0),
           m_first_run(true),
-          counter(1),
+          los_angle(0.0),
           start_time(99999),
           first_waypoint(true),
           m_shifting_waypoint(false)
@@ -110,17 +114,29 @@ namespace Control
                .defaultValue("0.15")
                .description("Vertical Rate maximum gain for control");
 
-            param("LOS Proportional gain", m_args.k_ph)
+            param("LOS Proportional gain glideslope up", m_args.k_ph_up)
                .defaultValue("0.6")
                .description("LOS Proportional gain for control");
 
-            param("LOS Integral gain", m_args.k_ih)
-               .defaultValue("0.0")
+            param("LOS Proportional gain glideslope down", m_args.k_ph_down)
+               .defaultValue("0.7")
+               .description("LOS Proportional gain for control");
+
+            param("LOS Integral gain glideslope up", m_args.k_ih_up)
+               .defaultValue("0.05")
                .description("LOS Integral gain for control");
 
-            param("Approach Radius", m_args.k_r)
+            param("LOS Integral gain glideslope down", m_args.k_ih_down)
+               .defaultValue("0.005")
+               .description("LOS Integral gain for control");
+
+            param("Approach Radius glideslope up", m_args.k_r_up)
                .defaultValue("8.0")
-               .description("Approach distance gain");
+               .description("Approach distance gain up");
+
+            param("Approach Radius glideslope down", m_args.k_r_down)
+                           .defaultValue("12.0")
+                           .description("Approach distance gain up");
 
             param("Use controller", m_args.use_controller)
 			  .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -184,13 +200,16 @@ namespace Control
            }
 
 
+
             // Calculate glideslope angle
             glideslope_angle = atan2((abs(end_z) -abs(start_z)),ts.track_length); //Negative for decent
 
+            //Decoupled gains for different glideslopes.
+
 //            spew("glideslope angle is: %f",glideslope_angle*(180/3.14159265));
 //            spew("track_length is: %f",ts.track_length);
-//            spew("Along-track is: %f",ts.track_pos.x);
-//            spew("Range	     is: %f",ts.range);
+//             inf("Along-track is: %f",ts.track_pos.x);
+//             inf("Range	     is: %f",ts.range);
 //            spew("end z er %f", ts.end.z);
 //            spew("start z er %f, height - start z = %f", start_z, state.height-start_z);
 
@@ -215,6 +234,7 @@ namespace Control
             //LP-Filter for desired z. Prevents jump in Z_ref in transition to tracking a new waypoint!
             double lp_degree = 0.97;
             desired_z_last = lp_degree*desired_z_last + (1-lp_degree)*zref.value;
+
             zref.value = desired_z_last;
             spew("Filtered Zref is: %f",zref.value);
 
@@ -224,21 +244,30 @@ namespace Control
             double h_error = (zref.value - (state.height - state.z))*cos(glideslope_angle); // H_error w.r.t flight-path
 
             inf("H_error: %f",h_error);
-            spew("h_error_avg: %f",h_error_avg);
 
             //Integrator - W.I.P
             double timestep = m_last_step.getDelta();
             spew("timestep is : %f",timestep);
             m_integrator = m_integrator + timestep*h_error;
-            m_integrator = trimValue(m_integrator,-2,2);
+            m_integrator = trimValue(m_integrator,-2,2); //Limit integrator effect
             spew("timestep is : %f  , integrator-state: %f",timestep,m_integrator);
 
 
             //double h_app = Vg*m_args.k_hv; //LOS Approach distance
-            double h_error_trimmed = trimValue(abs(h_error),0,m_args.k_r); //Force the look-ahead distance to be within a circle with radius m_args.k_r
-            double h_app = sqrt(m_args.k_r*m_args.k_r - h_error_trimmed*h_error_trimmed);
+          //  double h_error_trimmed = trimValue(abs(h_error),0,m_args.k_r); //Force the look-ahead distance to be within a circle with radius m_args.k_r
+          //  double h_app = sqrt(m_args.k_r*m_args.k_r - h_error_trimmed*h_error_trimmed);
 
-            double los_angle = atan2(m_args.k_ph*h_error + m_args.k_ih*m_integrator,h_app); //Calculate LOS-angle
+            if(glideslope_angle > 0){
+            	double h_error_trimmed = trimValue(abs(h_error),0,m_args.k_r_up); //Force the look-ahead distance to be within a circle with radius m_args.k_r
+            	double h_app = sqrt(m_args.k_r_up*m_args.k_r_up - h_error_trimmed*h_error_trimmed);
+            	los_angle = atan2(m_args.k_ph_up*h_error + m_args.k_ih_up*m_integrator,h_app); //Calculate LOS-angle glideslope up
+            }
+            else{ //Glideslope down or straight-line
+            	double h_error_trimmed = trimValue(abs(h_error),0,m_args.k_r_down); //Force the look-ahead distance to be within a circle with radius m_args.k_r
+            	double h_app = sqrt(m_args.k_r_down*m_args.k_r_down - h_error_trimmed*h_error_trimmed);
+            	los_angle = atan2(m_args.k_ph_down*h_error + m_args.k_ih_down*m_integrator,h_app); //Calculate LOS-angle glideslope down
+            }
+
             inf("Los_angle: %f",los_angle*(180/3.14159265));
 
             double gamma_cmd = glideslope_angle + los_angle; //commanded flight path angle
@@ -255,6 +284,7 @@ namespace Control
         	zref.z_units=Z_HEIGHT;
         	dispatch(zref);
         	last_end_z = end_z;
+        	last_glideslope_angle = glideslope_angle;
 
         }
       };
