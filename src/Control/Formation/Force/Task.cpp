@@ -713,9 +713,9 @@ namespace Control
               break;
             }
           }
-          if (!id_found)
-            war("Received EstimatedLocalState from unknown vehicle '%s'",
-                resolveSystemId(msg->getSource()));
+          //if (!id_found)
+            //war("Received EstimatedLocalState from unknown vehicle '%s'",
+            //    resolveSystemId(msg->getSource()));
           if (getSystemId() == msg->getSource())
             m_est_l_state = *msg;
         }
