@@ -108,6 +108,9 @@ namespace Control
         //! Whether or not to control altitude
         bool use_altitude;
 
+        //! Copter mass
+        float copter_mass_kg;
+
         //! Disable heave flag,this will utilize new rate controller on some targets
         bool disable_heave;
 
@@ -324,6 +327,12 @@ namespace Control
           param("Kd Velocity Control", m_args.Kd).defaultValue("0.0,0.0,0.0").visibility(
               Tasks::Parameter::VISIBILITY_USER).description(
               "Velocity Controller tuning parameter Kd");
+
+          param("Copter Mass", m_args.copter_mass_kg)
+          .defaultValue("2.5")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .units(Units::Kilogram)
+          .description("Mass of the copter");    
 
           param("Maximum Normalized Force", m_args.max_norm_F).defaultValue("5.0").visibility(
               Tasks::Parameter::VISIBILITY_USER).description(
@@ -1123,9 +1132,10 @@ namespace Control
                 + m_args.Kd_path(1) * e_a_est_path(1);
             F_des_path(2) = m_args.Kp_path(2) * e_v_est_path(2) + m_args.Ki_path(2) * m_v_int_value_path(2)
                 + m_args.Kd_path(2) * e_a_est_path(2);
-            F_des = transpose(Rpn)*F_des_path;
+            F_des = transpose(Rpn)*F_des_path;            
           }
 
+          F_des(2) = F_des(2) + m_args.copter_mass_kg* Math::c_gravity;
           if (F_des.norm_2() > m_args.max_norm_F)
           {
             F_des = sqrt(pow(m_args.max_norm_F, 2)) * F_des / F_des.norm_2();
