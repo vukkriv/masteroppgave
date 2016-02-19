@@ -291,21 +291,18 @@ namespace Navigation
 
           if ( was_rtk_available && m_rtk_wdog_comm_timeout.overflow())
           {
-            m_navsources.available_mask &= ~NS_GNSS_RTK;
             m_rtk_available = false;
             debug("GPS RTK Unavailable: Timeout. ");
           }
 
           if ( was_rtk_available && m_rtk_wdog_deactivation.overflow())
           {
-            m_navsources.available_mask &= ~NS_GNSS_RTK;
             m_rtk_available = false;
             debug("GPS RTK Unavailable: To long time in lower fix type. ");
           }
 
           if (!was_rtk_available && m_rtk_wdog_activation.overflow() && !m_rtk_wdog_comm_timeout.overflow())
           {
-            m_navsources.available_mask |= NS_GNSS_RTK;
             m_rtk_available = true;
             inf("GPS RTK Available. ");
           }
@@ -332,9 +329,23 @@ namespace Navigation
           while (!stopping())
           {
             waitForMessages(1.0);
+            bool was_rtk_available = m_rtk_available;
 
             checkRtkTimersUpdateAvailable();
 
+            // Check if there is a change in rtk availability
+            bool didChangeAvailability = false;
+
+            if (was_rtk_available != m_rtk_available && m_rtk_available)
+            {
+              m_navsources.available_mask |= NS_GNSS_RTK;
+              didChangeAvailability = true;
+            }
+            else if (was_rtk_available != m_rtk_available && ~m_rtk_available)
+            {
+              m_navsources.available_mask &= ~NS_GNSS_RTK;
+              didChangeAvailability = true;
+            }
 
 
             // Check if there is a change in rtk usage
@@ -379,6 +390,10 @@ namespace Navigation
               m_rtk_wdog_activation.reset();
               m_rtk_wdog_deactivation.reset();
               m_rtk_wdog_comm_timeout.reset();
+            }
+            else if (didChangeAvailability && ~didChangeUsage)
+            {
+              dispatch(m_navsources);
             }
 
 
