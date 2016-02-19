@@ -54,7 +54,8 @@ namespace Control
           double k_ih_up;
           double k_r_up;
           double k_r_down;
-
+          double FBWB_CLIMB_RATE;
+          double kp;
 
       };
 
@@ -127,16 +128,27 @@ namespace Control
                .description("LOS Integral gain for control");
 
             param("LOS Integral gain glideslope down", m_args.k_ih_down)
-               .defaultValue("0.005")
+               .defaultValue("0.1")
                .description("LOS Integral gain for control");
 
             param("Approach Radius glideslope up", m_args.k_r_up)
-               .defaultValue("8.0")
+               .defaultValue("18.0")
                .description("Approach distance gain up");
 
             param("Approach Radius glideslope down", m_args.k_r_down)
-                           .defaultValue("12.0")
+                           .defaultValue("18.0")
                            .description("Approach distance gain up");
+
+            param("Climb Rate KP", m_args.kp)
+                                       .defaultValue("5.0")
+                                       .description("Climb Rate Kp");
+
+            param("Climb Rate Max", m_args.FBWB_CLIMB_RATE)
+            				.units(Units::MeterPerSecond)
+            				.minimumValue("0.5")
+            				.maximumValue("5")
+            				.defaultValue("2.0")
+            				.description("Fly By Wire B altitude change rate. Should be set to the same as in Ardupilot");
 
             param("Use controller", m_args.use_controller)
 			  .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -180,14 +192,9 @@ namespace Control
             if (!m_args.use_controller)
               return;
 
-//            if(ts.end_time != -1 || first_waypoint){
-//            	bool m_shifting_waypoint = true;
-//            	state_z_shifting = state.height - state.z;
-//            }
-
+            //Waypoint- handling
             double start_z = ts.start.z;
             double end_z = ts.end.z;
-            spew("now: %f, delta: %f, start_time: %f, end_time: %f,",ts.now,ts.delta,ts.start_time,ts.end_time);
 
 
             //Handle tracking to first waypoint: Need height offset in start.z for the first waypoint, W.I.P
@@ -199,30 +206,25 @@ namespace Control
            	start_z = state.height - start_z;
            }
 
+           double Vg = sqrt( (state.vx*state.vx) + (state.vy*state.vy) + (state.vz*state.vz) ); // Ground speed
 
 
-            // Calculate glideslope angle
+
+            // Calculate glide-slope angle
             glideslope_angle = atan2((abs(end_z) -abs(start_z)),ts.track_length); //Negative for decent
+            double gamma_max = asin(m_args.FBWB_CLIMB_RATE/Vg);
 
-            //Decoupled gains for different glideslopes.
+            glideslope_angle = trimValue(glideslope_angle,-gamma_max,gamma_max);
 
-//            spew("glideslope angle is: %f",glideslope_angle*(180/3.14159265));
-//            spew("track_length is: %f",ts.track_length);
-//             inf("Along-track is: %f",ts.track_pos.x);
-//             inf("Range	     is: %f",ts.range);
-//            spew("end z er %f", ts.end.z);
-//            spew("start z er %f, height - start z = %f", start_z, state.height-start_z);
 
             //Calculate Z_ref based along-track along the glideslope. Endpoint is trimmed in order so Z_ref always is between the waypoints
             if(abs(start_z) < abs(end_z)){//Glide-slope upwards
             	zref.value = tan(glideslope_angle)*(ts.track_length - ts.range) + abs(start_z); //Current desired z
             	zref.value = trimValue(zref.value,abs(start_z),tan(glideslope_angle)*(ts.track_length) + abs(start_z));
-            	spew("Zref is: %f and glideslope up",zref.value);
             }
             else{ //Glide-slope downwards
             	zref.value = tan(glideslope_angle)*(ts.track_length - ts.range) + abs(start_z); //Current desired z
             	zref.value = trimValue(zref.value,tan(glideslope_angle)*(ts.track_length)+ abs(start_z),abs(start_z));
-            	spew("Zref is: %f and glideslope down",zref.value);
             }
 
             if (m_first_run)
@@ -234,22 +236,18 @@ namespace Control
             //LP-Filter for desired z. Prevents jump in Z_ref in transition to tracking a new waypoint!
             double lp_degree = 0.97;
             desired_z_last = lp_degree*desired_z_last + (1-lp_degree)*zref.value;
-
             zref.value = desired_z_last;
-            spew("Filtered Zref is: %f",zref.value);
 
-
-            double Vg = sqrt( (state.vx*state.vx) + (state.vy*state.vy) + (state.vz*state.vz) ); // Ground speed
 
             double h_error = (zref.value - (state.height - state.z))*cos(glideslope_angle); // H_error w.r.t flight-path
 
             inf("H_error: %f",h_error);
 
-            //Integrator - W.I.P
+            //Integrator
             double timestep = m_last_step.getDelta();
             spew("timestep is : %f",timestep);
             m_integrator = m_integrator + timestep*h_error;
-            m_integrator = trimValue(m_integrator,-2,2); //Limit integrator effect
+            m_integrator = trimValue(m_integrator,-2,2); //Anti wind-up at 2 degrees
             spew("timestep is : %f  , integrator-state: %f",timestep,m_integrator);
 
 
@@ -257,22 +255,35 @@ namespace Control
           //  double h_error_trimmed = trimValue(abs(h_error),0,m_args.k_r); //Force the look-ahead distance to be within a circle with radius m_args.k_r
           //  double h_app = sqrt(m_args.k_r*m_args.k_r - h_error_trimmed*h_error_trimmed);
 
+            //Design gains based on desired saturation limit at different h_error
+            double h_max_los_up = 5;
+            double h_max_los_down = 10;
+            m_args.k_ph_up = (tan((gamma_max-abs(glideslope_angle)))*sqrt(m_args.k_r_up*m_args.k_r_up-h_max_los_up*h_max_los_up))/h_max_los_up;
+            m_args.k_ph_down = (tan((gamma_max-abs(glideslope_angle)))*sqrt(m_args.k_r_down*m_args.k_r_down-h_max_los_down*h_max_los_down))/h_max_los_down;
+
+            //Calculate look-ahead distance based on glide-slope up or down.
             if(glideslope_angle > 0){
-            	double h_error_trimmed = trimValue(abs(h_error),0,m_args.k_r_up); //Force the look-ahead distance to be within a circle with radius m_args.k_r
+            	double h_error_trimmed = trimValue(abs(h_error),0.001,m_args.k_r_up); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             	double h_app = sqrt(m_args.k_r_up*m_args.k_r_up - h_error_trimmed*h_error_trimmed);
             	los_angle = atan2(m_args.k_ph_up*h_error + m_args.k_ih_up*m_integrator,h_app); //Calculate LOS-angle glideslope up
             }
             else{ //Glideslope down or straight-line
-            	double h_error_trimmed = trimValue(abs(h_error),0,m_args.k_r_down); //Force the look-ahead distance to be within a circle with radius m_args.k_r
+            	double h_error_trimmed = trimValue(abs(h_error),0,m_args.k_r_down-0.01); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             	double h_app = sqrt(m_args.k_r_down*m_args.k_r_down - h_error_trimmed*h_error_trimmed);
             	los_angle = atan2(m_args.k_ph_down*h_error + m_args.k_ih_down*m_integrator,h_app); //Calculate LOS-angle glideslope down
             }
-
+            //Limit los_angle based on saturation limit for climb-rate.
+            los_angle = trimValue(los_angle,-(gamma_max-abs(glideslope_angle)),(gamma_max-abs(glideslope_angle)));
             inf("Los_angle: %f",los_angle*(180/3.14159265));
 
             double gamma_cmd = glideslope_angle + los_angle; //commanded flight path angle
 
-            m_vrate.value = Vg*sin(gamma_cmd); //Convert commanded flight path angle to demanded vertical-rate.
+            double h_dot = state.u*sin(state.theta) - state.v*sin(state.phi)*cos(state.theta) - state.w*cos(state.phi)*cos(state.theta);
+            inf("h_dot: %f",h_dot);
+            double h_dot_desired = Vg*sin(gamma_cmd);//Convert commanded flight path angle to demanded vertical-rate.
+
+            //P-control. W.I.P
+            m_vrate.value = (h_dot_desired - h_dot)*m_args.kp;
             spew("commanded vertical rate: %f",m_vrate.value);
 
 //        	double delta_h = zref.value - (state.height - state.z);
