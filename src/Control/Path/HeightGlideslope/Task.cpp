@@ -56,6 +56,8 @@ namespace Control
           double k_r_down;
           double FBWB_CLIMB_RATE;
           double kp;
+          double h_dot_i;
+          double h_dot_p;
 
       };
 
@@ -67,7 +69,9 @@ namespace Control
 
         //! LOS m_integrator
         double m_integrator;
+        double m_integrator_hdot;
         Delta m_last_step;
+        Delta m_last_step_hdot;
 
         double m_airspeed;
         double glideslope_range;
@@ -124,24 +128,29 @@ namespace Control
                .description("LOS Proportional gain for control");
 
             param("LOS Integral gain glideslope up", m_args.k_ih_up)
-               .defaultValue("0.05")
+               .defaultValue("0")
                .description("LOS Integral gain for control");
 
             param("LOS Integral gain glideslope down", m_args.k_ih_down)
-               .defaultValue("0.1")
+               .defaultValue("0")
                .description("LOS Integral gain for control");
 
-            param("Approach Radius glideslope up", m_args.k_r_up)
+            param("LOS Radius glideslope up", m_args.k_r_up)
                .defaultValue("18.0")
                .description("Approach distance gain up");
 
-            param("Approach Radius glideslope down", m_args.k_r_down)
+            param("LOS Radius glideslope down", m_args.k_r_down)
                            .defaultValue("18.0")
                            .description("Approach distance gain up");
 
-            param("Climb Rate KP", m_args.kp)
-                                       .defaultValue("5.0")
-                                       .description("Climb Rate Kp");
+            param("Hdot feedback Integrator", m_args.h_dot_i)
+                                       .defaultValue("0.1")
+                                       .description("Hdot feedback integrator");
+
+            param("Hdot feedback Proportional", m_args.h_dot_p)
+                                                   .defaultValue("2.0")
+                                                   .description("Hdot feedback Proportional");
+
 
             param("Climb Rate Max", m_args.FBWB_CLIMB_RATE)
             				.units(Units::MeterPerSecond)
@@ -235,6 +244,7 @@ namespace Control
 
             //LP-Filter for desired z. Prevents jump in Z_ref in transition to tracking a new waypoint!
             double lp_degree = 0.97;
+            //lp_degree= 0;
             desired_z_last = lp_degree*desired_z_last + (1-lp_degree)*zref.value;
             zref.value = desired_z_last;
 
@@ -257,39 +267,55 @@ namespace Control
 
             //Design gains based on desired saturation limit at different h_error
             double h_max_los_up = 5;
-            double h_max_los_down = 10;
+            double h_max_los_down = 5;
             m_args.k_ph_up = (tan((gamma_max-abs(glideslope_angle)))*sqrt(m_args.k_r_up*m_args.k_r_up-h_max_los_up*h_max_los_up))/h_max_los_up;
             m_args.k_ph_down = (tan((gamma_max-abs(glideslope_angle)))*sqrt(m_args.k_r_down*m_args.k_r_down-h_max_los_down*h_max_los_down))/h_max_los_down;
 
             //Calculate look-ahead distance based on glide-slope up or down.
             if(glideslope_angle > 0){
-            	double h_error_trimmed = trimValue(abs(h_error),0.001,m_args.k_r_up); //Force the look-ahead distance to be within a circle with radius m_args.k_r
+            	double h_error_trimmed = trimValue(abs(h_error),0.0,m_args.k_r_up-0.1); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             	double h_app = sqrt(m_args.k_r_up*m_args.k_r_up - h_error_trimmed*h_error_trimmed);
             	los_angle = atan2(m_args.k_ph_up*h_error + m_args.k_ih_up*m_integrator,h_app); //Calculate LOS-angle glideslope up
             }
             else{ //Glideslope down or straight-line
-            	double h_error_trimmed = trimValue(abs(h_error),0,m_args.k_r_down-0.01); //Force the look-ahead distance to be within a circle with radius m_args.k_r
+            	double h_error_trimmed = trimValue(abs(h_error),0.0,m_args.k_r_down-0.1); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             	double h_app = sqrt(m_args.k_r_down*m_args.k_r_down - h_error_trimmed*h_error_trimmed);
             	los_angle = atan2(m_args.k_ph_down*h_error + m_args.k_ih_down*m_integrator,h_app); //Calculate LOS-angle glideslope down
             }
             //Limit los_angle based on saturation limit for climb-rate.
             los_angle = trimValue(los_angle,-(gamma_max-abs(glideslope_angle)),(gamma_max-abs(glideslope_angle)));
-            inf("Los_angle: %f",los_angle*(180/3.14159265));
+         //   inf("Los_angle: %f",los_angle*(180/3.14159265));
 
             double gamma_cmd = glideslope_angle + los_angle; //commanded flight path angle
-
-            double h_dot = state.u*sin(state.theta) - state.v*sin(state.phi)*cos(state.theta) - state.w*cos(state.phi)*cos(state.theta);
-            inf("h_dot: %f",h_dot);
             double h_dot_desired = Vg*sin(gamma_cmd);//Convert commanded flight path angle to demanded vertical-rate.
 
-            //P-control. W.I.P
-            m_vrate.value = (h_dot_desired - h_dot)*m_args.kp;
-            spew("commanded vertical rate: %f",m_vrate.value);
+
+            //Feedback - To compensate for errors/slow dynamics TECS
+            double h_dot = state.u*sin(state.theta) - state.v*sin(state.phi)*cos(state.theta) - state.w*cos(state.phi)*cos(state.theta);
+            double h_dot_error = h_dot_desired-h_dot;
+
+            //Need integral since because of steady-state error in TECS along glideslope.
+            double timestep_h_dot = m_last_step_hdot.getDelta();
+            m_integrator_hdot = m_integrator_hdot + timestep_h_dot*h_dot_error;
+            m_integrator_hdot = trimValue(m_integrator_hdot,-0.3,0.3); //Anti wind-up at 0.3 m/s
+
+            double h_dot_feedback = m_integrator_hdot*m_args.h_dot_i + h_dot_error*m_args.h_dot_p;
+
+
+            m_vrate.value = h_dot_desired+h_dot_feedback;
+
+            //Testing constant-rate
+        //    h_dot_desired = Vg*sin(2*(M_PI/180));
+        //    m_vrate.value= h_dot_desired;
+
+
+            //inf("commanded vertical rate: %f",m_vrate.value);
 
 //        	double delta_h = zref.value - (state.height - state.z);
 //		    double delta_h_phi = (delta_h / m_args.phi_h);
 //		    double trimmed_d_h_phi = trimValue(delta_h_phi,-1,1);
 //		    m_vrate.value = m_args.k_vr * m_airspeed * trimmed_d_h_phi;
+
 
         	dispatch(m_vrate);
         	zref.z_units=Z_HEIGHT;
