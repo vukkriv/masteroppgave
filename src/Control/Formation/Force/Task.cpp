@@ -295,6 +295,10 @@ namespace Control
               Tasks::Parameter::VISIBILITY_USER).description(
               "Choose whether warning for old EstimatedLocalState should be received.");
 
+          param("Use altitude", m_args.use_altitude).defaultValue("false").visibility(
+              Tasks::Parameter::VISIBILITY_USER).description(
+              "Choose whether to control altitude or not");
+
           param("Disable Heave flag", m_args.disable_heave).defaultValue("false").visibility(
               Tasks::Parameter::VISIBILITY_USER).description(
               "Choose whether to disable heave flag. In turn, this will utilize new rate controller on some targets");
@@ -1135,7 +1139,7 @@ namespace Control
             F_des = transpose(Rpn)*F_des_path;            
           }
 
-          F_des(2) = F_des(2) + m_args.copter_mass_kg* Math::c_gravity;
+          //F_des(2) = F_des(2) - m_args.copter_mass_kg* Math::c_gravity;
           if (F_des.norm_2() > m_args.max_norm_F)
           {
             F_des = sqrt(pow(m_args.max_norm_F, 2)) * F_des / F_des.norm_2();
