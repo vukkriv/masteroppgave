@@ -783,7 +783,7 @@ namespace Control
         aircraftPassed()
         {
           Matrix diff = m_p_path[COPTER_LEAD] - m_p_path[AIRCRAFT];
-          if (diff(0) < 0)
+          if (diff(0) < -m_args.m_coll_eps)
             return true;
           return false;
         }
