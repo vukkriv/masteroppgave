@@ -55,9 +55,39 @@ namespace Maneuver
       void
       consume(const IMC::NetRecovery* maneuver)
       {
-    	inf("NetRecovery maneuver received");
-    	// First disable all
-    	setControl(0);
+      	inf("NetRecovery maneuver received");
+
+        // check the source with vehicle
+        std::string aircraft             = maneuver->aircraft;
+        std::vector<std::string> copters = std::vector<std::string>();
+        std::stringstream lineStream(maneuver->multicopters.c_str());
+        std::string copter;
+        while (std::getline(lineStream, copter, ','))
+        {
+          copters.push_back(copter);
+        }
+
+        inf("Aircraft: %s", aircraft.c_str());
+        for (unsigned int i = 0; i < copters.size(); i++)
+        {
+          inf("Multicopter[%d]: %s", i, copters[i].c_str());
+        }
+
+        std::string vh_id = resolveSystemId(maneuver->getSource());
+
+        if (vh_id == aircraft)
+        {
+          //aircraft
+          debug("Aircraft maneuver");
+        }
+        else
+        {
+          //assume copter
+          debug("Copter maneuver");
+        }
+
+    	  // First disable all
+    	  setControl(0);
         // Enable control loops
         setControl(IMC::CL_PATH);
 
