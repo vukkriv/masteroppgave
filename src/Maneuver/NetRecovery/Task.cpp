@@ -34,16 +34,36 @@ namespace Maneuver
   {
     using DUNE_NAMESPACES;
 
+    struct Vehicles
+    {
+      int no_vehicles;
+      std::string aircraft;
+      std::vector<std::string> copters;
+    };
+
+    enum Vehicle
+    {
+      FIXEDWING = 0, COPTER_MASTER, COPTER_SLAVE, INVALID = -1
+    };
+
+
     struct Task: public DUNE::Maneuvers::Maneuver
     {
+      Vehicles m_vehicles;
+      Vehicle m_vehicle;
+      int m_currWP;
+      IMC::NetRecovery m_maneuver;
+
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Maneuvers::Maneuver(name, ctx)
+        DUNE::Maneuvers::Maneuver(name, ctx),
+        m_currWP(0)
       {
         bindToManeuver<Task, IMC::NetRecovery>();
         bind<IMC::NetRecoveryState>(this);
+        bind<IMC::PathControlState>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -55,29 +75,34 @@ namespace Maneuver
       void
       consume(const IMC::NetRecovery* maneuver)
       {
-    	inf("NetRecovery maneuver received");
-    	// First disable all
-    	setControl(0);
+      	inf("NetRecovery maneuver received");
+        m_maneuver = *maneuver;
+        saveVehicles(m_maneuver.aircraft,m_maneuver.multicopters.c_str());
+        m_vehicle = getVehicle(resolveSystemId(m_maneuver.getSource()));
+        debug("Vehicle: %d",(int)m_vehicle);
+
+    	  // First disable all
+    	  setControl(0);
         // Enable control loops
         setControl(IMC::CL_PATH);
 
-        IMC::DesiredNetRecoveryPath d_path;
-        d_path.start_lat = maneuver->start_lat;
-        d_path.start_lon = maneuver->start_lon;
-        d_path.end_lat = maneuver->end_lat;
-        d_path.end_lon = maneuver->end_lon;
-        d_path.z = maneuver->z;
-        d_path.lbox_height = maneuver->lbox_height;
-        d_path.lbox_width = maneuver->lbox_width;
-        d_path.max_acc	= maneuver->max_acc;
-        d_path.speed = maneuver->speed;
-        d_path.z_off = maneuver->z_off;
-        d_path.z_units = maneuver->z_units;
-        d_path.aircraft = maneuver->aircraft;
-        d_path.multicopters = maneuver->multicopters;
-
-        dispatch(d_path);
-        inf("DesiredNetRecoveryPath dispatched");
+        switch(m_vehicle)
+        {
+          case FIXEDWING:
+            m_currWP = 1;
+            sendFixedWingPath();
+            break;
+          case COPTER_MASTER:
+            sendCopterPath();
+            break;
+          case COPTER_SLAVE:
+            //should not handle NetRecovery
+            war("NetRecovery maneuver is enabled on the slave copter");
+            break;
+          case INVALID:
+            war("NetRecovery maneuver is enabled on a non-supported vehicle");
+            break;
+        }
       }
 
       void
@@ -86,15 +111,132 @@ namespace Maneuver
     	  spew("NetRecoveryState received");
     	  if (state->flags == IMC::NetRecoveryState::NR_STOP)
     	  {
-    		  inf("NetRecoveryState STOP, maneuver is done");
-    		  signalCompletion();
-    	      setControl(0); // Becouse f* the other controllers.
-
+          if (m_vehicle==COPTER_MASTER)
+          {
+            stopManeuver();
+          }
     	  }
     	  else
     	  {
-
+          //status from NetRecovery path controller received
     	  }
+      }
+      void
+      consume(const IMC::PathControlState* pcs)
+      {
+        if (m_vehicle==FIXEDWING)
+        {            
+          if (pcs->flags & IMC::PathControlState::FL_NEAR)
+          {
+            debug("PathControlState FL_NEAR at WP %d",m_currWP);
+            if (m_currWP == 2)
+            {
+              stopManeuver();
+            }
+            else
+            { 
+              m_currWP += 1;
+              sendFixedWingPath();
+            }
+          }
+          else
+          {
+            signalProgress(pcs->eta);              
+          }
+        }        
+      }      
+      void 
+      stopManeuver()
+      {
+        inf("NetRecoveryState STOP, maneuver is done");
+        signalCompletion();
+        setControl(0); // Becouse f* the other controllers.        
+      }
+
+      void 
+      sendCopterPath()
+      {
+        IMC::DesiredNetRecoveryPath d_path;
+        d_path.start_lat = m_maneuver.start_lat;
+        d_path.start_lon = m_maneuver.start_lon;
+        d_path.end_lat = m_maneuver.end_lat;
+        d_path.end_lon = m_maneuver.end_lon;
+        d_path.z = m_maneuver.z;
+        d_path.lbox_height = m_maneuver.lbox_height;
+        d_path.lbox_width = m_maneuver.lbox_width;
+        d_path.max_acc  = m_maneuver.max_acc;
+        d_path.speed = m_maneuver.speed;
+        d_path.z_off = m_maneuver.z_off;
+        d_path.z_units = m_maneuver.z_units;
+        d_path.aircraft = m_maneuver.aircraft;
+        d_path.multicopters = m_maneuver.multicopters;
+
+        dispatch(d_path);
+        inf("DesiredNetRecoveryPath dispatched");
+      }
+
+      void
+      sendFixedWingPath()
+      {
+        IMC::DesiredPath path;
+        path.speed = m_maneuver.speed;
+        path.speed_units = IMC::SUNITS_METERS_PS;
+        path.end_z_units = m_maneuver.z_units;
+        path.end_z = m_maneuver.z + m_maneuver.z_off;
+        switch (m_currWP)
+        {
+          case 1:
+            path.end_lat = m_maneuver.start_lat;
+            path.end_lon = m_maneuver.start_lon;
+            debug("WP 1");
+            break;
+          case 2:
+            path.end_lat = m_maneuver.end_lat;
+            path.end_lon = m_maneuver.end_lon;
+            debug("WP 2");
+            break;
+        }
+        dispatch(path);
+        inf("DesiredPath WP %d dispatched to fixed-wing",m_currWP);
+      }
+
+      void
+      saveVehicles(std::string aircraft, std::string copters)
+      {
+        m_vehicles.aircraft = aircraft;
+        m_vehicles.copters  = std::vector<std::string>();
+        std::stringstream lineStream(copters);
+        std::string copter;
+        while (std::getline(lineStream, copter, ','))
+        {
+          m_vehicles.copters.push_back(copter);
+        }
+
+        debug("Aircraft: %s", m_vehicles.aircraft.c_str());
+        for (unsigned int i = 0; i < m_vehicles.copters.size(); i++)
+        {
+          debug("Multicopter[%d]: %s", i, m_vehicles.copters[i].c_str());
+        }
+      }
+
+      Vehicle
+      getVehicle(std::string src_entity)
+      {
+        if (src_entity == m_vehicles.aircraft)
+        {
+          return FIXEDWING;
+        }
+        for (unsigned int i = 0; i < m_vehicles.copters.size(); i++)
+        {
+          if (src_entity == m_vehicles.copters[i])
+          {
+            if (i == 0)
+              return COPTER_MASTER;
+            else
+              return COPTER_SLAVE;
+          }
+        }
+        return INVALID;
       }
     };
   }
