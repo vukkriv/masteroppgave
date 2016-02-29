@@ -29,6 +29,7 @@
 
 [Require ../../etc/uav/ardupilot.ini]
 #[Require ../../etc/uav/basic.ini]
+[Require uav/netrecovery/fixedwing.ini]
 
 [General]
 Vehicle                                 = ntnu-x8-001
@@ -67,26 +68,4 @@ Static Destinations 					= #192.168.1.220:6003, # ntnu-hexa-testbed
 										  #192.168.1.205:6003, # ntnu-hexa-002
 										  #192.168.1.72:6003, # ntnu-hexa-002 on PC
 										  #192.168.1.210:6003, # ntnu-hexa-003
-										  #192.168.1.215:6003 # ntnu-hexa-004 
-										 
-[Transports.NetCatchTransport]
-Enabled									= Always
-Entity Label							= Estimated Local State
-Debug Level                             = None
-Input Type								= EstimatedState
-#Input Type                              = RTK
-#Latitude                                = 63.417465 # NTNU
-#Longitude                               = 10.404324
-#Latitude                                = -35.363261 # CMAC
-#Longitude                               = 149.165230
-#Height                                  = 584
-Latitude                                = 63.628814 # Breivika
-Longitude                               = 9.727400  # Breivika
-#Latitude								 = 63.319226 #Uddovoll
-#Longitude								 = 10.272653
-#Height									 = 23
-
-[Maneuver.NetRecovery]
-Enabled 								= Always
-Debug Level								= None
-Entity Label 							= Maneuver Supervisor
+										  #192.168.1.215:6003 # ntnu-hexa-004 										
