@@ -62,42 +62,15 @@ namespace Transports
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-<<<<<<< HEAD
-        DUNE::Tasks::Task(name, ctx)
-=======
         DUNE::Tasks::Task(name, ctx),
-        m_type(RTK),
         m_ref_lat(0.0),
 		    m_ref_lon(0.0),
 		    m_ref_hae(0.0),
 		    m_ref_valid(false)
->>>>>>> 4038244... Transports/LocalStateTransport: indentation fix
       {
-          param("Latitude", m_args.ref_lat)
-          .defaultValue("-999.0")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .units(Units::Degree)
-          .description("Reference Latitude");
-
-          param("Longitude", m_args.ref_lon)
-          .defaultValue("0.0")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .units(Units::Degree)
-          .description("Reference Longitude");
-
-          param("Height", m_args.ref_hae)
-          .defaultValue("0.0")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .units(Units::Meter)
-          .description("Reference Height (above elipsoid)");
-
-          param("Use Static Reference", m_args.use_static_ref)
-          .defaultValue("true")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Static reference LLH is set from config file");
-
           // Bind to incoming IMC messages
           bind<IMC::EstimatedState>(this);
+          bind<IMC::Acceleration>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -161,32 +134,9 @@ namespace Transports
 		   resolveSystemId(msg->getSource()),
 		   resolveEntity(msg->getSourceEntity()).c_str());
 
-		if (m_args.use_static_ref)
-		{
-		 m_state.lat    = m_ref_lat;
-		 m_state.lon    = m_ref_lon;
-		 m_state.height = m_ref_hae;
-		 WGS84::displacement(m_ref_lat, m_ref_lon, m_ref_hae,
-							 msg->lat, msg->lon, msg->height,
-							 &m_state.x, &m_state.y, &m_state.z);
-		 // Add displacement from agent reference
-		 m_state.x += msg->x;
-		 m_state.y += msg->y;
-		 m_state.z += msg->z;
-
-		 m_state.ref    = IMC::EstimatedLocalState::REF_FIXED;
-		 spew("Fixed reference on EstimatedState");
-		}
-		else
-		{
-		 m_state.lat    = msg->lat;
-		 m_state.lon    = msg->lon;
-		 m_state.height = msg->height;
-		 m_state.x = msg->x;
-		 m_state.y = msg->y;
-		 m_state.z = msg->z;
-		 m_state.ref = IMC::EstimatedLocalState::REF_MOVING;
-		}
+	     m_state.lat    = msg->lat;
+       m_state.lon    = msg->lon;
+       m_state.height = msg->height;
 
         m_state.u = msg->u;
         m_state.v = msg->v;
@@ -202,7 +152,10 @@ namespace Transports
 
         // Set time stamp
         m_state.ots = msg->getTimeStamp();
-
+        // Add displacement from agent reference
+        m_state.x = msg->x;
+        m_state.y = msg->y;
+        m_state.z = msg->z;
         // Set velocity
         m_state.vx = msg->vx;
         m_state.vy = msg->vy;
@@ -220,6 +173,13 @@ namespace Transports
         spew("Sent Estimated Local State");        
       }
 
+      void
+      consume(const IMC::Acceleration* msg)
+      {
+        m_state.ax = msg->x;
+        m_state.ay = msg->y;
+        m_state.az = msg->z;
+      }
       //! Main loop.
       void
       onMain(void)
