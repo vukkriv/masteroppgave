@@ -48,6 +48,7 @@ namespace Control
     	  double k_thr_p;
     	  double k_thr_i;
     	  double k_gamma_p;
+    	  double k_thr_ph;
 
       };
 
@@ -61,6 +62,7 @@ namespace Control
         double m_dspeed;
         double m_dvrate;
         double m_thr_i;
+        double m_dz;
 
         Delta m_last_step;
 
@@ -69,7 +71,8 @@ namespace Control
           m_airspeed(0.0),
           m_dspeed(18.0),
           m_dvrate(0.0),
-          m_thr_i(0.0)
+          m_thr_i(0.0),
+          m_dz(0.0)
 
         {
             param("Use controller", m_args.use_controller)
@@ -85,13 +88,19 @@ namespace Control
             param("Throttle Proportional gain", m_args.k_thr_p)
                            .defaultValue("12.0")
                            .description("Throttle Proportional gain");
+
+            param("Throttle Proportional height gain", m_args.k_thr_ph)
+                           .defaultValue("2.0")
+                           .description("Throttle Proportional height gain");
+
             param("Gamma Proportional gain", m_args.k_gamma_p)
-                           .defaultValue("1.0")
+                           .defaultValue("1.5")
                            .description("Gamma Proportional gain");
 
           bind<IMC::IndicatedSpeed>(this);
           bind<IMC::DesiredVerticalRate>(this);
           bind<IMC::DesiredSpeed>(this);
+          bind<IMC::DesiredZ>(this);
 
        }
 
@@ -122,6 +131,11 @@ namespace Control
 		{
         	m_dspeed = d_speed->value;
 		}
+        void
+        consume(const IMC::DesiredZ* d_z)
+        {
+        	m_dz = d_z->value;
+        }
 
         void
 		consume(const IMC::DesiredVerticalRate* d_vrate)
@@ -144,14 +158,17 @@ namespace Control
             double gamma_desired = asin(m_dvrate/Vg);
             double gamma_error = gamma_now - gamma_desired;
             double V_error =  m_dspeed - m_airspeed;
+            double H_error = (m_dz - (state.height - state.z));
 
             //Throttle Integrator
 		    double timestep = m_last_step.getDelta();
 		    m_thr_i = m_thr_i + timestep*V_error;
 		    m_thr_i = trimValue(m_thr_i,-20,20); //Anti wind-up at 20 %
 
-		    double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i *m_thr_i+ 44;//44 is trim
-		    double pitch_desired = gamma_desired + alpha_now-gamma_error*m_args.k_gamma_p; //Backstepping
+		    //Calculate desired throttle and pitch
+		    double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i *m_thr_i+ H_error*m_args.k_thr_ph + 44;//44 is trim for level-flight
+		    //double pitch_desired = gamma_desired + alpha_now-gamma_error*m_args.k_gamma_p; //Backstepping
+		    double pitch_desired = gamma_desired + Angles::radians(2.6585)-gamma_error*m_args.k_gamma_p; //Backstepping, 2.6585 is trim for level-flight
 
             m_throttle.value = throttle_desired;
             m_pitch.value = Angles::degrees(pitch_desired);// + 2.6585; //2.6585 is trim, should be pitch_desired = gamma_desired + alpha_0
