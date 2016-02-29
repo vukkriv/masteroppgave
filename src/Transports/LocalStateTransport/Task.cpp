@@ -30,7 +30,7 @@
 
 namespace Transports
 {
-  namespace NetCatchTransport
+  namespace LocalStateTransport
   {
     using DUNE_NAMESPACES;
 
