@@ -45,6 +45,8 @@ namespace Control
       struct Arguments
       {
     	  bool use_controller; //Flag to enable controller
+    	  double k_thr_p;
+    	  double k_thr_i;
 
       };
 
@@ -57,12 +59,16 @@ namespace Control
         double m_airspeed;
         double m_dspeed;
         double m_dvrate;
+        double m_thr_i;
+
+        Delta m_last_step;
 
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
           m_airspeed(0.0),
           m_dspeed(18.0),
-          m_dvrate(0.0)
+          m_dvrate(0.0),
+          m_thr_i(0.0)
 
         {
             param("Use controller", m_args.use_controller)
@@ -70,6 +76,14 @@ namespace Control
 			  .scope(Tasks::Parameter::SCOPE_MANEUVER)
 			  .defaultValue("false")
 			  .description("Use this controller for maneuver");
+
+            param("Throttle Integrator gain", m_args.k_thr_i)
+               .defaultValue("2.0")
+               .description("Throttle Integrator gain");
+
+            param("Throttle Proportional gain", m_args.k_thr_p)
+                           .defaultValue("12.0")
+                           .description("Throttle Proportional gain");
 
           bind<IMC::IndicatedSpeed>(this);
           bind<IMC::DesiredVerticalRate>(this);
@@ -116,11 +130,26 @@ namespace Control
         {
             if (!m_args.use_controller)
               return;
+            double Vg = sqrt( (state.vx*state.vx) + (state.vy*state.vy) + (state.vz*state.vz) ); // Ground speed
+            double h_dot = state.u*sin(state.theta) - state.v*sin(state.phi)*cos(state.theta) - state.w*cos(state.phi)*cos(state.theta);
+            double gamma_desired = asin(m_dvrate/Vg);
+            gamma_desired = Angles::degrees(gamma_desired);
+            gamma_desired = trimValue(gamma_desired,-5,5); //Anti wind-up at 5 degrees
 
-            //TO-DO: Implement Controller
-            inf("desired speed: %f, og dsired vrate: %f",m_dspeed,m_dvrate);
-            m_throttle.value = 89;
-            m_pitch.value = 4;
+            double gamma_now = asin(h_dot/Vg);
+            double alpha_now = gamma_now - state.theta;
+            double V_error =  m_dspeed - m_airspeed;
+
+            //Integrator
+		    double timestep = m_last_step.getDelta();
+		    spew("timestep is : %f",timestep);
+		    m_thr_i = m_thr_i + timestep*V_error;
+		    m_thr_i = trimValue(m_thr_i,-20,20); //Anti wind-up at 20 %
+
+            m_throttle.value = m_args.k_thr_p*V_error + m_args.k_thr_i *m_thr_i+ 44;//44 is trim
+            m_pitch.value = gamma_desired + 2.6585; //2.6585 is trim, should be pitch_desired = gamma_desired + alpha_0
+
+            spew("gamma desired er %f, og alpha_0 er: %f",gamma_desired,alpha_now);
 
             dispatch(m_throttle);
             dispatch(m_pitch);
