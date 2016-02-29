@@ -117,27 +117,27 @@ namespace Control
                .description("Vertical Rate maximum gain for control");
 
             param("LOS Proportional gain up", m_args.k_ph_up)
-               .defaultValue("0.5")
+               .defaultValue("0.9")
                .description("LOS Proportional gain for control");
 
             param("LOS Proportional gain down", m_args.k_ph_down)
-               .defaultValue("0.5")
+               .defaultValue("0.9")
                .description("LOS Proportional gain for control");
 
             param("LOS Integral gain up", m_args.k_ih_up)
-               .defaultValue("0")
+               .defaultValue("0.35")
                .description("LOS Integral gain for control");
 
             param("LOS Integral gain down", m_args.k_ih_down)
-               .defaultValue("0")
+               .defaultValue("0.35")
                .description("LOS Integral gain for control");
 
             param("LOS Radius up", m_args.k_r_up)
-               .defaultValue("15.0")
+               .defaultValue("12.0")
                .description("Approach distance gain up");
 
             param("LOS Radius down", m_args.k_r_down)
-                           .defaultValue("15.0")
+                           .defaultValue("12.0")
                            .description("Approach distance gain up");
 
             param("Use controller", m_args.use_controller)
