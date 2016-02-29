@@ -62,7 +62,16 @@ namespace Transports
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
+<<<<<<< HEAD
         DUNE::Tasks::Task(name, ctx)
+=======
+        DUNE::Tasks::Task(name, ctx),
+        m_type(RTK),
+        m_ref_lat(0.0),
+		    m_ref_lon(0.0),
+		    m_ref_hae(0.0),
+		    m_ref_valid(false)
+>>>>>>> 4038244... Transports/LocalStateTransport: indentation fix
       {
           param("Latitude", m_args.ref_lat)
           .defaultValue("-999.0")
