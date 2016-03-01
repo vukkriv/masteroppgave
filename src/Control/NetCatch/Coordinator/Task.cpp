@@ -53,13 +53,12 @@ namespace Control
         bool use_mean_window_aircraft;
         //! Disable Z flag, this will utilize new rate controller on some targets
         bool disable_Z;
-
         // Max vel approach
         double max_vy_app;
-
-        // Max pos approach
+        // Max pos cross-track approach
         double max_py_app;
-
+        // Max pos along-track approach
+        double max_px_app;
         //! Moving mean window size
         double mean_ws;
         //! Desired velocity of net at impact
@@ -286,6 +285,9 @@ namespace Control
           param("Max pos y approach", m_args.max_py_app).visibility(
               Tasks::Parameter::VISIBILITY_USER).defaultValue("1");
 
+          param("Max pos x approach", m_args.max_px_app).visibility(
+              Tasks::Parameter::VISIBILITY_USER).defaultValue("1");
+
           param("Desired collision radius", m_args.m_coll_r).visibility(
               Tasks::Parameter::VISIBILITY_USER)
   //      .scope(Tasks::Parameter::SCOPE_MANEUVER)
@@ -479,26 +481,19 @@ namespace Control
               {
                 updateMeanValues(s);
                 if (aircraftApproaching() && m_args.enable_catch)
-                  m_curr_state = IMC::NetRecoveryState::NR_APPROACH; //requires that the net is standby at the start of the runway
-
+                {
+                  updateStartRadius();
+                  if (!startNetRecovery()) //aircraft should not be too close when starting approach
+                    m_curr_state = IMC::NetRecoveryState::NR_APPROACH; //requires that the net is standby at the start of the runway
+                }
                 break;
               }
             case IMC::NetRecoveryState::NR_APPROACH:
               {
                 updateMeanValues(s);
-
-                double v_a = abs(m_v_path[AIRCRAFT](0));
-                m_startCatch_radius = updateStartRadius(v_a, 0, m_u_ref, m_ad,
-                                                        m_args.m_coll_r);
-                if (m_startCatch_radius == -1)
-                {
-                  err("Unable to calculate the desired start-radius");
-                  return;
-                }
-
+                updateStartRadius();
                 if (startNetRecovery())
                   m_curr_state = IMC::NetRecoveryState::NR_START;
-
                 break;
               }
             case IMC::NetRecoveryState::NR_START:
@@ -744,9 +739,11 @@ namespace Control
         bool
         aircraftApproaching()
         {
-          if (m_v_path[AIRCRAFT](0) > 0 && m_p_path[AIRCRAFT](0) < 0
-              && sqrt(pow(m_p_path[AIRCRAFT](1), 2)) < m_args.max_py_app
-              && sqrt(pow(m_v_path[AIRCRAFT](1), 2)) < m_args.max_vy_app)
+          if (   m_v_path[AIRCRAFT](0) > 0
+              && m_p_path[AIRCRAFT](0) < 0
+              && m_p_path[AIRCRAFT](0) > -m_args.max_px_app
+              && abs(m_p_path[AIRCRAFT](1)) < m_args.max_py_app
+              && abs(m_v_path[AIRCRAFT](1)) < m_args.max_vy_app)
             return true;
           return false;
         }
@@ -799,6 +796,19 @@ namespace Control
           return false;
         }
 
+        void
+        updateStartRadius()
+        {
+          double v_a = abs(m_v_path[AIRCRAFT](0));
+          m_startCatch_radius = calcStartRadius(v_a, 0, m_u_ref, m_ad,
+                                                  m_args.m_coll_r);
+          if (m_startCatch_radius == -1)
+          {
+            err("Unable to calculate the desired start-radius");
+            return;
+          }
+        }
+
         double
         getPathVelocity(double v0, double v_ref, double a_n, bool reset_ramp)
         {
@@ -845,7 +855,7 @@ namespace Control
         }
 
         double
-        updateStartRadius(double v_a, double v0_n, double v_ref_n, double a_n,
+        calcStartRadius(double v_a, double v0_n, double v_ref_n, double a_n,
             double r_impact)
         {
           // calculate the radius which the net-catch maneuver should start, based on the mean velocity of the airplane
