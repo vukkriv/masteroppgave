@@ -49,6 +49,8 @@ namespace Control
     	  double k_thr_i;
     	  double k_gamma_p;
     	  double k_thr_ph;
+    	  double trim_pitch;
+    	  double trim_throttle;
 
       };
 
@@ -96,6 +98,14 @@ namespace Control
             param("Gamma Proportional gain", m_args.k_gamma_p)
                            .defaultValue("1.5")
                            .description("Gamma Proportional gain");
+
+            param("Trim pitch", m_args.trim_pitch)
+                           .defaultValue("2.6585")
+                           .description("Trim Pitch for level flight");
+
+            param("Trim throttle", m_args.trim_throttle)
+                           .defaultValue("44.0")
+                           .description("Trim throttle for level flight");
 
           bind<IMC::IndicatedSpeed>(this);
           bind<IMC::DesiredVerticalRate>(this);
@@ -160,20 +170,20 @@ namespace Control
             double V_error =  m_dspeed - m_airspeed;
             double H_error = (m_dz - (state.height - state.z));
 
-            //Throttle Integrator
+            //Throttle integrator
 		    double timestep = m_last_step.getDelta();
 		    m_thr_i = m_thr_i + timestep*V_error;
-		    m_thr_i = trimValue(m_thr_i,-20,20); //Anti wind-up at 20 %
+		    m_thr_i = trimValue(m_thr_i,-20,20); //Anti wind-up at 20 % throttle
 
 		    //Calculate desired throttle and pitch
-		    double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i *m_thr_i+ H_error*m_args.k_thr_ph + 44;//44 is trim for level-flight
-		    //double pitch_desired = gamma_desired + alpha_now-gamma_error*m_args.k_gamma_p; //Backstepping
-		    double pitch_desired = gamma_desired + Angles::radians(2.6585)-gamma_error*m_args.k_gamma_p; //Backstepping, 2.6585 is trim for level-flight
+		    double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i *m_thr_i+ H_error*m_args.k_thr_ph + m_args.trim_throttle;
+		    //double pitch_desired = gamma_desired + alpha_now-gamma_error*m_args.k_gamma_p;
+		    double pitch_desired = gamma_desired + Angles::radians(m_args.trim_pitch)-gamma_error*m_args.k_gamma_p; //Backstepping,pitch_desired = gamma_desired + alpha_0
 
             m_throttle.value = throttle_desired;
-            m_pitch.value = Angles::degrees(pitch_desired);// + 2.6585; //2.6585 is trim, should be pitch_desired = gamma_desired + alpha_0
+            m_pitch.value = Angles::degrees(pitch_desired);
 
-            inf("pitch desired er %f, og alpha_0 er: %f",m_pitch.value,Angles::degrees(alpha_now));
+            spew("pitch desired er %f, og alpha_0 er: %f",m_pitch.value,Angles::degrees(alpha_now));
 
             dispatch(m_throttle);
             dispatch(m_pitch);
