@@ -255,7 +255,7 @@ namespace Transports
       {
   	    //Message should be from this vehicle
 	    if ( msg->getSource() != getSystemId() )
-		  return;
+	      return;
 
 	    spew("Got Estimated State from system '%s' and entity '%s'.",
 		   resolveSystemId(msg->getSource()),
