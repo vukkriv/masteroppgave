@@ -485,6 +485,8 @@ namespace Control
                   updateStartRadius();
                   if (!startNetRecovery()) //aircraft should not be too close when starting approach
                     m_curr_state = IMC::NetRecoveryState::NR_APPROACH; //requires that the net is standby at the start of the runway
+                  else
+                    m_curr_state = IMC::NetRecoveryState::NR_STOP;
                 }
                 break;
               }
