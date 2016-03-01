@@ -373,6 +373,8 @@ namespace Control
               m_vehicles.no_vehicles++;
               m_vehicles.copters.push_back(copter);
             }
+            if (!m_args.enable_coord)
+              break;
           }
           inf("No vehicles: %d", m_vehicles.no_vehicles);
           inf("Aircraft: %s", m_vehicles.aircraft.c_str());
@@ -434,7 +436,7 @@ namespace Control
           //     resolveSystemId(estate->getSource()));
 
           std::string vh_id = resolveSystemId(estate->getSource());
-          //debug("Received EstimatedLocalState from %s: ",vh_id.c_str());
+          spew("Received EstimatedLocalState from %s: ",vh_id.c_str());
           int s = getVehicle(vh_id);
           //spew("s=%d",s);
           if (s == INVALID)  //invalid vehicle
@@ -484,9 +486,14 @@ namespace Control
                 {
                   updateStartRadius();
                   if (!startNetRecovery()) //aircraft should not be too close when starting approach
+                  {
                     m_curr_state = IMC::NetRecoveryState::NR_APPROACH; //requires that the net is standby at the start of the runway
+                  }
                   else
+                  {
+                    debug("Not able to recover, plane to close");
                     m_curr_state = IMC::NetRecoveryState::NR_STOP;
+                  }
                 }
                 break;
               }
