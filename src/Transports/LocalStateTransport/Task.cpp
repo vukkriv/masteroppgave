@@ -62,7 +62,7 @@ namespace Transports
       //! Sensor Type
       INPUT_TYPE m_type;
 
-      IMC::EstimatedLocalState m_state;
+      IMC::EstimatedLocalState m_state;    
 
 	    //! Localization origin (WGS-84)
 	    fp64_t m_ref_lat, m_ref_lon;
@@ -76,11 +76,11 @@ namespace Transports
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Task(name, ctx),
-          m_type(RTK),
-		  m_ref_lat(0.0),
-		  m_ref_lon(0.0),
-		  m_ref_hae(0.0),
-		  m_ref_valid(false)
+        m_type(RTK),
+        m_ref_lat(0.0),
+		    m_ref_lon(0.0),
+		    m_ref_hae(0.0),
+		    m_ref_valid(false)
       {
           param("Input Type", m_args.type)
           .defaultValue("RTK")
@@ -112,6 +112,7 @@ namespace Transports
           // Bind to incoming IMC messages
           bind<IMC::GpsFixRtk>(this);
           bind<IMC::EstimatedState>(this);
+          bind<IMC::Acceleration>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -242,6 +243,7 @@ namespace Transports
                m_state.vy = msg->v_e;
                m_state.vz = msg->v_d;
 
+               // The rest is still consumed
                dispatch(m_state);
                spew("Sent Estimated Local State");
            }
@@ -255,12 +257,25 @@ namespace Transports
       {
   	    //Message should be from this vehicle
 	    if ( msg->getSource() != getSystemId() )
-	      return;
+		  return;
 
 	    spew("Got Estimated State from system '%s' and entity '%s'.",
 		   resolveSystemId(msg->getSource()),
 		   resolveEntity(msg->getSourceEntity()).c_str());
 
+        m_state.u = msg->u;
+        m_state.v = msg->v;
+        m_state.w = msg->w;
+
+        m_state.phi   = msg->phi;
+        m_state.theta = msg->theta;
+        m_state.psi   = msg->psi;
+
+        m_state.p = msg->p;
+        m_state.q = msg->q;
+        m_state.r = msg->r;
+
+        //Check if should use position and velocity estimate from EstimatedState
         if (m_type == ESTATE)
         {
           if (!m_ref_valid)
@@ -288,9 +303,9 @@ namespace Transports
 
           if (m_ref_valid)
           {
-        	  m_state.lat 	 = m_ref_lat;
-        	  m_state.lon 	 = m_ref_lon;
-        	  m_state.height = m_ref_hae;
+        	  m_state.lat 	  = m_ref_lat;
+        	  m_state.lon 	  = m_ref_lon;
+        	  m_state.height  = m_ref_hae;
           }
           spew("ES: Height = %1.1f, z = %1.1f, New Z = %1.1f",
               msg->height, msg->z,m_state.z);
@@ -299,13 +314,18 @@ namespace Transports
           //m_state.setSource(msg->getSource());
           //m_state.setSourceEntity(msg->getSourceEntity());
           //dispatch(m_state, DF_KEEP_SRC_EID);
-
           dispatch(m_state);
-
-          spew("Sent Estimated Local State");
+          spew("Sent Estimated Local State");        
         }
       }
 
+      void
+      consume(const IMC::Acceleration* msg)
+      {
+        m_state.ax = msg->x;
+        m_state.ay = msg->y;
+        m_state.az = msg->z;
+      }
       //! Main loop.
       void
       onMain(void)
