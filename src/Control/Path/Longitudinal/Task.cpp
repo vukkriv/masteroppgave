@@ -92,7 +92,7 @@ namespace Control
                            .description("Throttle Proportional gain");
 
             param("Throttle Proportional height gain", m_args.k_thr_ph)
-                           .defaultValue("2.0")
+                           .defaultValue("2.5")
                            .description("Throttle Proportional height gain");
 
             param("Gamma Proportional gain", m_args.k_gamma_p)
@@ -181,7 +181,7 @@ namespace Control
 		    double pitch_desired = gamma_desired + Angles::radians(m_args.trim_pitch)-gamma_error*m_args.k_gamma_p; //Backstepping,pitch_desired = gamma_desired + alpha_0
 
             m_throttle.value = throttle_desired;
-            m_pitch.value = Angles::degrees(pitch_desired);
+            m_pitch.value = pitch_desired;
 
             spew("pitch desired er %f, og alpha_0 er: %f",m_pitch.value,Angles::degrees(alpha_now));
 
