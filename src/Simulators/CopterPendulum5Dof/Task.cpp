@@ -101,9 +101,11 @@ namespace Simulators
         .defaultValue("20")
         .units(Units::Meter);
 
-        m_time_prev_step = Time::Clock::get() - 1/getFrequency();
+        m_time_prev_step = Time::Clock::get() - 1.0;
 
         bind<IMC::DesiredControl>(this);
+
+
 
       }
 
@@ -118,16 +120,23 @@ namespace Simulators
       }
 
       void
+      onResourceInitialization(void)
+      {
+        // Set first tau  to hold it steady
+        m_tau(2) = - Math::c_gravity * (m_args.mass_copter + m_args.mass_load);
+      }
+
+      void
       consume(const IMC::DesiredControl* msg)
       {
         if (msg->flags & IMC::DesiredControl::FL_X)
-          m_tau(0) = msg->x;
+          m_tau(0) = msg->x*m_args.mass_copter;
 
         if (msg->flags & IMC::DesiredControl::FL_Y)
-          m_tau(1) = msg->y;
+          m_tau(1) = msg->y*m_args.mass_copter;
 
         if (msg->flags & IMC::DesiredControl::FL_Z)
-          m_tau(2) = msg->z;
+          m_tau(2) = msg->z*m_args.mass_copter - Math::c_gravity * (m_args.mass_copter + m_args.mass_load);
 
         spew("Received and updated tau. ");
       }
@@ -140,25 +149,50 @@ namespace Simulators
           err("Invalid tau sent. Aborting simulation step. ");
           return;
         }
+
+        double maxNorm = 500.0;
+        if(tau.norm_2() > maxNorm)
+        {
+          tau = maxNorm * tau / tau.norm_2();
+          war("Constraining tau..");
+        }
         double now = Time::Clock::get();
         double dt  = now - m_time_prev_step;
 
         if (dt < 0.0 || dt > 2.0)
         {
-          err("delta t to small or to large. Aborting simulation step. ");
+          err("delta t to small or to large. Aborting simulation step.: %.4f", dt);
+          //err("Now: %f, Prev: %f", now, m_time_prev_step);
+          //err("Calc: %f", 1.0/getFrequency());
           return;
         }
 
         Matrix M = m_model.getMassMatrix(m_eta);
         Matrix C = m_model.getCoreolisMatrix(m_eta, m_nu);
         Matrix G = m_model.getGravityMatrix(m_eta);
+        double d[5] = {0.15, 0.15, 0.15, 0.01, 0.01};
+        Matrix D = Matrix(d, 5);
 
         Matrix next_eta = m_eta;
         Matrix next_nu  = m_nu;
 
         try{
           next_eta = m_eta + dt * m_nu;
-          next_nu  = m_nu  + dt * inverse(M) * (tau - C*m_nu - G);
+          next_nu  = m_nu  + dt * inverse(M) * (tau - C*m_nu - G - D*m_nu);
+          if (next_nu.norm_2() > 30)
+          {
+            err("Insanely large nu, aborting. Nu, Theta, Inverted M:");
+            printMatrix(next_eta, DEBUG_LEVEL_NONE);
+            printMatrix(next_nu, DEBUG_LEVEL_NONE);
+            printMatrix(inverse(M), DEBUG_LEVEL_NONE);
+
+            // Hack to stop stepping for a while
+            m_time_prev_step = now + 1;
+
+            return;
+
+
+          }
         }
         catch(Matrix::Error& error)
         {
@@ -195,8 +229,8 @@ namespace Simulators
         // All angles are zero.
 
         m_eangles.time = m_time_prev_step;
-        m_eangles.phi  = m_eta(0);
-        m_eangles.theta = m_eta(1);
+        m_eangles.phi  = m_eta(3);
+        m_eangles.theta = m_eta(4);
       }
 
 
@@ -216,6 +250,21 @@ namespace Simulators
 
 
 
+      }
+
+      //! Print matrix (for debuging)
+      void
+      printMatrix(Matrix m, DUNE::Tasks::DebugLevel dbg = DEBUG_LEVEL_DEBUG){
+        if (getDebugLevel() >= dbg)
+        {
+          printf("[DEBUG Matrix]\n");
+          for(int i = 0; i<m.rows(); i++ ){
+            for(int j = 0; j<m.columns();j++){
+              printf("%f ", m.element(i,j));
+            }
+            printf("\n");
+          }
+        }
       }
     };
   }
