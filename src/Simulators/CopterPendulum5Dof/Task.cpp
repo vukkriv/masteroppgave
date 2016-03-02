@@ -40,6 +40,11 @@ namespace Simulators
 
     struct Arguments
     {
+      //! Start point parameters
+      double lat;
+      double lon;
+      double hgt;
+
       //! Model parameters
       double mass_copter;
       double mass_load;
@@ -50,15 +55,20 @@ namespace Simulators
     {
       //! Task arguments
       Arguments m_args;
-
       //! Model
       CopterPendulumModel m_model;
-
       //! Current state
       Matrix m_eta;
+      //! Current velocity (inertial!)
       Matrix m_nu;
-      //! Previous setp time
+      //! Previous step time
       double m_time_prev_step;
+      //! Last input received
+      Matrix m_tau;
+      //! Current simulated state
+      IMC::SimulatedState m_sstate;
+      //! Current euler angles
+      IMC::EulerAngles m_eangles;
 
       //! Constructor.
       //! @param[in] name task name.
@@ -66,7 +76,8 @@ namespace Simulators
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Periodic(name, ctx),
         m_eta(5,1, 0.0),
-        m_nu (5,1, 0.0)
+        m_nu (5,1, 0.0),
+        m_tau(5,1, 0.0)
       {
 
         param("Model - Mass Copter", m_args.mass_copter)
@@ -78,9 +89,21 @@ namespace Simulators
         param("Model - Length", m_args.length)
         .defaultValue("3");
 
+        param("Model - Lat", m_args.lat)
+        .defaultValue("63.628814")
+        .units(Units::Degree);
+
+        param("Model - Lon", m_args.lon)
+        .defaultValue("9.727400")
+        .units(Units::Degree);
+
+        param("Model - Height", m_args.hgt)
+        .defaultValue("20")
+        .units(Units::Meter);
 
         m_time_prev_step = Time::Clock::get() - 1/getFrequency();
 
+        bind<IMC::DesiredControl>(this);
 
       }
 
@@ -92,6 +115,21 @@ namespace Simulators
         m_model.setMassLoad(m_args.mass_load);
         m_model.setLength(m_args.length);
 
+      }
+
+      void
+      consume(const IMC::DesiredControl* msg)
+      {
+        if (msg->flags & IMC::DesiredControl::FL_X)
+          m_tau(0) = msg->x;
+
+        if (msg->flags & IMC::DesiredControl::FL_Y)
+          m_tau(1) = msg->y;
+
+        if (msg->flags & IMC::DesiredControl::FL_Z)
+          m_tau(2) = msg->z;
+
+        spew("Received and updated tau. ");
       }
 
       void
@@ -134,8 +172,32 @@ namespace Simulators
 
 
         m_time_prev_step = now;
+        spew("Did a step with dt=%.3f", dt);
       }
 
+
+      void
+      fill(void)
+      {
+        m_sstate.lat = Angles::radians(m_args.lat);
+        m_sstate.lon = Angles::radians(m_args.lon);
+        m_sstate.height = m_args.hgt;
+
+        m_sstate.x   = m_eta(0);
+        m_sstate.y   = m_eta(1);
+        m_sstate.z   = m_eta(2);
+
+
+        BodyFixedFrame::toBodyFrame(0.0, 0.0, 0.0,
+                                    m_nu(0), m_nu(1), m_nu(2),
+                                    &m_sstate.u, &m_sstate.v, &m_sstate.w);
+
+        // All angles are zero.
+
+        m_eangles.time = m_time_prev_step;
+        m_eangles.phi  = m_eta(0);
+        m_eangles.theta = m_eta(1);
+      }
 
 
 
@@ -143,6 +205,16 @@ namespace Simulators
       void
       task(void)
       {
+        // Do the step
+        step(m_tau);
+
+        // Fill and dispatch
+        fill();
+
+        dispatch(m_sstate);
+        dispatch(m_eangles);
+
+
 
       }
     };
