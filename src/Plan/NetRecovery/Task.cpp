@@ -34,8 +34,23 @@ namespace Plan
   {
     using DUNE_NAMESPACES;
 
+    struct FixedWingLoiter
+    {
+      uint8_t altitude;
+      fp32_t speed;
+      fp32_t radius;
+      uint16_t duration;
+    };
+
+    struct Arguments
+    {
+      FixedWingLoiter fw_loiter;
+    };
+
     struct Task: public DUNE::Tasks::Task
     {
+      Arguments m_args;
+
       //! Last plan control state
       IMC::PlanControlState m_last_pcs;
 
@@ -45,6 +60,23 @@ namespace Plan
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Task(name, ctx)
       {
+        param("Loiter Altitude", m_args.fw_loiter.altitude)
+        .visibility(Parameter::VISIBILITY_USER)
+        .defaultValue("50");
+
+        param("Loiter Speed", m_args.fw_loiter.speed)
+        .visibility(Parameter::VISIBILITY_USER)
+        .defaultValue("20");
+
+        param("Loiter Radius", m_args.fw_loiter.radius)
+        .visibility(Parameter::VISIBILITY_USER)
+        .defaultValue("100");
+
+        param("Loiter Duration", m_args.fw_loiter.duration)
+        .visibility(Parameter::VISIBILITY_USER)
+        .defaultValue("0");
+
+
         bind<IMC::PlanDB>(this);
         bind<IMC::PlanControl>(this);
         bind<IMC::PlanControlState>(this);
@@ -143,7 +175,7 @@ namespace Plan
                 debug("NetRecovery maneuver set request dispatched from Neptus");
                 IMC::Maneuver* man = (*it)->data.get();
                 IMC::NetRecovery* nr = static_cast<IMC::NetRecovery*>(man);
-                sendFixedWingPlan(nr);
+                sendFixedWingPlan(planspec->plan_id,nr);
                 debug("Sent FixedWing NetRecovery plan");
                 break;
               }
@@ -239,54 +271,75 @@ namespace Plan
         }
       }
       void
-      sendFixedWingPlan(IMC::NetRecovery* maneuver)
+      sendFixedWingPlan(std::string name, IMC::NetRecovery* maneuver)
       {
         // Create plan set request
         IMC::PlanDB plan_db;
         plan_db.type = IMC::PlanDB::DBT_REQUEST;
         plan_db.op = IMC::PlanDB::DBOP_SET;
-        plan_db.plan_id = "NetRecovery_FixedWing";
+        plan_db.plan_id = name + "_fixedwing";
         plan_db.request_id = 0;
 
-        // Create plan specification
+
+        // Add loiter as initial maneuver
+
+        IMC::PlanManeuver loiter_man;
+        loiter_man.maneuver_id = 1;
+
+        IMC::Loiter man_loit;
+        man_loit.type = IMC::Loiter::LT_CIRCULAR;
+        man_loit.direction = IMC::Loiter::LD_CLOCKW;
+
+        man_loit.z             = m_args.fw_loiter.altitude;
+        man_loit.z_units       = IMC::Z_ALTITUDE;
+        man_loit.speed         = m_args.fw_loiter.speed;
+        man_loit.speed_units   = IMC::SUNITS_METERS_PS;
+        man_loit.duration      = m_args.fw_loiter.duration;
+        man_loit.radius        = m_args.fw_loiter.radius;
+
+        //Should calculate based on a desired along-track position behind the virtual runway
+        man_loit.lat = maneuver->start_lat;
+        man_loit.lon = maneuver->start_lon;
+
+
+        IMC::PlanManeuver* pman1 = new IMC::PlanManeuver();
+        IMC::InlineMessage<IMC::Maneuver> pman1_inline;
+        pman1_inline.set(man_loit);
+        pman1->maneuver_id = "1";
+        pman1->data = pman1_inline;
+
+        IMC::PlanManeuver* pman2  = new IMC::PlanManeuver();
+        IMC::InlineMessage<IMC::Maneuver> pman2_inline;
+        pman2_inline.set(maneuver);
+        pman2->maneuver_id = "2";
+        pman2->data = pman2_inline;
+
         IMC::PlanSpecification plan_spec;
+        plan_spec.description = "A fixed wing recovery plan";
         plan_spec.plan_id = plan_db.plan_id;
-        plan_spec.start_man_id = 1;
-        plan_spec.description = "NetRecovery FixedWing plan";
 
-        // Create plan maneuver
-        IMC::PlanManeuver man_spec;
-        man_spec.maneuver_id = 1;
+        IMC::PlanTransition* transition = new IMC::PlanTransition;
+        transition->source_man = "1";
+        transition->dest_man   = "2";
 
-        //IMC::NetRecovery m_dummy;
-        man_spec.data.set(maneuver);
+        IMC::PlanTransition* transition2 = new IMC::PlanTransition;
+        transition2->source_man = "2";
+        transition2->dest_man   = "1";
 
-        // Create start actions
-        IMC::SetEntityParameters eparam_start;
-        eparam_start.name = "Speed";
-        IMC::EntityParameter param_t;
-        param_t.name = "Speed";
-        param_t.value = 12.0; //NB: does not work
+        IMC::MessageList<IMC::PlanTransition> translist;
+        translist.push_back(transition);
+        translist.push_back(transition2);
 
-        eparam_start.params.push_back(param_t);
+        IMC::MessageList<IMC::PlanManeuver> manlist;
+        manlist.push_back(pman1);
+        manlist.push_back(pman2);
 
-        man_spec.start_actions.push_back(eparam_start);
+        plan_spec.start_man_id = "1";
+        plan_spec.maneuvers = manlist;
+        plan_spec.transitions = translist;
 
-        // Create end actions
-        IMC::SetEntityParameters eparam_stop;
-        eparam_start.name = "Speed";
-        IMC::EntityParameter param_f;
-        param_f.name = "Speed";
-        param_f.value = 12.0; //NB: does not work
-
-        eparam_start.params.push_back(param_f);
-
-        man_spec.end_actions.push_back(eparam_stop);
-
-        plan_spec.maneuvers.push_back(man_spec);
-
+        // Set plan
         plan_db.arg.set(plan_spec);
-
         // Send set plan request
         dispatch(plan_db);
 
