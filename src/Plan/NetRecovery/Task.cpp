@@ -90,78 +90,72 @@ namespace Plan
       void
       consume(const IMC::PlanDB* msg)
       {
-        trace("Got PlanDB \nfrom '%s' at '%s'",
+        trace("Got PlanDB:\n from '%s' at '%s'\n to '%s' at '%d'\n",
               resolveEntity(msg->getSourceEntity()).c_str(),
-              resolveSystemId(msg->getSource()));
-        //msg->toText(std::cout);
-        trace("PlanDB destination \n '%s' at '%d'",
+              resolveSystemId(msg->getSource()),
               resolveSystemId(msg->getDestination()),
               msg->getDestinationEntity());
-        if (msg->getSource() != getSystemId()
-            && msg->getDestination() == getSystemId())
+
+        //msg->toText(std::cout);
+        // Ignore if not reply for this entity
+        /*
+        if (msg->getDestination() != getSystemId()
+            || msg->getDestinationEntity() != getEntityId())
         {
-          trace("PlanDB from remote to me");
-        }
-        else
-        {
+          trace("Ignoring PlanDB with other destination");
           return;
         }
-        if (msg->type == IMC::PlanDB::DBT_SUCCESS
-            && msg->op == IMC::PlanDB::DBOP_GET)
+        */
+        /*
+        if (msg->type == IMC::PlanDB::DBT_REQUEST)
+          trace("Plan DB request\n");
+        if (msg->type == IMC::PlanDB::DBT_SUCCESS)
+        {
+          if (msg->op == IMC::PlanDB::DBOP_GET_INFO)
+            trace("Plan DB get info\n");
+          if (msg->op == IMC::PlanDB::DBOP_SET)
+            trace("Plan DB set");
+          if (msg->op == IMC::PlanDB::DBOP_GET_STATE)
+            trace("Plan DB get state\n");
+        }
+        */
+        if (   msg->getDestination() == getSystemId()
+            && msg->getSource()      != getSystemId()
+            && msg->type == IMC::PlanDB::DBT_REQUEST
+            && msg->op   == IMC::PlanDB::DBOP_SET)
         {
           debug(
-              "Got plan from DB, checking if Formation Controller is activated...");
-          // Check if plan has activated Formation Controller
-          bool is_formation_control = false;
+              "Neptus setting Plan in local DB, checking if there exists a NetRecovery maneuver in the plan");
+          // Check if plan has NetRecovery maneuver
           try
           {
-            const IMC::SetEntityParameters* t_sep;
             const IMC::PlanSpecification* planspec =
                 static_cast<const IMC::PlanSpecification*>(msg->arg.get());
             IMC::MessageList<IMC::PlanManeuver>::const_iterator it =
                 planspec->maneuvers.begin();
+            IMC::NetRecovery nr_maneuver;
+            trace("Plan: '%s'",planspec->plan_id.c_str());
             for (; it != planspec->maneuvers.end(); it++)
             {
-              IMC::MessageList<IMC::Message>::const_iterator it_sa =
-                  (*it)->start_actions.begin();
-              for (; it_sa != (*it)->start_actions.end(); it_sa++)
+              trace("Maneuver: '%s'",(*it)->data->getName());
+              if ( (*it)->data->getId() == nr_maneuver.getId() )
               {
-                t_sep = static_cast<const IMC::SetEntityParameters*>(*it_sa);
-                if (t_sep->name.compare("Formation Controller") == 0)
-                {
-                  IMC::MessageList<IMC::EntityParameter>::const_iterator it_ep =
-                      t_sep->params.begin();
-                  for (; it_ep != t_sep->params.end(); it_ep++)
-                  {
-                    if ((*it_ep)->name.compare("Formation Controller") == 0
-                        && (*it_ep)->value.compare("true") == 0)
-                    {
-                      is_formation_control = true;
-                      break;
-                    }
-                  }
-                }
-                if (is_formation_control)
-                  break;
-              }
-              if (is_formation_control)
+                debug("NetRecovery maneuver set request dispatched from Neptus");
+                IMC::Maneuver* man = (*it)->data.get();
+                IMC::NetRecovery* nr = static_cast<IMC::NetRecovery*>(man);
+                sendFixedWingPlan(nr);
+                debug("Sent FixedWing NetRecovery plan");
                 break;
+              }
             }
           }
           catch (std::exception& e)
           {
             err(DTR(
-                "Plan specification request failed with uncaught exception: %s"),
+                "Plan maneuver request failed with uncaught exception: %s"),
                 e.what());
           }
-
-          //extract NetRecovery
-
-
-          //sendFixedWingPlan();
-          debug("Sent FixedWing NetRecovery plan");
         }
-
       }
 
       void
@@ -187,15 +181,14 @@ namespace Plan
           return;
         }
 
-        if (msg->op == IMC::PlanControl::PC_START)
+        if (msg->op == IMC::PlanControl::PC_LOAD)
         {
-          debug("PlanControl START, requesting plan from DB...");
-          // Request plan details from Plan Database to check if Formation Control is activated
-          IMC::PlanDB plan_db;
-          plan_db.type = IMC::PlanDB::DBT_REQUEST;
-          plan_db.op = IMC::PlanDB::DBOP_GET;
-          plan_db.plan_id = msg->plan_id;
-          dispatch(plan_db);
+
+        }
+        else if (msg->op == IMC::PlanControl::PC_START)
+        {
+          debug("PlanControl START");
+
         }
         else if (msg->op == IMC::PlanControl::PC_STOP)
         {
@@ -246,13 +239,13 @@ namespace Plan
         }
       }
       void
-      sendFixedWingPlan()//IMC::NetRecovery nr_maneuver)
+      sendFixedWingPlan(IMC::NetRecovery* maneuver)
       {
         // Create plan set request
         IMC::PlanDB plan_db;
         plan_db.type = IMC::PlanDB::DBT_REQUEST;
         plan_db.op = IMC::PlanDB::DBOP_SET;
-        plan_db.plan_id = "formationPlan";
+        plan_db.plan_id = "NetRecovery_FixedWing";
         plan_db.request_id = 0;
 
         // Create plan specification
@@ -265,15 +258,15 @@ namespace Plan
         IMC::PlanManeuver man_spec;
         man_spec.maneuver_id = 1;
 
-        IMC::NetRecovery m_dummy;
-        man_spec.data.set(m_dummy);
+        //IMC::NetRecovery m_dummy;
+        man_spec.data.set(maneuver);
 
         // Create start actions
         IMC::SetEntityParameters eparam_start;
         eparam_start.name = "Speed";
         IMC::EntityParameter param_t;
         param_t.name = "Speed";
-        param_t.value = 12.0;
+        param_t.value = 12.0; //NB: does not work
 
         eparam_start.params.push_back(param_t);
 
@@ -284,7 +277,7 @@ namespace Plan
         eparam_start.name = "Speed";
         IMC::EntityParameter param_f;
         param_f.name = "Speed";
-        param_f.value = 12.0;
+        param_f.value = 12.0; //NB: does not work
 
         eparam_start.params.push_back(param_f);
 
@@ -298,6 +291,7 @@ namespace Plan
         dispatch(plan_db);
 
         // Create and send plan start request
+        /*
         IMC::PlanControl plan_ctrl;
         plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
         plan_ctrl.op = IMC::PlanControl::PC_START;
@@ -305,6 +299,7 @@ namespace Plan
         plan_ctrl.request_id = 0;
         plan_ctrl.arg.set(plan_spec);
         dispatch(plan_ctrl);
+        */
       }
       //! Main loop.
       void
