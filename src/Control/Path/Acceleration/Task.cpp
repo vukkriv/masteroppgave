@@ -903,12 +903,13 @@ namespace Control
           trace("x_d:\t [%1.2f, %1.2f, %1.2f]",
               x_d(0), x_d(1), x_d(2));
 
+          trace("Using parameters k[1-3]: %.4f, %.4f, %.4f", m_refmodel.k1, m_refmodel.k2, m_refmodel.k3 );
 
           double T = m_args.prefilter_time_constant;
           m_refmodel.prefilterState += ts.delta * (-(1/T)*m_refmodel.prefilterState + (1/T)*x_d);
 
           // Step 1: V-part
-          Matrix tau1 = m_refmodel.k1 * (m_refmodel.prefilterState - m_refmodel.getPos());
+          Matrix tau1 = m_refmodel.k1 * (x_d - m_refmodel.getPos());
 
           // Set heave to 0 if not controlling altitude
           if (!m_args.use_altitude)
@@ -991,7 +992,8 @@ namespace Control
           Matrix old_pos = m_refmodel.getPos();
           Matrix old_vel = m_refmodel.getVel();
           // Update reference
-          m_refmodel.x += ts.delta * (m_refmodel.A * m_refmodel.x + m_refmodel.B * m_refmodel.prefilterState);
+          //m_refmodel.x += ts.delta * (m_refmodel.A * m_refmodel.x + m_refmodel.B * m_refmodel.prefilterState);
+          m_refmodel.x += ts.delta * (m_refmodel.A * m_refmodel.x + m_refmodel.B * x_d);
 
           // Saturate reference velocity
           Matrix vel = m_refmodel.getVel();
@@ -1171,6 +1173,8 @@ namespace Control
 
           stepNewRefModel(state, ts);
 
+          trace("Stepping with a td of %.3f, freq: %.3f", ts.delta, 1/ts.delta);
+
           // Set reference from reference model
           m_reference.setReference(m_refmodel.x);
 
@@ -1240,7 +1244,7 @@ namespace Control
           curPos(0) = state.x;
           curPos(1) = state.y;
           curPos(2) = state.z;
-          trace("x:\t [%1.2f, %1.2f, %1.2f]",
+          debug("x:\t [%1.2f, %1.2f, %1.2f]",
               state.x, state.y, state.z);
 
           // Get current velocity
