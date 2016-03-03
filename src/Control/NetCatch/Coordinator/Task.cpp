@@ -418,18 +418,19 @@ namespace Control
           if (!m_coordinatorEnabled)
             return;
 
+          m_ref_lat = estate->lat;
+          m_ref_lon = estate->lon;
+          m_ref_hae = estate->height;
+          m_ref_valid = true;
+
           if (!m_initializedCoord)
           {
             debug("Initializing coordinator after EstimatedLocalState");
-            m_ref_lat = estate->lat;
-            m_ref_lon = estate->lon;
-            m_ref_hae = estate->height;
-            m_ref_valid = true;
             initCoordinator();
-            initRunwayPath();
             //return;
             debug("Initialized coordinator after EstimatedLocalState");
           }
+          initRunwayPath();
 
           //spew("Got EstimatedState \nfrom '%s' at '%s'",
           //     resolveEntity(estate->getSourceEntity()).c_str(),
@@ -487,6 +488,7 @@ namespace Control
                   updateStartRadius();
                   if (!startNetRecovery()) //aircraft should not be too close when starting approach
                   {
+                    debug("Aircraft approaching");
                     m_curr_state = IMC::NetRecoveryState::NR_APPROACH; //requires that the net is standby at the start of the runway
                   }
                   else
@@ -502,7 +504,10 @@ namespace Control
                 updateMeanValues(s);
                 updateStartRadius();
                 if (startNetRecovery())
+                {
+                  debug("Start NetRecovery");
                   m_curr_state = IMC::NetRecoveryState::NR_START;
+                }
                 break;
               }
             case IMC::NetRecoveryState::NR_START:
@@ -512,21 +517,28 @@ namespace Control
 
                 if (catched())
                 {
+                  debug("Fixed-wing catched");
                   m_curr_state = IMC::NetRecoveryState::NR_CATCH;
                 }
                 else if (aircraftPassed())
                 {
+                  debug("Fixed-wing passed");
                   m_curr_state = IMC::NetRecoveryState::NR_STOP;
                 }
                 if (endAtRunway())
+                {
+                  debug("End at runway");
                   m_curr_state = IMC::NetRecoveryState::NR_END;
+                }
                 break;
               }
             case IMC::NetRecoveryState::NR_CATCH:
               {
                 if (endAtRunway())
+                {
+                  debug("End at runway");
                   m_curr_state = IMC::NetRecoveryState::NR_END;
-
+                }
                 break;
               }
             case IMC::NetRecoveryState::NR_END:
@@ -646,11 +658,11 @@ namespace Control
             m_p_path[s](2) = m_p_path[s](2) + m_runway.z_off_a;
           }
 
-          Matrix p_n = getNetPosition(m_p);
-          Matrix v_n = getNetVelocity(m_v);
-
-          Matrix delta_p_path = R * (p_n - m_p[AIRCRAFT]);
-          Matrix delta_v_path = R * (v_n - m_v[AIRCRAFT]);
+          //m_p_path[s] will eventully be the centroid anyways
+          Matrix p_p = getNetPosition(m_p_path);
+          Matrix p_v = getNetVelocity(m_v_path);
+          Matrix delta_p_path = p_p - m_p_path[AIRCRAFT];
+          Matrix delta_v_path = p_v - m_v_path[AIRCRAFT];
 
           delta_p_path_x = delta_p_path(0);
           delta_v_path_x = delta_v_path(0);
@@ -797,10 +809,7 @@ namespace Control
         bool
         endAtRunway()
         {
-          Matrix p_n = getNetPosition(m_p);
-          Matrix p_to_end = p_n - m_runway.end_NED;
-          double dist_left = p_to_end.norm_2();
-          if (dist_left <= m_args.m_endCatch_radius || p_to_end(0) > 0)
+          if (m_runway.box_length - m_p_path[COPTER_LEAD](0) <= m_args.m_endCatch_radius)
             return true;
           return false;
         }
