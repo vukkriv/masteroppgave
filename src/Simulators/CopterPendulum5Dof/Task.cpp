@@ -49,6 +49,10 @@ namespace Simulators
       double mass_copter;
       double mass_load;
       double length;
+      double air_drag_coeff;
+
+      //! Disturbance
+      double wind[3];
     };
 
     struct Task: public DUNE::Tasks::Periodic
@@ -101,6 +105,22 @@ namespace Simulators
         .defaultValue("20")
         .units(Units::Meter);
 
+        param("Model - Air Drag Coefficient", m_args.air_drag_coeff)
+        .defaultValue("0.15");
+
+        param("Wind - X", m_args.wind[0])
+        .defaultValue("3.0")
+        .units(Units::MeterPerSecond);
+
+        param("Wind - Y", m_args.wind[1])
+        .defaultValue("3.0")
+        .units(Units::MeterPerSecond);
+
+        param("Wind - Z", m_args.wind[2])
+        .defaultValue("0.0")
+        .units(Units::MeterPerSecond);
+
+
         m_time_prev_step = Time::Clock::get() - 1.0;
 
         bind<IMC::DesiredControl>(this);
@@ -124,18 +144,22 @@ namespace Simulators
       {
         // Set first tau  to hold it steady
         m_tau(2) = - Math::c_gravity * (m_args.mass_copter + m_args.mass_load);
+
+        // Reset
+        m_eta = Matrix(5, 1, 0.0);
+        m_nu  = Matrix(5, 1, 0.0);
       }
 
       void
       consume(const IMC::DesiredControl* msg)
       {
-        if (msg->flags & IMC::DesiredControl::FL_X)
+        if ((msg->flags & IMC::DesiredControl::FL_X) && !isnan(msg->x))
           m_tau(0) = msg->x*m_args.mass_copter;
 
-        if (msg->flags & IMC::DesiredControl::FL_Y)
+        if ((msg->flags & IMC::DesiredControl::FL_Y) && !isnan(msg->y))
           m_tau(1) = msg->y*m_args.mass_copter;
 
-        if (msg->flags & IMC::DesiredControl::FL_Z)
+        if ((msg->flags & IMC::DesiredControl::FL_Z) && !isnan(msg->z))
           m_tau(2) = msg->z*m_args.mass_copter - Math::c_gravity * (m_args.mass_copter + m_args.mass_load);
 
         spew("Received and updated tau. ");
@@ -170,16 +194,20 @@ namespace Simulators
         Matrix M = m_model.getMassMatrix(m_eta);
         Matrix C = m_model.getCoreolisMatrix(m_eta, m_nu);
         Matrix G = m_model.getGravityMatrix(m_eta);
-        double d[5] = {0.15, 0.15, 0.15, 0.01, 0.01};
+        double d[5] = {m_args.air_drag_coeff, m_args.air_drag_coeff, m_args.air_drag_coeff, 0.01, 0.01};
         Matrix D = Matrix(d, 5);
 
         Matrix next_eta = m_eta;
         Matrix next_nu  = m_nu;
 
+        Matrix wind_13 = Matrix(m_args.wind, 3, 1);
+        Matrix wind_45 = Matrix(2,1, 0.0);
+        Matrix wind    = wind_13.vertCat(wind_45);
+
         try{
           next_eta = m_eta + dt * m_nu;
-          next_nu  = m_nu  + dt * inverse(M) * (tau - C*m_nu - G - D*m_nu);
-          if (next_nu.norm_2() > 30)
+          next_nu  = m_nu  + dt * inverse(M) * (tau - C*m_nu - G - D*(m_nu - wind));
+          if (next_nu.norm_2() > 50)
           {
             err("Insanely large nu, aborting. Nu, Theta, Inverted M:");
             printMatrix(next_eta, DEBUG_LEVEL_NONE);
@@ -189,7 +217,7 @@ namespace Simulators
             // Hack to stop stepping for a while
             m_time_prev_step = now + 1;
 
-            return;
+            throw RestartNeeded("Large NU! ", 1);
 
 
           }
