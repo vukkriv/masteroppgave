@@ -35,18 +35,35 @@ namespace Simulators
   {
     using DUNE_NAMESPACES;
 
+    struct Arguments
+    {
+      double frequency;
+    };
+
     struct Task: public DUNE::Tasks::Task
     {
+      //! Task Arguments
+      Arguments m_args;
+      //! Last dispatched estimated state
+      IMC::EstimatedState m_estate;
+      //! Time of last dispatch
+      double m_time_last_dispatch;
+
+
+
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
-      IMC::EstimatedState m_estate;
-      IMC::EulerAngles m_eulerAngles;
-
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Task(name, ctx)
       {
+
+        param("Dispatch Frequency", m_args.frequency)
+        .defaultValue("25");
+
+
         bind<IMC::SimulatedState>(this);
+        m_time_last_dispatch = Clock::get();
       }
 
       //! Update internal state with new parameter values.
@@ -98,6 +115,10 @@ namespace Simulators
       consume(const IMC::SimulatedState* simState)
       {
         //debug("Consumed SimulatedState \n");
+        double dt = Clock::get() - m_time_last_dispatch;
+
+        if (dt < 1/m_args.frequency)
+          return;
 
         m_estate.lat = simState->lat;
         m_estate.lon = simState->lon;
@@ -125,11 +146,31 @@ namespace Simulators
         m_estate.r  = simState->r;
 
 
+        Matrix groundSpeed = Matrix(3,1, 0.0);
+        groundSpeed(0) = m_estate.vx;
+        groundSpeed(1) = m_estate.vy;
+        groundSpeed(2) = m_estate.vz;
+
+        Matrix windSpeed = Matrix(3,1, 0.0);
+        windSpeed(0) = simState->svx;
+        windSpeed(1) = simState->svy;
+        windSpeed(2) = simState->svz;
+
+        Matrix airSpeed = groundSpeed - windSpeed;
+
+        IMC::IndicatedSpeed ias;
+        IMC::TrueSpeed gs;
+
+        ias.value = airSpeed.norm_2();
+        gs.value  = groundSpeed.norm_2();
 
 
         dispatch(m_estate);
-        //dispatch(m_eulerAngles);
-        debug("Dispatched m_estate - Estimated states \n");
+        dispatch(ias);
+        dispatch(gs);
+
+        debug("Dispatched Estimated state.");
+
       }
 
 
