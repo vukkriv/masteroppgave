@@ -147,15 +147,15 @@ namespace Control
                 .description("Approach distance gain up");
 
             param("LOS Proportional gain line", m_args.k_ph_line)
-               .defaultValue("0.9")
+               .defaultValue("1.4")
                .description("LOS Proportional gain for control");
 
             param("LOS Integral gain line", m_args.k_ih_line)
-               .defaultValue("0.0")
+               .defaultValue("0.02")
                .description("LOS Integral gain for control");
 
             param("LOS Radius line", m_args.k_r_line)
-                .defaultValue("20.0")
+                .defaultValue("25.0")
                 .description("Approach distance gain up");
 
             param("Use controller", m_args.use_controller)
@@ -274,13 +274,13 @@ namespace Control
             	inf("Glideslope DOWN! %f",glideslope_angle);
             }
             else{//Straight line
-            	double h_error_trimmed = trimValue(abs(h_error),0.0,m_args.k_r_line-0.2); //Force the look-ahead distance to be within a circle with radius m_args.k_r
+            	double h_error_trimmed = trimValue(abs(h_error),0.0,m_args.k_r_line-0.5); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             	double h_app = sqrt(m_args.k_r_line*m_args.k_r_line - h_error_trimmed*h_error_trimmed);
             	los_angle = atan2(m_args.k_ph_line*h_error + m_args.k_ih_line*m_integrator,h_app); //Calculate LOS-angle glideslope down
             	inf("Glideslope LINE ! %f",glideslope_angle);
             }
             //Limit los_angle based on saturation limit for climb-rate.
-            los_angle = trimValue(los_angle,-0.2,0.2);
+            los_angle = trimValue(los_angle,-0.15,0.15);
             inf("Los_angle: %f",los_angle*(180/3.14159265));
 
             double gamma_cmd = glideslope_angle + los_angle; //Commanded flight path angle
