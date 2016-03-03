@@ -84,19 +84,19 @@ namespace Control
 			  .description("Use this controller for maneuver");
 
             param("Throttle Integrator gain", m_args.k_thr_i)
-               .defaultValue("2.0")
+               .defaultValue("1.0")
                .description("Throttle Integrator gain");
 
             param("Throttle Proportional gain", m_args.k_thr_p)
-                           .defaultValue("12.0")
+                           .defaultValue("10.0")
                            .description("Throttle Proportional gain");
 
             param("Throttle Proportional height gain", m_args.k_thr_ph)
-                           .defaultValue("2.5")
+                           .defaultValue("2.0")
                            .description("Throttle Proportional height gain");
 
             param("Gamma Proportional gain", m_args.k_gamma_p)
-                           .defaultValue("1.5")
+                           .defaultValue("5.0")
                            .description("Gamma Proportional gain");
 
             param("Trim pitch", m_args.trim_pitch)
