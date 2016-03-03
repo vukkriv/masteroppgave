@@ -906,10 +906,13 @@ namespace Control
           trace("Using parameters k[1-3]: %.4f, %.4f, %.4f", m_refmodel.k1, m_refmodel.k2, m_refmodel.k3 );
 
           double T = m_args.prefilter_time_constant;
-          m_refmodel.prefilterState += ts.delta * (-(1/T)*m_refmodel.prefilterState + (1/T)*x_d);
+          //m_refmodel.prefilterState += ts.delta * (-(1/T)*m_refmodel.prefilterState + (1/T)*x_d);
+
+          double beta = 0.9;
+          m_refmodel.prefilterState = (beta) * m_refmodel.prefilterState + (1-beta) * x_d;
 
           // Step 1: V-part
-          Matrix tau1 = m_refmodel.k1 * (x_d - m_refmodel.getPos());
+          Matrix tau1 = m_refmodel.k1 * (m_refmodel.prefilterState - m_refmodel.getPos());
 
           // Set heave to 0 if not controlling altitude
           if (!m_args.use_altitude)
