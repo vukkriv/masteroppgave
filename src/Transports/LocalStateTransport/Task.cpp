@@ -105,6 +105,10 @@ namespace Transports
 		   resolveSystemId(msg->getSource()),
 		   resolveEntity(msg->getSourceEntity()).c_str());
 
+	     m_state.lat    = msg->lat;
+       m_state.lon    = msg->lon;
+       m_state.height = msg->height;
+
         m_state.u = msg->u;
         m_state.v = msg->v;
         m_state.w = msg->w;
@@ -120,9 +124,9 @@ namespace Transports
         // Set time stamp
         m_state.ots = msg->getTimeStamp();
         // Add displacement from agent reference
-        m_state.x += msg->x;
-        m_state.y += msg->y;
-        m_state.z += msg->z;
+        m_state.x = msg->x;
+        m_state.y = msg->y;
+        m_state.z = msg->z;
         // Set velocity
         m_state.vx = msg->vx;
         m_state.vy = msg->vy;
