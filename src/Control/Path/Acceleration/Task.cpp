@@ -85,7 +85,7 @@ namespace Control
 
       static const std::string c_parcel_names[] = {DTR_RT("PID"), DTR_RT("Beta-X"),
                                                    DTR_RT("Beta-Y"), DTR_RT("Beta-Z"),
-                                                   DTR_RT("Alpha45-Phi"), DTR_RT("Alpha45-Theta"), "Delayed-x", "Delayed-y", "PID-X", "PID-Y", "PID-Z", "ERROR"};
+                                                   DTR_RT("Alpha45-Phi"), DTR_RT("Alpha45-Theta"), "Delayed-x", "Delayed-y", "PID-X", "PID-Y", "PID-Z", "ERROR", "ERROR-X", "ERROR-Y", "ERROR-Z"};
       enum Parcel {
         PC_PID = 0,
         PC_BETA_X = 1,
@@ -98,10 +98,13 @@ namespace Control
         PC_PID_X = 8,
         PC_PID_Y = 9,
         PC_PID_Z = 10,
-        PC_ERROR = 11
+        PC_ERROR = 11,
+        PC_ERROR_X = 12,
+        PC_ERROR_Y = 13,
+        PC_ERROR_Z = 14
       };
 
-      static const int NUM_PARCELS = 12;
+      static const int NUM_PARCELS = 15;
 
       enum ControllerType {
         CT_PID,
@@ -507,19 +510,19 @@ namespace Control
           param("Enable Integrator", m_args.enable_integrator)
           .defaultValue("true")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          //.scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Enable or disable I-term in controller.");
 
           param("Acceleration Controller Bandwidth", m_args.ctrl_omega_b)
           .defaultValue("0.7")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          //.scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Controller bandwidth");
 
           param("Acceleration Controller Relative Damping", m_args.ctrl_xi)
           .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          //.scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Controller damping");
 
           param("Enable Wind Feed Forward", m_args.enable_wind_ff)
@@ -549,6 +552,7 @@ namespace Control
 
           bind<IMC::EulerAngles>(this);
           bind<IMC::EstimatedState>(this);
+          bind<IMC::DesiredSpeed>(this);
 
           // zero-initialize mass-matrices
           for (int i = 0; i < 25; i++)
@@ -655,6 +659,20 @@ namespace Control
         consume(const IMC::EstimatedState* estate)
         {
           m_estate = *estate;
+        }
+
+        void
+        consume(const IMC::DesiredSpeed* dspeed)
+        {
+          // Actually set one with the "correct" speed
+          IMC::DesiredSpeed desiredSpeed;
+
+          desiredSpeed.speed_units = IMC::SUNITS_METERS_PS;
+          desiredSpeed.value       = m_args.refmodel_max_speed;
+
+          dispatch(desiredSpeed);
+
+          PathController::consume(dspeed);
         }
 
         //! Consumer for EulerAngles message
@@ -784,6 +802,8 @@ namespace Control
               m_refmodel.x(7) = m_prev_controller_output(1);
               m_refmodel.x(8) = m_prev_controller_output(2);
             }
+
+            debug("Did a reference model reset on path switch. ");
           }
 
 
@@ -1075,7 +1095,7 @@ namespace Control
 
           double pL = m_args.suspended_rope_length;
 
-          debug("Angle history size: %lu", m_anglehistory.size());
+          trace("Angle history size: %lu", m_anglehistory.size());
 
 
 
@@ -1247,7 +1267,7 @@ namespace Control
           curPos(0) = state.x;
           curPos(1) = state.y;
           curPos(2) = state.z;
-          debug("x:\t [%1.2f, %1.2f, %1.2f]",
+          trace("x:\t [%1.2f, %1.2f, %1.2f]",
               state.x, state.y, state.z);
 
           // Get current velocity
@@ -1315,7 +1335,17 @@ namespace Control
             m_parcels[PC_PID_X + i].d = parcel_d(i);
             m_parcels[PC_PID_X + i].i = parcel_i(i);
             dispatch(m_parcels[PC_PID_X + i]);
+
+            m_parcels[PC_ERROR_X + i].p = error_p(i);
+            m_parcels[PC_ERROR_X + i].d = error_d(i);
+            dispatch(m_parcels[PC_ERROR_X+i]);
           }
+
+          IMC::RelativeState relstate;
+          relstate.err_x = error_p(0); relstate.err_y = error_p(1); relstate.err_z = error_p(2);
+
+          dispatch(relstate);
+
 
           if (m_args.enable_slung_control )
           {
