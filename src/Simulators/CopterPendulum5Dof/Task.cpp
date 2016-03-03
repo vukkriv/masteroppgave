@@ -50,6 +50,7 @@ namespace Simulators
       double mass_load;
       double length;
       double air_drag_coeff;
+      bool   enable_load;
 
       //! Disturbance
       double wind[3];
@@ -108,6 +109,9 @@ namespace Simulators
         param("Model - Air Drag Coefficient", m_args.air_drag_coeff)
         .defaultValue("0.15");
 
+        param("Model - Enable Load", m_args.enable_load)
+        .defaultValue("false");
+
         param("Wind - X", m_args.wind[0])
         .defaultValue("3.0")
         .units(Units::MeterPerSecond);
@@ -143,7 +147,10 @@ namespace Simulators
       onResourceInitialization(void)
       {
         // Set first tau  to hold it steady
-        m_tau(2) = - Math::c_gravity * (m_args.mass_copter + m_args.mass_load);
+        if( m_args.enable_load)
+          m_tau(2) = - Math::c_gravity * (m_args.mass_copter + m_args.mass_load);
+        else
+          m_tau(2) = - Math::c_gravity * (m_args.mass_copter);
 
         // Reset
         m_eta = Matrix(5, 1, 0.0);
@@ -160,9 +167,80 @@ namespace Simulators
           m_tau(1) = msg->y*m_args.mass_copter;
 
         if ((msg->flags & IMC::DesiredControl::FL_Z) && !isnan(msg->z))
-          m_tau(2) = msg->z*m_args.mass_copter - Math::c_gravity * (m_args.mass_copter + m_args.mass_load);
+        {
+          if( m_args.enable_load )
+            m_tau(2) = msg->z*m_args.mass_copter - Math::c_gravity * (m_args.mass_copter + m_args.mass_load);
+          else
+            m_tau(2) = msg->z*m_args.mass_copter - Math::c_gravity * (m_args.mass_copter);
+        }
+
 
         spew("Received and updated tau. ");
+      }
+
+      void
+      stepWithoutPendulum(Matrix tau, double dt)
+      {
+        // Simply a second order model.
+        double g[3] = {0.0, 0.0, -m_args.mass_copter * Math::c_gravity};
+        Matrix G = Matrix(g, 3, 1);
+
+        double d[3] = {m_args.air_drag_coeff, m_args.air_drag_coeff, m_args.air_drag_coeff};
+        Matrix D = Matrix(d, 3);
+
+        Matrix eta = m_eta.get(0,2,0,0);
+        Matrix nu = m_nu.get(0,2,0,0);
+
+        Matrix wind = Matrix(m_args.wind, 3, 1);
+
+        Matrix next_eta = eta + dt * nu;
+        Matrix next_nu = nu + dt * (1.0/m_args.mass_copter) * (tau.get(0,2,0,0) - G - D*(nu - wind));
+
+        m_eta = next_eta.vertCat(Matrix(2,1, 0.0));
+        m_nu  = next_nu.vertCat(Matrix(2,1, 0.0));
+      }
+
+      void
+      stepWithPendulum(Matrix tau, double dt)
+      {
+        Matrix M = m_model.getMassMatrix(m_eta);
+        Matrix C = m_model.getCoreolisMatrix(m_eta, m_nu);
+        Matrix G = m_model.getGravityMatrix(m_eta);
+        double d[5] = {m_args.air_drag_coeff, m_args.air_drag_coeff, m_args.air_drag_coeff, 0.01, 0.01};
+        Matrix D = Matrix(d, 5);
+
+        Matrix next_eta = m_eta;
+        Matrix next_nu  = m_nu;
+
+        Matrix wind_13 = Matrix(m_args.wind, 3, 1);
+        Matrix wind_45 = Matrix(2,1, 0.0);
+        Matrix wind    = wind_13.vertCat(wind_45);
+
+        try{
+          next_eta = m_eta + dt * m_nu;
+          next_nu  = m_nu  + dt * inverse(M) * (tau - C*m_nu - G - D*(m_nu - wind));
+          if (next_nu.norm_2() > 50)
+          {
+            err("Insanely large nu, aborting. Nu, Theta, Inverted M:");
+            printMatrix(next_eta, DEBUG_LEVEL_NONE);
+            printMatrix(next_nu, DEBUG_LEVEL_NONE);
+            printMatrix(inverse(M), DEBUG_LEVEL_NONE);
+
+
+            throw RestartNeeded("Large NU! ", 1);
+
+
+          }
+        }
+        catch(Matrix::Error& error)
+        {
+          err("Error doing step. Aborting simulation step: %s", error.what());
+          return;
+        }
+
+        // Store new values
+        m_eta = next_eta;
+        m_nu  = next_nu;
       }
 
       void
@@ -188,49 +266,18 @@ namespace Simulators
           err("delta t to small or to large. Aborting simulation step.: %.4f", dt);
           //err("Now: %f, Prev: %f", now, m_time_prev_step);
           //err("Calc: %f", 1.0/getFrequency());
+
+          if (dt > 3.0)
+            throw RestartNeeded("DT more than 3 seconds.  ", 1);
+
           return;
         }
 
-        Matrix M = m_model.getMassMatrix(m_eta);
-        Matrix C = m_model.getCoreolisMatrix(m_eta, m_nu);
-        Matrix G = m_model.getGravityMatrix(m_eta);
-        double d[5] = {m_args.air_drag_coeff, m_args.air_drag_coeff, m_args.air_drag_coeff, 0.01, 0.01};
-        Matrix D = Matrix(d, 5);
+        if( m_args.enable_load )
+          stepWithPendulum(tau, dt);
+        else
+          stepWithoutPendulum(tau, dt);
 
-        Matrix next_eta = m_eta;
-        Matrix next_nu  = m_nu;
-
-        Matrix wind_13 = Matrix(m_args.wind, 3, 1);
-        Matrix wind_45 = Matrix(2,1, 0.0);
-        Matrix wind    = wind_13.vertCat(wind_45);
-
-        try{
-          next_eta = m_eta + dt * m_nu;
-          next_nu  = m_nu  + dt * inverse(M) * (tau - C*m_nu - G - D*(m_nu - wind));
-          if (next_nu.norm_2() > 50)
-          {
-            err("Insanely large nu, aborting. Nu, Theta, Inverted M:");
-            printMatrix(next_eta, DEBUG_LEVEL_NONE);
-            printMatrix(next_nu, DEBUG_LEVEL_NONE);
-            printMatrix(inverse(M), DEBUG_LEVEL_NONE);
-
-            // Hack to stop stepping for a while
-            m_time_prev_step = now + 1;
-
-            throw RestartNeeded("Large NU! ", 1);
-
-
-          }
-        }
-        catch(Matrix::Error& error)
-        {
-          err("Error doing step. Aborting simulation step: %s", error.what());
-          return;
-        }
-
-        // Store new values
-        m_eta = next_eta;
-        m_nu  = next_nu;
 
 
         m_time_prev_step = now;
@@ -259,6 +306,11 @@ namespace Simulators
         m_eangles.time = m_time_prev_step;
         m_eangles.phi  = m_eta(3);
         m_eangles.theta = m_eta(4);
+
+        // Stream speed
+        m_sstate.svx = m_args.wind[0];
+        m_sstate.svy = m_args.wind[1];
+        m_sstate.svz = m_args.wind[2];
       }
 
 
