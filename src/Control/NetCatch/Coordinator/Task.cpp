@@ -53,13 +53,12 @@ namespace Control
         bool use_mean_window_aircraft;
         //! Disable Z flag, this will utilize new rate controller on some targets
         bool disable_Z;
-
         // Max vel approach
         double max_vy_app;
-
-        // Max pos approach
+        // Max pos cross-track approach
         double max_py_app;
-
+        // Max pos along-track approach
+        double max_px_app;
         //! Moving mean window size
         double mean_ws;
         //! Desired velocity of net at impact
@@ -286,6 +285,9 @@ namespace Control
           param("Max pos y approach", m_args.max_py_app).visibility(
               Tasks::Parameter::VISIBILITY_USER).defaultValue("1");
 
+          param("Max pos x approach", m_args.max_px_app).visibility(
+              Tasks::Parameter::VISIBILITY_USER).defaultValue("1");
+
           param("Desired collision radius", m_args.m_coll_r).visibility(
               Tasks::Parameter::VISIBILITY_USER)
   //      .scope(Tasks::Parameter::SCOPE_MANEUVER)
@@ -371,6 +373,8 @@ namespace Control
               m_vehicles.no_vehicles++;
               m_vehicles.copters.push_back(copter);
             }
+            if (!m_args.enable_coord)
+              break;
           }
           inf("No vehicles: %d", m_vehicles.no_vehicles);
           inf("Aircraft: %s", m_vehicles.aircraft.c_str());
@@ -414,25 +418,26 @@ namespace Control
           if (!m_coordinatorEnabled)
             return;
 
+          m_ref_lat = estate->lat;
+          m_ref_lon = estate->lon;
+          m_ref_hae = estate->height;
+          m_ref_valid = true;
+
           if (!m_initializedCoord)
           {
             debug("Initializing coordinator after EstimatedLocalState");
-            m_ref_lat = estate->lat;
-            m_ref_lon = estate->lon;
-            m_ref_hae = estate->height;
-            m_ref_valid = true;
             initCoordinator();
-            initRunwayPath();
             //return;
             debug("Initialized coordinator after EstimatedLocalState");
           }
+          initRunwayPath();
 
           //spew("Got EstimatedState \nfrom '%s' at '%s'",
           //     resolveEntity(estate->getSourceEntity()).c_str(),
           //     resolveSystemId(estate->getSource()));
 
           std::string vh_id = resolveSystemId(estate->getSource());
-          //debug("Received EstimatedLocalState from %s: ",vh_id.c_str());
+          spew("Received EstimatedLocalState from %s: ",vh_id.c_str());
           int s = getVehicle(vh_id);
           //spew("s=%d",s);
           if (s == INVALID)  //invalid vehicle
@@ -479,26 +484,30 @@ namespace Control
               {
                 updateMeanValues(s);
                 if (aircraftApproaching() && m_args.enable_catch)
-                  m_curr_state = IMC::NetRecoveryState::NR_APPROACH; //requires that the net is standby at the start of the runway
-
+                {
+                  updateStartRadius();
+                  if (!startNetRecovery()) //aircraft should not be too close when starting approach
+                  {
+                    debug("Aircraft approaching");
+                    m_curr_state = IMC::NetRecoveryState::NR_APPROACH; //requires that the net is standby at the start of the runway
+                  }
+                  else
+                  {
+                    debug("Not able to recover, plane to close");
+                    m_curr_state = IMC::NetRecoveryState::NR_STOP;
+                  }
+                }
                 break;
               }
             case IMC::NetRecoveryState::NR_APPROACH:
               {
                 updateMeanValues(s);
-
-                double v_a = abs(m_v_path[AIRCRAFT](0));
-                m_startCatch_radius = updateStartRadius(v_a, 0, m_u_ref, m_ad,
-                                                        m_args.m_coll_r);
-                if (m_startCatch_radius == -1)
-                {
-                  err("Unable to calculate the desired start-radius");
-                  return;
-                }
-
+                updateStartRadius();
                 if (startNetRecovery())
+                {
+                  debug("Start NetRecovery");
                   m_curr_state = IMC::NetRecoveryState::NR_START;
-
+                }
                 break;
               }
             case IMC::NetRecoveryState::NR_START:
@@ -508,21 +517,28 @@ namespace Control
 
                 if (catched())
                 {
+                  debug("Fixed-wing catched");
                   m_curr_state = IMC::NetRecoveryState::NR_CATCH;
                 }
                 else if (aircraftPassed())
                 {
+                  debug("Fixed-wing passed");
                   m_curr_state = IMC::NetRecoveryState::NR_STOP;
                 }
                 if (endAtRunway())
+                {
+                  debug("End at runway");
                   m_curr_state = IMC::NetRecoveryState::NR_END;
+                }
                 break;
               }
             case IMC::NetRecoveryState::NR_CATCH:
               {
                 if (endAtRunway())
+                {
+                  debug("End at runway");
                   m_curr_state = IMC::NetRecoveryState::NR_END;
-
+                }
                 break;
               }
             case IMC::NetRecoveryState::NR_END:
@@ -642,11 +658,11 @@ namespace Control
             m_p_path[s](2) = m_p_path[s](2) + m_runway.z_off_a;
           }
 
-          Matrix p_n = getNetPosition(m_p);
-          Matrix v_n = getNetVelocity(m_v);
-
-          Matrix delta_p_path = R * (p_n - m_p[AIRCRAFT]);
-          Matrix delta_v_path = R * (v_n - m_v[AIRCRAFT]);
+          //m_p_path[s] will eventully be the centroid anyways
+          Matrix p_p = getNetPosition(m_p_path);
+          Matrix p_v = getNetVelocity(m_v_path);
+          Matrix delta_p_path = p_p - m_p_path[AIRCRAFT];
+          Matrix delta_v_path = p_v - m_v_path[AIRCRAFT];
 
           delta_p_path_x = delta_p_path(0);
           delta_v_path_x = delta_v_path(0);
@@ -744,9 +760,11 @@ namespace Control
         bool
         aircraftApproaching()
         {
-          if (m_v_path[AIRCRAFT](0) > 0 && m_p_path[AIRCRAFT](0) < 0
-              && sqrt(pow(m_p_path[AIRCRAFT](1), 2)) < m_args.max_py_app
-              && sqrt(pow(m_v_path[AIRCRAFT](1), 2)) < m_args.max_vy_app)
+          if (   m_v_path[AIRCRAFT](0) > 0
+              && m_p_path[AIRCRAFT](0) < 0
+              && m_p_path[AIRCRAFT](0) > -m_args.max_px_app
+              && abs(m_p_path[AIRCRAFT](1)) < m_args.max_py_app
+              && abs(m_v_path[AIRCRAFT](1)) < m_args.max_vy_app)
             return true;
           return false;
         }
@@ -791,12 +809,22 @@ namespace Control
         bool
         endAtRunway()
         {
-          Matrix p_n = getNetPosition(m_p);
-          Matrix p_to_end = p_n - m_runway.end_NED;
-          double dist_left = p_to_end.norm_2();
-          if (dist_left <= m_args.m_endCatch_radius || p_to_end(0) > 0)
+          if (m_runway.box_length - m_p_path[COPTER_LEAD](0) <= m_args.m_endCatch_radius)
             return true;
           return false;
+        }
+
+        void
+        updateStartRadius()
+        {
+          double v_a = abs(m_v_path[AIRCRAFT](0));
+          m_startCatch_radius = calcStartRadius(v_a, 0, m_u_ref, m_ad,
+                                                  m_args.m_coll_r);
+          if (m_startCatch_radius == -1)
+          {
+            err("Unable to calculate the desired start-radius");
+            return;
+          }
         }
 
         double
@@ -845,7 +873,7 @@ namespace Control
         }
 
         double
-        updateStartRadius(double v_a, double v0_n, double v_ref_n, double a_n,
+        calcStartRadius(double v_a, double v0_n, double v_ref_n, double a_n,
             double r_impact)
         {
           // calculate the radius which the net-catch maneuver should start, based on the mean velocity of the airplane

@@ -90,8 +90,9 @@ namespace Control
           m_time_diff(0.0)
         {
           param("Velocity Controller", m_args.use_controller)
-          .defaultValue("true")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .defaultValue("true")
           .description("Enable Velocity Controller");
 
           param("Frequency", m_args.m_freq)
