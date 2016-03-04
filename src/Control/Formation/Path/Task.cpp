@@ -356,30 +356,30 @@ namespace Control
         {
           PathFormationController::onUpdateParameters();
 
-		  double Kp_s = m_args.refsim.c_surge.Kp;
-		  double Ki_s = m_args.refsim.c_surge.Ki;
-		  double Kd_s = m_args.refsim.c_surge.Kd;
-		  if (!m_args.refsim.c_surge.tunedirect)
-		  {
-		    //do same thing as below
-			/*
-			Kp_s =
-			Ki_s =
-			Kd_s =
-			*/
-		  }
-		  m_refsim.setPID(Kp_s,Ki_s,Kd_s,static_cast<int>(R_SURGE));
+          double Kp_s = m_args.refsim.c_surge.Kp;
+          double Ki_s = m_args.refsim.c_surge.Ki;
+          double Kd_s = m_args.refsim.c_surge.Kd;
+          if (!m_args.refsim.c_surge.tunedirect)
+          {
+            //do same thing as below
+            /*
+            Kp_s =
+            Ki_s =
+            Kd_s =
+            */
+          }
+          m_refsim.setPID(Kp_s,Ki_s,Kd_s,static_cast<int>(R_SURGE));
 
-		  double Kp_h = m_args.refsim.c_heading.Kp;
-		  double Ki_h = m_args.refsim.c_heading.Ki;
-		  double Kd_h = m_args.refsim.c_heading.Kd;
+          double Kp_h = m_args.refsim.c_heading.Kp;
+          double Ki_h = m_args.refsim.c_heading.Ki;
+          double Kd_h = m_args.refsim.c_heading.Kd;
           if (!m_args.refsim.c_heading.tunedirect)
           {
               Kp_h = (m_args.refsim.heading_T/m_args.refsim.heading_T)*sqrt(m_args.refsim.c_heading.omega);
               Ki_h = m_args.refsim.c_heading.omega/10;
               Kd_h = (1-2*m_args.refsim.c_heading.xi*m_args.refsim.c_heading.omega*m_args.refsim.heading_T)/m_args.refsim.heading_K;
           }
-    	  m_refsim.setPID(Kp_h,Ki_h,Kd_h,static_cast<int>(R_HEADING));
+          m_refsim.setPID(Kp_h,Ki_h,Kd_h,static_cast<int>(R_HEADING));
 
         }
 
@@ -404,11 +404,11 @@ namespace Control
         virtual void
         onPathStartup(const IMC::EstimatedLocalState& state, const TrackingState& ts)
         {
- 		  // Print end coordinates
-		  debug("End coordinates: [%f, %f, %f]", ts.end.x, ts.end.y, ts.end.z);
+          // Print end coordinates
+          debug("End coordinates: [%f, %f, %f]", ts.end.x, ts.end.y, ts.end.z);
 
-		  // Restart Reference Simulator
-		  initRefSim(state);
+          // Restart Reference Simulator
+          initRefSim(state);
 
           // Reset integral
           // If switch, and always if more than x seconds since last step.
@@ -420,12 +420,12 @@ namespace Control
         virtual void
         onPathActivation(void)
         {
-			if (!m_args.use_controller)
-			{
-			  debug("Path activated, but not active: Requesting deactivation");
-			  requestDeactivation();
-			  return;
-			}
+          if (!m_args.use_controller)
+          {
+            debug("Path activated, but not active: Requesting deactivation");
+            requestDeactivation();
+            return;
+          }
         }
 
         void
@@ -436,15 +436,15 @@ namespace Control
           if (m_args.reset_to_state || Clock::get() - m_timestamp_prev_step > 2.0)
           {
         	m_refsim.x_ref = Matrix(3, 1, 0.0);
-		    m_refsim.x_ref(0) = state.u;
-		    m_refsim.x_ref(1) = state.psi;
-		    m_refsim.x_ref(2) = state.r;
+          m_refsim.x_ref(0) = state.u;
+          m_refsim.x_ref(1) = state.psi;
+          m_refsim.x_ref(2) = state.r;
 
-		    //set the desired output to the same as the initial reference to avoid steps
+          //set the desired output to the same as the initial reference to avoid steps
   		    m_refsim.x_des = Matrix(3, 1, 0.0);
-		    m_refsim.x_des(0) = state.u;
-		    m_refsim.x_des(1) = state.psi;
-		    m_refsim.x_des(2) = state.r;
+          m_refsim.x_des(0) = state.u;
+          m_refsim.x_des(1) = state.psi;
+          m_refsim.x_des(2) = state.r;
           }
 
           //set model, A matrix is dynamic and must updated each step
@@ -487,19 +487,19 @@ namespace Control
         void
         setMatrixA()
         {
-        	/*
-            m_Amatrix[1] = 0;
-            m_Amatrix[2] = 0;
-            m_Amatrix[3] = 0;
-            m_Amatrix[4] = 0;
-            m_Amatrix[5] = 1;
-            m_Amatrix[6] = 0;
-            m_Amatrix[7] = 0;
-            m_Amatrix[8] = -1/m_args.refsim.heading_T;
-            */
-            m_refsim.A(2,1) = 1;
-            m_refsim.A(2,1) = -1/m_args.refsim.heading_T;
-            updateMatrixA();
+          /*
+          m_Amatrix[1] = 0;
+          m_Amatrix[2] = 0;
+          m_Amatrix[3] = 0;
+          m_Amatrix[4] = 0;
+          m_Amatrix[5] = 1;
+          m_Amatrix[6] = 0;
+          m_Amatrix[7] = 0;
+          m_Amatrix[8] = -1/m_args.refsim.heading_T;
+          */
+          m_refsim.A(2,1) = 1;
+          m_refsim.A(2,1) = -1/m_args.refsim.heading_T;
+          updateMatrixA();
         }
 
         void
