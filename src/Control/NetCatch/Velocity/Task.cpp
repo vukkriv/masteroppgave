@@ -49,6 +49,13 @@ namespace Control
         //! Disable Z flag, this will utilize new rate controller on some targets
         bool disable_Z;
 
+        bool disable_path_control;
+
+        //!velocity Controller parameters
+        Matrix Kp_path;
+        Matrix Ki_path;
+        Matrix Kd_path;
+
         //!velocity Controller parameters
         Matrix Kp;
         Matrix Ki;
@@ -70,8 +77,9 @@ namespace Control
         //! Task arguments.
         Arguments m_args;
 
-        //! Last EstimatedLocalState received
+        //! Last messages received
         IMC::DesiredVelocity m_v_des;
+        IMC::DesiredHeading m_desired_heading;
         IMC::EstimatedLocalState m_est_l_state;
         IMC::Acceleration m_a_est;
 
@@ -100,6 +108,20 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Controller frequency");
 
+          param("Kp Path Velocity Control", m_args.Kp_path)
+          .defaultValue("1.0,1.0,1.0").visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Position Controller tuning parameter Kp");
+
+          param("Ki Path Velocity Control", m_args.Ki_path)
+          .defaultValue("0.0,0.0,0.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Velocity Controller tuning parameter Ki");
+
+          param("Kd Path Velocity Control", m_args.Kd_path)
+          .defaultValue("0.0,0.0,0.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Velocity Controller tuning parameter Kd");
+
           param("Kp Velocity Control", m_args.Kp)
           .defaultValue("1.0,1.0,1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -125,8 +147,13 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Choose whether to disable Z flag. In turn, this will utilize new rate controller on some targets");
 
+          param("Disable Path Control", m_args.disable_path_control)
+          .defaultValue("false").visibility(
+          Tasks::Parameter::VISIBILITY_USER).description("Choose whether to control velocity in the current path frame");
+
           // Bind incoming IMC messages
           bind<IMC::DesiredVelocity>(this);
+          bind<IMC::DesiredHeading>(this);
           bind<IMC::EstimatedLocalState>(this);
           bind<IMC::Acceleration>(this);
         }
@@ -147,6 +174,16 @@ namespace Control
         {
           m_v_des = *msg;
         }
+
+        void
+        consume(const IMC::DesiredHeading* msg)
+        {
+          spew("Got DesiredHeading from system '%s' and entity '%s'.",
+                resolveSystemId(msg->getSource()),
+                resolveEntity(msg->getSourceEntity()).c_str());
+          m_desired_heading = *msg;
+        }
+
 
         void
         consume(const IMC::EstimatedLocalState* msg)
@@ -188,9 +225,28 @@ namespace Control
           m_v_int_value = m_v_int_value + e_v_est*m_time_diff;
 
           Matrix F_des = Matrix(3,1,0.0);
-          F_des(0) = m_args.Kp(0)*e_v_est(0) + m_args.Ki(0)*m_v_int_value(0) + m_args.Kd(0)*e_a_est(0);
-          F_des(1) = m_args.Kp(1)*e_v_est(1) + m_args.Ki(1)*m_v_int_value(1) + m_args.Kd(1)*e_a_est(1);
-          F_des(2) = m_args.Kp(2)*e_v_est(2) + m_args.Ki(2)*m_v_int_value(2) + m_args.Kd(2)*e_a_est(2);
+
+          if (m_args.disable_path_control)
+          {
+            F_des(0) = m_args.Kp(0)*e_v_est(0) + m_args.Ki(0)*m_v_int_value(0) + m_args.Kd(0)*e_a_est(0);
+            F_des(1) = m_args.Kp(1)*e_v_est(1) + m_args.Ki(1)*m_v_int_value(1) + m_args.Kd(1)*e_a_est(1);
+            F_des(2) = m_args.Kp(2)*e_v_est(2) + m_args.Ki(2)*m_v_int_value(2) + m_args.Kd(2)*e_a_est(2);
+          }
+          else
+          {
+            Matrix F_des_path = Matrix(3, 1, 0.0);
+            Matrix Rpn = Rzyx(0,0,m_desired_heading.value);
+            Matrix e_v_est_path = Rpn*e_v_est;
+            Matrix e_a_est_path = Rpn*e_a_est;
+            Matrix m_v_int_value_path = Rpn*m_v_int_value;
+            F_des_path(0) = m_args.Kp_path(0) * e_v_est_path(0) + m_args.Ki_path(0) * m_v_int_value_path(0)
+                + m_args.Kd_path(0) * e_a_est_path(0);
+            F_des_path(1) = m_args.Kp_path(1) * e_v_est_path(1) + m_args.Ki_path(1) * m_v_int_value_path(1)
+                + m_args.Kd_path(1) * e_a_est_path(1);
+            F_des_path(2) = m_args.Kp_path(2) * e_v_est_path(2) + m_args.Ki_path(2) * m_v_int_value_path(2)
+                + m_args.Kd_path(2) * e_a_est_path(2);
+            F_des = transpose(Rpn)*F_des_path;
+          }
 
           if (F_des.norm_2() > m_args.max_norm_F)
           {
