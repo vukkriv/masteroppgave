@@ -89,6 +89,8 @@ namespace Control
         Matrix eps_ct_a;
         //! Maximum cross-track error net
         Matrix eps_ct_n;
+
+        std::string centroid_els_entity_label;
       };
 
       struct VirtualRunway
@@ -204,6 +206,9 @@ namespace Control
 
         Matrix m_p_ref_path;
         Matrix m_v_ref_path;
+
+        Matrix m_a_des_path;
+
         Matrix m_p_int_value;
 
         //! Radius to start net-catch (calculate based on net-acceleration)
@@ -227,6 +232,9 @@ namespace Control
         //! To print the control-loop frequency
         uint64_t m_time_diff;
 
+        //centroid heading
+        double m_centroid_heading;
+
         //! Controllable loops.
         static const uint32_t c_controllable = IMC::CL_PATH;
         //! Required loops.
@@ -238,6 +246,7 @@ namespace Control
         //! @param[in] ctx context.
         Task(const std::string& name, Tasks::Context& ctx):
           PeriodicUAVAutopilot(name, ctx, c_controllable, c_required),
+          m_curr_state(IMC::NetRecoveryState::NR_INIT),
           m_ref_lat(0.0),
           m_ref_lon(0.0),
           m_ref_hae(0.0),
@@ -250,6 +259,7 @@ namespace Control
           delta_v_path_x_mean(0),
           m_p_ref_path(3, 1, 0.0),
           m_v_ref_path(3, 1, 0.0),
+          m_a_des_path(3, 1, 0.0),
           m_p_int_value(3, 1, 0.0),
           m_startCatch_radius(0),
           m_timeout(0),
@@ -258,7 +268,8 @@ namespace Control
           m_ad(0.0),
           m_scope_ref(0),
           m_time_end(Clock::getMsec()),
-          m_time_diff(0)
+          m_time_diff(0),
+          m_centroid_heading(0)
         {
           param("Path Controller", m_args.use_controller).visibility(
               Tasks::Parameter::VISIBILITY_USER).scope(
@@ -358,13 +369,17 @@ namespace Control
               Tasks::Parameter::VISIBILITY_USER).defaultValue("0.0,0.0,0.0").description(
               "Position Controller tuning parameter Kd");
 
+          param("Maximum Normalised Velocity", m_args.max_norm_v).defaultValue(
+              "5.0").description("Maximum Normalised Velocity of the Copter");
+
           param("Max Integral", m_args.max_integral)
           .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Max integral value");
 
-          param("Maximum Normalised Velocity", m_args.max_norm_v).defaultValue(
-              "5.0").description("Maximum Normalised Velocity of the Copter");
+          param("EstimatedLocalState Centroid Label", m_args.centroid_els_entity_label)
+          .defaultValue("Formation Centroid")
+          .description("Entity label for the centroid EstimatedLocalState");
 
           // Bind incoming IMC messages
           bind<IMC::EstimatedLocalState>(this);
@@ -412,6 +427,7 @@ namespace Control
             err(DTR("not active"));
             return;
           }
+
           trace("Got DesiredNetRecovery \nfrom '%s' at '%s'",
                 resolveEntity(msg->getSourceEntity()).c_str(),
                 resolveSystemId(msg->getSource()));
@@ -461,6 +477,19 @@ namespace Control
           m_runway.lon_end = msg->end_lon;
           m_runway.lat_end = msg->end_lat;
 
+          switch(msg->z_units)
+          {
+            case IMC::Z_ALTITUDE:
+              m_runway.altitude_start = msg->z;
+              m_runway.altitude_end = msg->z;
+              break;
+            default:
+              war("z_unit not supported, using altitude");
+              m_runway.altitude_start = msg->z;
+              m_runway.altitude_end = msg->z;
+              break;
+          };
+
           m_runway.box_height = msg->lbox_height;
           m_runway.box_width = msg->lbox_width;
 
@@ -474,27 +503,36 @@ namespace Control
         void
         consume(const IMC::EstimatedLocalState* estate)
         {
+          //this one should read only fixed-wing and centroid states
+
           if (!m_coordinatorEnabled)
             return;
-          m_ref_lat = estate->lat;
-          m_ref_lon = estate->lon;
-          m_ref_hae = estate->height;
+
+          //local centroid messages
+          if (estate->getSource() == this->getSystemId() &&
+              resolveEntity(estate->getSourceEntity()).c_str() == m_args.centroid_els_entity_label)
+            m_centroid_heading = estate->psi;
+
 
           if (!m_initializedCoord)
           {
             debug("Initializing coordinator after EstimatedLocalState");
+            m_ref_lat = estate->lat;
+            m_ref_lon = estate->lon;
+            m_ref_hae = estate->height;
+            m_ref_valid = true;
             initCoordinator();
+            initRunwayPath();
             //return;
             debug("Initialized coordinator after EstimatedLocalState");
           }
-          initRunwayPath();
 
           //spew("Got EstimatedState \nfrom '%s' at '%s'",
           //     resolveEntity(estate->getSourceEntity()).c_str(),
           //     resolveSystemId(estate->getSource()));
 
           std::string vh_id = resolveSystemId(estate->getSource());
-          spew("Received EstimatedLocalState from %s: ",vh_id.c_str());
+          //debug("Received EstimatedLocalState from %s: ",vh_id.c_str());
           int s = getVehicle(vh_id);
           //spew("s=%d",s);
           if (s == INVALID)  //invalid vehicle
@@ -735,11 +773,11 @@ namespace Control
             m_p_path[s](2) = m_p_path[s](2) + m_runway.z_off_a;
           }
 
-          //m_p_path[s] will eventully be the centroid anyways
-          Matrix p_p = getNetPosition(m_p_path);
-          Matrix p_v = getNetVelocity(m_v_path);
-          Matrix delta_p_path = p_p - m_p_path[AIRCRAFT];
-          Matrix delta_v_path = p_v - m_v_path[AIRCRAFT];
+          Matrix p_n = getNetPosition(m_p);
+          Matrix v_n = getNetVelocity(m_v);
+
+          Matrix delta_p_path = R * (p_n - m_p[AIRCRAFT]);
+          Matrix delta_v_path = R * (v_n - m_v[AIRCRAFT]);
 
           delta_p_path_x = delta_p_path(0);
           delta_v_path_x = delta_v_path(0);
@@ -886,7 +924,10 @@ namespace Control
         bool
         endAtRunway()
         {
-          if (m_runway.box_length - m_p_path[COPTER_LEAD](0) <= m_args.m_endCatch_radius)
+          Matrix p_n = getNetPosition(m_p);
+          Matrix p_to_end = p_n - m_runway.end_NED;
+          double dist_left = p_to_end.norm_2();
+          if (dist_left <= m_args.m_endCatch_radius || p_to_end(0) > 0)
             return true;
           return false;
         }
@@ -1238,6 +1279,31 @@ namespace Control
           return Rzyx(0.0, pitch, course) * v_p;
         }
 
+        void
+        sendDesiredCentroidLinearState(Matrix vel,Matrix acc)
+        {
+          //please note that these value are given in the centroid body frame
+
+          IMC::DesiredLinearState m_desired_state;
+
+          m_desired_state.vx = vel(0);
+          m_desired_state.vy = vel(1);
+          m_desired_state.vz = vel(2);
+
+          m_desired_state.ax = acc(0);
+          m_desired_state.ay = acc(1);
+          m_desired_state.az = acc(2);
+
+          if (m_args.disable_Z)
+            m_desired_state.flags = IMC::DesiredLinearState::FL_X
+                | IMC::DesiredLinearState::FL_Y;
+          else
+            m_desired_state.flags = IMC::DesiredLinearState::FL_X
+            | IMC::DesiredLinearState::FL_Y | IMC::DesiredLinearState::FL_Z;
+
+          dispatch(m_desired_state);
+        }
+
         virtual void
         reset(void)
         {
@@ -1319,13 +1385,38 @@ namespace Control
             p_n_path = getNetPosition(m_p_path);
             v_n_path = getNetVelocity(m_v_path);
 
-            Matrix v_path = getDesiredPathVelocity(m_ud, p_a_path, v_a_path, p_n_path, v_n_path);
+            Matrix v_path_d = getDesiredPathVelocity(m_ud, p_a_path, v_a_path,
+                                                     p_n_path, v_n_path);
 
-            Matrix v_d_local = getDesiredLocalVelocity(v_path, m_runway.alpha, m_runway.theta);
+            m_a_des_path(0) = 0;
+            m_a_des_path(1) = 0;
+            m_a_des_path(2) = 0;
 
-            sendDesiredLocalVelocity(v_d_local);
+            Matrix v_d = RCentroidPath()*v_path_d;
+            Matrix a_d = RCentroidPath()*m_a_des_path;
+
+            sendDesiredCentroidLinearState(v_d,a_d);
           }
 
+        }
+
+
+        Matrix
+        RCentroidPath() const
+        {
+          return transpose(RNedCentroid())*RNedPath();
+        }
+
+        Matrix
+        RNedCentroid() const
+        {
+          return Rzyx(0,0,m_centroid_heading);
+        }
+
+        Matrix
+        RNedPath() const
+        {
+          return Rzyx(0,m_runway.theta,m_runway.alpha);
         }
 
         //! @return  Rotation matrix.
