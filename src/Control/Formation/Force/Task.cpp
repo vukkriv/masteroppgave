@@ -108,18 +108,11 @@ namespace Control
         //! Whether or not to control altitude
         bool use_altitude;
 
-        //! Copter mass
-        float copter_mass_kg;
-
         //! Disable heave flag,this will utilize new rate controller on some targets
         bool disable_heave;
 
-        bool disable_path_control;
-
-        //!velocity Controller parameters
-        Matrix Kp_path;
-        Matrix Ki_path;
-        Matrix Kd_path;
+        //! Disable force output flag,this will disable dispatching of the desired force
+        bool disable_force_output;
 
         //!velocity Controller parameters
         Matrix Kp;
@@ -128,9 +121,12 @@ namespace Control
 
         double max_norm_F;
 
+        //low pass filter on desired heading
+        bool lowpass_heading;
         //! Time constant for low-pass heading smoothing
         double heading_smoothing_T;
 
+        std::string centroid_els_entity_label;
       };
 
       struct Task : public DUNE::Control::PeriodicUAVAutopilot
@@ -171,8 +167,14 @@ namespace Control
         //! Vehicle velocities
         Matrix m_v;
 
-        //! Mission velocity
-        Matrix m_v_mission;
+        //! Vehicle accelerations
+        Matrix m_a;
+
+        //! Desired mission velocity in CENTROID
+        Matrix m_v_mission_centroid;
+
+        //! Desired mission acceleration in CENTROID
+        Matrix m_a_mission_centroid;
 
         //! Last time position was updated for each vehicle
         Matrix m_last_pos_update;
@@ -187,9 +189,11 @@ namespace Control
         IMC::DesiredControl m_desired_force;
 
         IMC::EstimatedLocalState m_est_l_state;
-        IMC::Acceleration m_a_est;
         IMC::DesiredHeading m_desired_heading;
+        IMC::DesiredLinearState m_linear_setpoint;
 
+        double m_curr_desired_heading;
+        //current centroid heading
         double m_curr_heading;
 
         Matrix m_v_int_value;
@@ -205,151 +209,171 @@ namespace Control
           m_i(0), 
           m_N(0), 
           m_L(0),
+          m_curr_desired_heading(0.0),
           m_curr_heading(0.0),
           m_v_int_value(3, 1, 0.0),
           m_time_end(0.0), 
           m_time_diff(0.0) 
         {
-          param("Formation Controller", m_args.use_controller).visibility(
-              Tasks::Parameter::VISIBILITY_USER).scope(
-              Tasks::Parameter::SCOPE_MANEUVER).defaultValue("false").description(
-              "Enable Formation Controller.");
+          param("Formation Controller", m_args.use_controller)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+           .defaultValue("false").description("Enable Formation Controller.");
 
-          param("Vehicle List", m_args.formation_systems).defaultValue("").visibility(
-              Tasks::Parameter::VISIBILITY_USER).description(
-              "System name list of the formation vehicles.");
+          param("Vehicle List", m_args.formation_systems)
+          .defaultValue("")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("System name list of the formation vehicles.");
 
-          param("Desired Formation", m_args.desired_formation).defaultValue(
-              "0.0, 0.0, 0.0").units(Units::Meter).visibility(
-              Tasks::Parameter::VISIBILITY_USER).description(
-              "Desired formation positions matrix.");
+          param("Desired Formation", m_args.desired_formation)
+          .defaultValue("0.0, 0.0, 0.0")
+          .units(Units::Meter)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Desired formation positions matrix.");
 
-          param("Incidence Matrix", m_args.incidence_matrix).defaultValue("0").visibility(
-              Tasks::Parameter::VISIBILITY_USER).description("Incidence matrix.");
+          param("Incidence Matrix", m_args.incidence_matrix)
+          .defaultValue("0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Incidence matrix.");
 
-          param("Link Gains", m_args.link_gains).defaultValue("1.0").visibility(
-              Tasks::Parameter::VISIBILITY_USER).description(
-              "Gains assigned to formation links.");
+          param("Link Gains", m_args.link_gains)
+          .defaultValue("1.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Gains assigned to formation links.");
 
-          param("Disable Formation Velocity", m_args.disable_formation_velocity).defaultValue(
-              "false").visibility(Tasks::Parameter::VISIBILITY_USER).description(
-              "Disable formation velocity.");
+          param("Disable Formation Velocity", m_args.disable_formation_velocity)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Disable formation velocity.");
 
-          param("Disable Mission Velocity", m_args.disable_mission_velocity).defaultValue(
-              "false").visibility(Tasks::Parameter::VISIBILITY_USER).description(
-              "Disable mission velocity.");
+          param("Disable Mission Velocity", m_args.disable_mission_velocity)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Disable mission velocity.");
 
-          param("Constant Mission Velocity", m_args.const_mission_velocity).defaultValue(
-              "0.0, 0.0, 0.0").units(Units::MeterPerSecond).visibility(
-              Tasks::Parameter::VISIBILITY_USER).description(
-              "Constant mission velocity.");
+          param("Constant Mission Velocity", m_args.const_mission_velocity)
+          .defaultValue("0.0, 0.0, 0.0")
+          .units(Units::MeterPerSecond)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Constant mission velocity.");
 
-          param("Disable Collision Velocity", m_args.disable_collision_velocity).defaultValue(
-              "false").visibility(Tasks::Parameter::VISIBILITY_USER).description(
-              "Disable collision velocity.");
+          param("Disable Collision Velocity", m_args.disable_collision_velocity)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Disable collision velocity.");
 
-          param("Collision Avoidance Radius", m_args.collision_radius).defaultValue(
-              "5.0").units(Units::Meter).visibility(
-              Tasks::Parameter::VISIBILITY_USER).description(
-              "Radius for collision avoidance potential field.");
+          param("Collision Avoidance Radius", m_args.collision_radius)
+          .defaultValue("5.0")
+          .units(Units::Meter)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Radius for collision avoidance potential field.");
 
-          param("Collision Avoidance Saturation", m_args.collision_saturation).defaultValue(
-              "3.0").units(Units::Meter).description(
-              "Maximum difference used in collision avoidance.");
+          param("Collision Avoidance Saturation", m_args.collision_saturation)
+          .defaultValue("3.0")
+          .units(Units::Meter)
+          .description("Maximum difference used in collision avoidance.");
 
-          param("Collision Avoidance Gain", m_args.collision_gain).defaultValue(
-              "5.0").visibility(Tasks::Parameter::VISIBILITY_USER).description(
-              "Gain for collision avoidance potential field.");
+          param("Collision Avoidance Gain", m_args.collision_gain)
+          .defaultValue("5.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Gain for collision avoidance potential field.");
 
-          param("Maximum Speed", m_args.max_speed).defaultValue("5.0").units(
-              Units::MeterPerSecond).visibility(Tasks::Parameter::VISIBILITY_USER)
+          param("Maximum Speed", m_args.max_speed)
+          .defaultValue("5.0")
+          .units(Units::MeterPerSecond)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           //.scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Maximum speed, i.e. controller saturation.");
 
-          param("Meta Smoothing Time Constant", m_args.meta_smoothing_T).defaultValue(
-              "2.0").units(Units::Second).description(
-              "Time constant used in low-pass smoothing of meta-data");
+          param("Meta Smoothing Time Constant", m_args.meta_smoothing_T)
+          .defaultValue("2.0")
+          .units(Units::Second)
+          .description("Time constant used in low-pass smoothing of meta-data");
 
-          param("Delay Threshold", m_args.delay_threshold).defaultValue("100").units(
-              Units::Millisecond).visibility(Tasks::Parameter::VISIBILITY_USER).description(
-              "Threshold for issuing warnings on delay in position updates.");
-
-          param("Hold Current Formation", m_args.hold_current_formation).defaultValue(
-              "true").visibility(Tasks::Parameter::VISIBILITY_USER).description(
-              "Use current position of vehicles as desired formation");
-
-          param("Resend Abort Threshold", m_args.abort_resend_threshold).defaultValue(
-              "200").units(Units::Millisecond).description(
-              "Time allowed to pass before resending an abort.");
-
-          param("Print Frequency", m_args.print_frequency).defaultValue("0.0").units(
-              Units::Second).description(
-              "Frequency of pos.data prints. Zero => Print on every update.");
-
-          param("Print Frequency", m_args.print_frequency).defaultValue("0.0").units(
-              Units::Second).description(
-              "Frequency of pos.data prints. Zero => Print on every update.");
-
-
-          param("Print EstimatedLocalState warning", m_args.print_EstimatedLocalState_warning).defaultValue("false").visibility(
-              Tasks::Parameter::VISIBILITY_USER).description(
-              "Choose whether warning for old EstimatedLocalState should be received.");
-
-          param("Use altitude", m_args.use_altitude).defaultValue("false").visibility(
-              Tasks::Parameter::VISIBILITY_USER).description(
-              "Choose whether to control altitude or not");
-
-          param("Disable Heave flag", m_args.disable_heave).defaultValue("false").visibility(
-              Tasks::Parameter::VISIBILITY_USER).description(
-              "Choose whether to disable heave flag. In turn, this will utilize new rate controller on some targets");
-
-          param("Disable Path Control", m_args.disable_path_control).defaultValue("false").visibility(
-              Tasks::Parameter::VISIBILITY_USER).description(
-              "Choose whether to control velocity in the current path frame");
-
-          param("Kp Path Velocity Control", m_args.Kp_path).defaultValue("1.0,1.0,1.0").visibility(
-              Tasks::Parameter::VISIBILITY_USER).description(
-              "Position Controller tuning parameter Kp");
-
-          param("Ki Path Velocity Control", m_args.Ki_path).defaultValue("0.0,0.0,0.0").visibility(
-              Tasks::Parameter::VISIBILITY_USER).description(
-              "Velocity Controller tuning parameter Ki");
-
-          param("Kd Path Velocity Control", m_args.Kd_path).defaultValue("0.0,0.0,0.0").visibility(
-              Tasks::Parameter::VISIBILITY_USER).description(
-              "Velocity Controller tuning parameter Kd");
-
-
-          param("Kp Velocity Control", m_args.Kp).defaultValue("1.0,1.0,1.0").visibility(
-              Tasks::Parameter::VISIBILITY_USER).description(
-              "Position Controller tuning parameter Kp");
-
-          param("Ki Velocity Control", m_args.Ki).defaultValue("0.0,0.0,0.0").visibility(
-              Tasks::Parameter::VISIBILITY_USER).description(
-              "Velocity Controller tuning parameter Ki");
-
-          param("Kd Velocity Control", m_args.Kd).defaultValue("0.0,0.0,0.0").visibility(
-              Tasks::Parameter::VISIBILITY_USER).description(
-              "Velocity Controller tuning parameter Kd");
-
-          param("Copter Mass", m_args.copter_mass_kg)
-          .defaultValue("2.5")
+          param("Delay Threshold", m_args.delay_threshold)
+          .defaultValue("100")
+          .units(Units::Millisecond)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .units(Units::Kilogram)
-          .description("Mass of the copter");    
+          .description("Threshold for issuing warnings on delay in position updates.");
 
-          param("Maximum Normalized Force", m_args.max_norm_F).defaultValue("5.0").visibility(
-              Tasks::Parameter::VISIBILITY_USER).description(
-              "Maximum Normalized Force of the Vehicle");
+          param("Hold Current Formation", m_args.hold_current_formation)
+          .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Use current position of vehicles as desired formation");
 
-          param("Heading Smoothing Time Constant", m_args.heading_smoothing_T).defaultValue(
-              "2.0").units(Units::Second).description(
-              "Time constant used in low-pass smoothing of heading input");
+          param("Resend Abort Threshold", m_args.abort_resend_threshold)
+          .defaultValue("200")
+          .units(Units::Millisecond)
+          .description("Time allowed to pass before resending an abort.");
+
+          param("Print Frequency", m_args.print_frequency)
+          .defaultValue("0.0")
+          .units(Units::Second)
+          .description("Frequency of pos.data prints. Zero => Print on every update.");
+
+          param("Print Frequency", m_args.print_frequency)
+          .defaultValue("0.0")
+          .units(Units::Second)
+          .description("Frequency of pos.data prints. Zero => Print on every update.");
+
+          param("Print EstimatedLocalState warning", m_args.print_EstimatedLocalState_warning)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Choose whether warning for old EstimatedLocalState should be received.");
+
+          param("Use altitude", m_args.use_altitude)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Choose whether to control altitude or not");
+
+          param("Disable Heave flag", m_args.disable_heave)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Choose whether to disable heave flag. In turn, this will utilize new rate controller on some targets");
+
+          param("Disable Force flag", m_args.disable_force_output)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Choose whether to disable force output flag");
+
+          param("Kp Velocity Control", m_args.Kp)
+          .defaultValue("1.0,1.0,1.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Position Controller tuning parameter Kp");
+
+          param("Ki Velocity Control", m_args.Ki)
+          .defaultValue("0.0,0.0,0.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Velocity Controller tuning parameter Ki");
+
+          param("Kd Velocity Control", m_args.Kd)
+          .defaultValue("0.0,0.0,0.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Velocity Controller tuning parameter Kd");
+
+          param("Maximum Normalized Force", m_args.max_norm_F)
+          .defaultValue("5.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Maximum Normalized Force of the Vehicle");
+
+          param("Enable Desired Heading Lowpass", m_args.lowpass_heading)
+          .defaultValue("False")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Enable low-pass smoothing of heading input");
+
+          param("Heading Smoothing Time Constant", m_args.heading_smoothing_T)
+          .defaultValue("2.0")
+          .units(Units::Second)
+          .description("Time constant used in low-pass smoothing of heading input");
+
+          param("EstimatedLocalState Centroid Label", m_args.centroid_els_entity_label)
+          .defaultValue("Formation Centroid")
+          .description("Entity label for the centroid EstimatedLocalState");
 
           // Bind incoming IMC messages
-          bind<IMC::DesiredVelocity>(this);
+          bind<IMC::DesiredLinearState>(this);
           bind<IMC::EstimatedLocalState>(this);
-          bind<IMC::Acceleration>(this);
           bind<IMC::DesiredHeading>(this);
           bind<IMC::FormCoord>(this);
         }
@@ -389,7 +413,6 @@ namespace Control
                   m_i = uav; // Set my formation id
                   found_self = true;
                 }
-
               }
               if (!found_self)
                 throw DUNE::Exception(
@@ -397,7 +420,8 @@ namespace Control
             }
             // Resize and reset position and velocity matrices to fit number of vehicles
             m_x.resizeAndFill(3, m_N, 0);
-            m_v.resizeAndFill(3, m_N, 0);
+            m_v.resizeAndFill(3, 1, 0);
+            m_a.resizeAndFill(3, 1, 0);
           }
 
           if (paramChanged(m_args.desired_formation))
@@ -501,9 +525,9 @@ namespace Control
               throw DUNE::Exception("Unvalid mission velocity vector!");
 
             // Set constant mission velocity
-            m_v_mission = m_args.const_mission_velocity;
-            debug("Mission Velocity: [%1.1f, %1.1f, %1.1f]", m_v_mission(0),
-                  m_v_mission(1), m_v_mission(2));
+            m_v_mission_centroid = m_args.const_mission_velocity;
+            debug("Mission Velocity: [%1.1f, %1.1f, %1.1f]", m_v_mission_centroid(0),
+                m_v_mission_centroid(1), m_v_mission_centroid(2));
           }
         }
 
@@ -561,7 +585,6 @@ namespace Control
         {
           m_time_end = Clock::getMsec();
           m_time_diff = 0.0;
-          m_v_int_value = Matrix(3, 1, 0.0);
         }
 
         void
@@ -573,44 +596,27 @@ namespace Control
           double now = Clock::getSinceEpoch();
           
 
-          m_curr_heading = m_desired_heading.value;
-
           //low pass filterd heading
-          double diff = now - m_last_heading_update(m_i); //m_i is me
-          m_curr_heading = lowPassSmoothing(m_curr_heading, m_desired_heading.value, diff, m_args.heading_smoothing_T);
+          if (m_args.lowpass_heading)
+          {
+            double diff = now - m_last_heading_update(m_i); //m_i is me
+            m_curr_desired_heading = lowPassSmoothing(m_curr_desired_heading, m_desired_heading.value, diff, m_args.heading_smoothing_T);
+          }
+          m_x_c = Rzyx(0, 0, m_curr_desired_heading) * m_x_c_default;
 
-          m_x_c = Rzyx(0, 0, m_curr_heading) * m_x_c_default;
-
-          //m_x.column(m_i)
-          // Desired difference variables will have to be calculated
-
-          //spew("New desired difference variables.");
-          // Update desired difference variables matrix
           calcDiffVariable(&m_z_d, m_D, m_x_c);
 
           if (!m_args.print_frequency || !last_print
               || (now - last_print) > 1.0 / m_args.print_frequency)
           {
-            // Print stuff for debugging
-            /*
-             trace("Update frequency [Hz]:");
-             printMatrix(m_pos_update_rate,DEBUG_LEVEL_TRACE);
-             trace("Update delay [ms]:");
-             printMatrix(m_pos_update_delay,DEBUG_LEVEL_TRACE);
-             trace("Positions [m]:");
-             printMatrix(m_x,DEBUG_LEVEL_TRACE);
-             trace("Velocities [m/s]:");
-             printMatrix(m_v,DEBUG_LEVEL_TRACE);
-
-             */
             debug("Default desired formation:");
             printMatrix(m_x_c_default);
 
             debug("Current desired formation:");
             printMatrix(m_x_c);
-            debug("Current desired heading: %f [rad]", m_curr_heading);
-            debug("Current Mission Velocity: [%1.1f, %1.1f, %1.1f]", m_v_mission(0),
-                m_v_mission(1), m_v_mission(2));
+            debug("Current desired heading: %f [rad]", m_curr_desired_heading);
+            debug("Current Mission Velocity: [%1.1f, %1.1f, %1.1f]", m_v_mission_centroid(0),
+                m_v_mission_centroid(1), m_v_mission_centroid(2));
 
             debug("Current positions:");
             printMatrix(m_x);
@@ -636,13 +642,28 @@ namespace Control
             last_print = now;
           }
 
-          bool id_found = false;
+          if (msg->getSource() == this->getSystemId())
+          {
+            //extract centroid heading
+            if (resolveEntity(msg->getSourceEntity()).c_str() == m_args.centroid_els_entity_label)
+              m_curr_heading = msg->psi;
+            else
+              return;
+            m_est_l_state = *msg;
+            // Update BODY velocity (only really needed from local vehicle)
+            m_v(0) = msg->u;
+            m_v(1) = msg->v;
+            m_v(2) = msg->w;
+            // Update BODY acceleration (only really needed from local vehicle)
+            m_a(0) = msg->ax;
+            m_a(1) = msg->ay;
+            m_a(2) = msg->az;
+          }
+
           for (unsigned int uav = 0; uav < m_N; uav++)
           {
             if (m_uav_ID[uav] == msg->getSource())
             {
-              id_found = true;
-
               // Get current time and time of transmission
               double stamp = msg->ots;
 
@@ -691,11 +712,6 @@ namespace Control
               m_x(1, uav) = msg->y;
               m_x(2, uav) = msg->z;
 
-              // Update velocity (only really needed from local vehicle)
-              m_v(0, uav) = msg->vx;
-              m_v(1, uav) = msg->vy;
-              m_v(2, uav) = msg->vz;
-
               m_last_pos_update(uav) = now;
 
               if (!m_args.print_frequency || !last_print
@@ -708,20 +724,12 @@ namespace Control
                 printMatrix(m_pos_update_delay, DEBUG_LEVEL_TRACE);
                 trace("Positions [m]:");
                 printMatrix(m_x, DEBUG_LEVEL_TRACE);
-                trace("Velocities [m/s]:");
-                printMatrix(m_v, DEBUG_LEVEL_TRACE);
 
                 last_print = now;
               }
-
               break;
             }
           }
-          //if (!id_found)
-            //war("Received EstimatedLocalState from unknown vehicle '%s'",
-            //    resolveSystemId(msg->getSource()));
-          if (getSystemId() == msg->getSource())
-            m_est_l_state = *msg;
         }
 
         void
@@ -754,37 +762,26 @@ namespace Control
             }
           }
         }
-
-        //! Consume Desired Velocity (mission velocity from FormationGuidance)
         void
-        consume(const IMC::DesiredVelocity* msg)
+        consume(const IMC::DesiredLinearState* msg)
         {
-          m_v_mission(0) = msg->u;
-          m_v_mission(1) = msg->v;
-          m_v_mission(2) = msg->w;
+          if (msg->getSource() != this->getSystemId())
+            return;
+          //should contain the desired centroid velocity and acceleration
+          m_v_mission_centroid(0) = msg->vx;
+          m_v_mission_centroid(1) = msg->vy;
+          m_v_mission_centroid(2) = msg->vz;
 
-          static double last_print;
-          double now = Clock::getSinceEpoch();
-          if (!m_args.print_frequency || !last_print
-              || (now - last_print) > 1.0 / m_args.print_frequency)
-          {
-            spew("Got Mission Velocity: [%1.1f, %1.1f, %1.1f] from %s", m_v_mission(0),
-                 m_v_mission(1), m_v_mission(2), resolveSystemId(msg->getSource()));
-            last_print = now;
-          }
-
-        }
-
-        void
-        consume(const IMC::Acceleration* msg)
-        {
-          if (getSystemId() == msg->getSource())
-            m_a_est = *msg;
+          m_a_mission_centroid(0) = msg->ax;
+          m_a_mission_centroid(1) = msg->ay;
+          m_a_mission_centroid(2) = msg->az;
         }
 
         void
         consume(const IMC::DesiredHeading* msg)
         {
+          if (msg->getSource() != this->getSystemId())
+            return;
           //check if message from Ardupilot, then discard it
           /*
           std::string entity_id = resolveEntity(msg->getSourceEntity());
@@ -811,7 +808,7 @@ namespace Control
             return;
           }*/
           m_desired_heading = *msg;
-
+          m_curr_desired_heading = m_desired_heading.value;
 
 
           bool id_found = false;
@@ -820,51 +817,7 @@ namespace Control
             if (m_uav_ID[uav] == msg->getSource())
             {
               id_found = true;
-              // Get current time and time of transmission
-              //double stamp = msg->ots;
-
-              // Calculate update frequency
-              //double diff = now - m_last_heading_update(uav);
-              /*
-               if (diff > 0)
-               {
-               double rate = 1/diff;
-               // Unless first data: Apply smoothing
-               if (!m_pos_update_rate(uav))
-               m_pos_update_rate(uav) = rate;
-               else
-               m_pos_update_rate(uav) = lowPassSmoothing(m_pos_update_rate(uav), rate, diff, m_args.meta_smoothing_T);
-               }
-               else
-               {
-               war("Received old EstimatedLocalState! Diff = %f seconds",
-               diff);
-               }
-               */
               m_last_heading_update(uav) = now;
-
-              /*
-               // Calculate update delay
-               double delay_ms = (now - stamp)*1E3;
-               // Unless first data: Apply smoothing
-               if (!m_pos_update_delay(uav))
-               m_pos_update_delay(uav) = delay_ms;
-               else
-               m_pos_update_delay(uav) = lowPassSmoothing(m_pos_update_delay(uav), delay_ms, diff, m_args.meta_smoothing_T);
-               */
-              // If update from other vehicle, delay will only be calculated correctly if clock is synched.
-              // Hence, warning is only given if synched or update is local.
-              /*
-               bool missing_utc_synch = now < UTC_SECS_2015 || stamp < UTC_SECS_2015;
-               if ((!missing_utc_synch || uav == m_i) && delay_ms > m_args.delay_threshold)
-               {
-               war("Positioning delay for vehicle '%s' above threshold: %f",
-               resolveSystemId(msg->getSource()), delay_ms);
-               }
-               //double now = Clock::getSinceEpoch();
-               */
-              // Calculate update frequency
-              //double diff = now - m_last_pos_update(uav);
             }
           }
           if (!id_found)
@@ -1078,7 +1031,7 @@ namespace Control
           if (m_args.const_mission_velocity.norm_2() > 0)
             u_mission = m_args.const_mission_velocity;
           else
-            u_mission = m_v_mission;
+            u_mission = m_v_mission_centroid;
   /*
           spew("u_mission: [%1.1f, %1.1f, %1.1f]", u_mission(0), u_mission(1),
                u_mission(2));
@@ -1088,63 +1041,24 @@ namespace Control
 
         //! Control velocity in NED frame
         Matrix
-        velocityControl(Matrix v_des)
+        velocityControl(Matrix v_des, Matrix a_des)
         {
-          Matrix v_est = Matrix(3, 1, 0);
-          v_est(0) = m_est_l_state.vx;
-          v_est(1) = m_est_l_state.vy;
-          v_est(2) = m_est_l_state.vz;
+          Matrix F_i = Matrix(3, 1, 0.0);
+          Matrix Rni = RNedCopter();
+          Matrix Ric = RCopterCentroid();
 
-          Matrix a_est = Matrix(3, 1, 0);
-          a_est(0) = m_a_est.x;
-          a_est(1) = m_a_est.y;
-          a_est(2) = m_a_est.z;
+          Matrix e_v_est = Ric*v_des - m_v;
+          Matrix e_a_est = Ric*a_des - m_a;
 
-          static double startPrint = 0;
-          if (Clock::get() - startPrint > 1)
+          F_i(0) = m_args.Kp(0) * e_v_est(0) + m_args.Kd(0) * e_a_est(0);
+          F_i(1) = m_args.Kp(1) * e_v_est(1) + m_args.Kd(1) * e_a_est(1);
+          F_i(2) = m_args.Kp(2) * e_v_est(2) + m_args.Kd(2) * e_a_est(2);
+
+          if (F_i.norm_2() > m_args.max_norm_F)
           {
-            spew("v_est: [%f,%f,%f]", v_est(0), v_est(1), v_est(2));
-            spew("v_des: [%f,%f,%f]", v_des(0), v_des(1), v_des(2));
-            startPrint = Clock::get();
+            F_i = sqrt(pow(m_args.max_norm_F, 2)) * F_i / F_i.norm_2();
           }
-
-          Matrix e_v_est = v_des - v_est;
-          Matrix e_a_est = -a_est;
-
-          m_v_int_value = m_v_int_value + e_v_est * m_time_diff;
-
-          Matrix F_des = Matrix(3, 1, 0.0);
-          if (m_args.disable_path_control)
-          {
-            F_des(0) = m_args.Kp(0) * e_v_est(0) + m_args.Ki(0) * m_v_int_value(0)
-                + m_args.Kd(0) * e_a_est(0);
-            F_des(1) = m_args.Kp(1) * e_v_est(1) + m_args.Ki(1) * m_v_int_value(1)
-                + m_args.Kd(1) * e_a_est(1);
-            F_des(2) = m_args.Kp(2) * e_v_est(2) + m_args.Ki(2) * m_v_int_value(2)
-                + m_args.Kd(2) * e_a_est(2);
-          }
-          else
-          {
-            Matrix F_des_path = Matrix(3, 1, 0.0);
-            Matrix Rpn = Rzyx(0,0,m_desired_heading.value);            
-            Matrix e_v_est_path = Rpn*e_v_est;
-            Matrix e_a_est_path = Rpn*e_a_est;
-            Matrix m_v_int_value_path = Rpn*m_v_int_value;
-            F_des_path(0) = m_args.Kp_path(0) * e_v_est_path(0) + m_args.Ki_path(0) * m_v_int_value_path(0)
-                + m_args.Kd_path(0) * e_a_est_path(0);
-            F_des_path(1) = m_args.Kp_path(1) * e_v_est_path(1) + m_args.Ki_path(1) * m_v_int_value_path(1)
-                + m_args.Kd_path(1) * e_a_est_path(1);
-            F_des_path(2) = m_args.Kp_path(2) * e_v_est_path(2) + m_args.Ki_path(2) * m_v_int_value_path(2)
-                + m_args.Kd_path(2) * e_a_est_path(2);
-            F_des = transpose(Rpn)*F_des_path;            
-          }
-
-          //F_des(2) = F_des(2) - m_args.copter_mass_kg* Math::c_gravity;
-          if (F_des.norm_2() > m_args.max_norm_F)
-          {
-            F_des = sqrt(pow(m_args.max_norm_F, 2)) * F_des / F_des.norm_2();
-          }
-          return F_des;
+          return Rni*F_i;
         }
 
         //! Dispatch desired force
@@ -1192,7 +1106,7 @@ namespace Control
           Matrix u = formationVelocity() + collAvoidVelocity();
 
           // Calculate internal feedback, alpha
-          Matrix alpha = u + missionVelocity();
+          Matrix alpha = transpose(RNedCopter())*u + missionVelocity();
 
           // Set heave to zero if not controlling altitude
           if (!m_args.use_altitude)
@@ -1205,11 +1119,29 @@ namespace Control
           m_time_diff = Clock::getMsec() - m_time_end;
           m_time_end = Clock::getMsec();
 
-          Matrix tau = velocityControl(alpha);
-
+          Matrix tau = velocityControl(alpha,m_a_mission_centroid);
+          if (m_args.disable_force_output)
+            return;
           sendDesiredForce(tau);
         }
 
+        Matrix
+        RCopterCentroid() const
+        {
+          return transpose(RNedCentroid())*RNedCopter();
+        }
+
+        Matrix
+        RNedCentroid() const
+        {
+          return Rzyx(0,0,m_curr_heading);
+        }
+
+        Matrix
+        RNedCopter() const
+        {
+          return Rzyx(m_est_l_state.phi,m_est_l_state.theta,m_est_l_state.psi);
+        }
         //! @return  Rotation matrix.
         Matrix
         Rzyx(double phi, double theta, double psi) const
