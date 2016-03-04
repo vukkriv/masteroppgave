@@ -108,6 +108,20 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Controller frequency");
 
+          param("Kp Path Velocity Control", m_args.Kp_path)
+          .defaultValue("1.0,1.0,1.0").visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Position Controller tuning parameter Kp");
+
+          param("Ki Path Velocity Control", m_args.Ki_path)
+          .defaultValue("0.0,0.0,0.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Velocity Controller tuning parameter Ki");
+
+          param("Kd Path Velocity Control", m_args.Kd_path)
+          .defaultValue("0.0,0.0,0.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Velocity Controller tuning parameter Kd");
+
           param("Kp Velocity Control", m_args.Kp)
           .defaultValue("1.0,1.0,1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -233,10 +247,6 @@ namespace Control
                 + m_args.Kd_path(2) * e_a_est_path(2);
             F_des = transpose(Rpn)*F_des_path;
           }
-
-          F_des(0) = m_args.Kp(0)*e_v_est(0) + m_args.Ki(0)*m_v_int_value(0) + m_args.Kd(0)*e_a_est(0);
-          F_des(1) = m_args.Kp(1)*e_v_est(1) + m_args.Ki(1)*m_v_int_value(1) + m_args.Kd(1)*e_a_est(1);
-          F_des(2) = m_args.Kp(2)*e_v_est(2) + m_args.Ki(2)*m_v_int_value(2) + m_args.Kd(2)*e_a_est(2);
 
           if (F_des.norm_2() > m_args.max_norm_F)
           {
