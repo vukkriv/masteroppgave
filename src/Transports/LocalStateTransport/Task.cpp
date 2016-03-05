@@ -135,6 +135,8 @@ namespace Transports
         m_state.source = IMC::EstimatedLocalState::SRC_GPS;
         m_state.ref = IMC::EstimatedLocalState::REF_FIXED;
 
+        //Send the current timestamp
+        m_state.ots = msg->getTimeStamp();
         // Keep source entity and source ID
         //m_state.setSource(msg->getSource());
         //m_state.setSourceEntity(msg->getSourceEntity());
