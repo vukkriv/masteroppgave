@@ -718,7 +718,7 @@ namespace Control
 
           dispatch(m_calculated_angles);
 
-          trace("Got and processed new angle measurement");
+          spew("Got and processed new angle measurement");
 
           // store
           m_anglehistory.push_back(LoadAngleHistoryContainer(newLoadAngles, eangles->time));
