@@ -417,12 +417,17 @@ namespace Control
         {
           if (!m_coordinatorEnabled)
             return;
-
-          m_ref_lat = estate->lat;
-          m_ref_lon = estate->lon;
-          m_ref_hae = estate->height;
-          m_ref_valid = true;
-
+          bool change_ref = false;
+          if (estate->lat    != m_ref_lat ||
+              estate->lon    != m_ref_lon ||
+              estate->height != m_ref_hae)
+          {
+            m_ref_lat = estate->lat;
+            m_ref_lon = estate->lon;
+            m_ref_hae = estate->height;
+            m_ref_valid = true;
+            change_ref = true;
+          }
           if (!m_initializedCoord)
           {
             debug("Initializing coordinator after EstimatedLocalState");
@@ -430,7 +435,8 @@ namespace Control
             //return;
             debug("Initialized coordinator after EstimatedLocalState");
           }
-          initRunwayPath();
+          if (change_ref)
+            initRunwayPath();
 
           //spew("Got EstimatedState \nfrom '%s' at '%s'",
           //     resolveEntity(estate->getSourceEntity()).c_str(),
