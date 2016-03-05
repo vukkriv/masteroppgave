@@ -36,13 +36,6 @@ namespace Transports
 
     struct Arguments
     {
-        double ref_lat;
-        //! Reference longitude
-        double ref_lon;
-        //! Reference height (above elipsoid)
-        double ref_hae;
-
-        bool use_static_ref;
     };
 
     struct Task: public DUNE::Tasks::Task
@@ -50,11 +43,6 @@ namespace Transports
       //! Task arguments.
       Arguments m_args;
 
-      //! Localization origin (WGS-84)
-      fp64_t m_ref_lat, m_ref_lon;
-      fp32_t m_ref_hae;
-      bool m_ref_valid;
-      
       IMC::EstimatedLocalState m_state;    
 
 
@@ -62,11 +50,7 @@ namespace Transports
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Task(name, ctx),
-        m_ref_lat(0.0),
-		    m_ref_lon(0.0),
-		    m_ref_hae(0.0),
-		    m_ref_valid(false)
+        DUNE::Tasks::Task(name, ctx)
       {
           // Bind to incoming IMC messages
           bind<IMC::EstimatedState>(this);
@@ -77,20 +61,6 @@ namespace Transports
       void
       onUpdateParameters(void)
       {
-		inf("New reference position.");
-
-		// Check validity
-		if (std::abs(m_args.ref_lat) > 90)
-		  throw DUNE::Exception("Unvalid reference latitude!");
-		if (std::abs(m_args.ref_lon) > 180)
-		  throw DUNE::Exception("Unvalid reference longitude!");
-
-		m_ref_lat = Angles::radians(m_args.ref_lat);
-		m_ref_lon = Angles::radians(m_args.ref_lon);
-		m_ref_hae = m_args.ref_hae;
-		m_ref_valid = true;
-        inf("Ref. LLH set from ini: [Lat = %f, Lon = %f, Height = %.1f]",
-            Angles::degrees(m_ref_lat), Angles::degrees(m_ref_lon), m_ref_hae);
       }
 
       //! Reserve entity identifiers.
@@ -126,15 +96,15 @@ namespace Transports
       void
       consume(const IMC::EstimatedState* msg)
       {
-  	    //Message should be from this vehicle
-	     if ( msg->getSource() != getSystemId() )
-		    return;
+        //Message should be from this vehicle
+       if ( msg->getSource() != getSystemId() )
+        return;
 
-	     spew("Got Estimated State from system '%s' and entity '%s'.",
-		   resolveSystemId(msg->getSource()),
-		   resolveEntity(msg->getSourceEntity()).c_str());
+       spew("Got Estimated State from system '%s' and entity '%s'.",
+       resolveSystemId(msg->getSource()),
+       resolveEntity(msg->getSourceEntity()).c_str());
 
-	     m_state.lat    = msg->lat;
+       m_state.lat    = msg->lat;
        m_state.lon    = msg->lon;
        m_state.height = msg->height;
 
@@ -170,7 +140,7 @@ namespace Transports
         //m_state.setSourceEntity(msg->getSourceEntity());
         //dispatch(m_state, DF_KEEP_SRC_EID);
         dispatch(m_state);
-        spew("Sent Estimated Local State");        
+        spew("Sent Estimated Local State");
       }
 
       void
