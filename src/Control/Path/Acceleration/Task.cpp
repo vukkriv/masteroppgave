@@ -361,7 +361,7 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Sets the pre-filter time constant. Higher value for slower transition. ");
 
-          param("Reset to position on path startup", m_args.reset_to_state)
+          param("Ref - Reset to position on path startup", m_args.reset_to_state)
           .defaultValue("false")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Set to reset to state rather than previus ref_pos on change");
@@ -438,11 +438,23 @@ namespace Control
           .scope(Tasks::Parameter::SCOPE_PLAN)
           .description("Coefficient to use in wind ff");
 
-          param("Enable Delayed Feedback", m_args.enable_delayed_feedback)
+          param("Input Shaping - Enable", m_args.enable_input_shaping)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Enable or disable input shaping on reference signal");
+
+          param("Delayed - Enable Feedback", m_args.enable_delayed_feedback)
           .defaultValue("false")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Enable or disable delayed feedback for slung angle minimization");
+
+          param("Delayed - Hold Position", m_args.enable_hold_position)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Enable or disable hold current position functionality");
 
           param("Delayed - pd", m_args.pd)
           .defaultValue("0.01")
@@ -462,7 +474,7 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Estimated angle-damping.  ");
 
-          param("Enable Slung Control", m_args.enable_slung_control)
+          param("Slung - Enable Control", m_args.enable_slung_control)
           .defaultValue("false")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
@@ -472,24 +484,12 @@ namespace Control
           for (int i = 0; i < 3; i++)
           {
             sprintf(buf, "%d", i+1);
-            param("Slung K" + std::string(buf), m_args.ks[i])
+            param("Slung - K" + std::string(buf), m_args.ks[i])
             .defaultValue("1")
             .units(Units::None)
             .visibility(Tasks::Parameter::VISIBILITY_USER)
             .description("Gain for suspended controller. 3 is overall beta-changer. ");
           }
-
-          param("Enable Input Shaping", m_args.enable_input_shaping)
-          .defaultValue("false")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .description("Enable or disable input shaping on reference signal");
-
-          param("Enable Hold Position", m_args.enable_hold_position)
-          .defaultValue("false")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .description("Enable or disable hold current position functionality");
 
           param("CtrlMisc - Enable Output Division By Mass", m_args.enable_mass_division)
           .defaultValue("true")
@@ -563,9 +563,9 @@ namespace Control
 
 
             IMC::EntityParameter Kp, Kd, Ki;
-            Kp.name = "Acceleration Controller - Kp";
-            Kd.name = "Acceleration Controller - Kd";
-            Ki.name = "Acceleration Controller - Ki";
+            Kp.name = "Controller - Kp";
+            Kd.name = "Controller - Kd";
+            Ki.name = "Controller - Ki";
 
             char buffer[32];
 
