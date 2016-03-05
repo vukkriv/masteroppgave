@@ -22,41 +22,50 @@
 # language governing permissions and limitations at                        #
 # https://www.lsts.pt/dune/licence.                                        #
 ############################################################################
-# Author: Jostein B. Moe
+# Author: Jon-Håkon Bøe Røli                                               #
 ############################################################################
-# Net-catch parameters.                                                    #
+# Formation parameters.                                                    #
 ############################################################################
 
-[Require common.ini]
-[Require formation.ini]
-
-[Control.NetCatch.Coordinator]
+[Control.Formation.Force]
 Enabled                                 = Always
+Entity Label                            = Formation Controller
 Debug Level                             = None
-Path Controller							= False
-Offset cross-track						= 0
-Desired collision radius                = 40
-Desired switching radius                = 10
-Frequency								= 10
-Entity Label                            = Net-Catch Coordinator
-Enable Catch							= True
-Coordinated Catch                       = True
-Mean Window Size						= 10.0
-Maximum Cross-Track Error Aircraft      = 5, 3
-Maximum Cross-Track Error Net      		= 5, 3
-Max vel y approach						= 1
-Max pos y approach						= 50
-Enable Mean Window Aircraft				= False
-Kp Position Control						= 2,2,2
-Ki Position Control						= 0.0002,0.0002,0.0002
-Kd Position Control						= 0.2,0.2,0.2
-Maximum Normalised Velocity				= 6
-Max Integral							= 10
-Disable Z flag							= False
-Radius at recovery						= 2.5
+Print Frequency                         = 0.2
+Print EstimatedLocalState warning		= False
+Execution Frequency                     = 30
+Vehicle List                            = #ntnu-hexa-testbed,
+                                          #ntnu-hexa-002,
+                                          ntnu-hexa-003,
+                                          ntnu-hexa-004
+EstimatedLocalState Centroid Label	    = Formation Centroid
+Desired Formation                       = 0,-3, 0,
+                                          0, 3, 0
+Incidence Matrix                        = -1, 1
+Link Gains                              = 0.1
+Constant Mission Velocity               = 0, 0, 0
+Collision Avoidance Gain                = 0.5
+Collision Avoidance Radius              = 2
+Maximum Speed                           = 4
+Hold Current Formation                  = False
+Delay Threshold                         = 200
+Meta Smoothing Time Constant            = 2.0
+#Disable Formation Velocity              = True
+#Disable Collision Velocity              = True
+#Disable Mission Velocity                = True
+Disable Heave flag                      = False
+Disable Force flag                      = True
+Use altitude			        		= True
+Kp Velocity Control						= 3,3,3
+Ki Velocity Control						= 0.000,0.000,0.000
+Kd Velocity Control						= 0.25,0.25,0.25
+Maximum Normalized Force				= 20
+Enable Desired Heading Lowpass			= False
+Heading Smoothing Time Constant         = 4.0
 
-[Control.Formation.Path]
+[Transports.Formation.Centroid]
 Enabled                                 = Always
+<<<<<<< HEAD
 Entity Label                            = Formation Path Control
 Debug Level                             = Debug
 Control Frequency                       = 100
@@ -65,6 +74,7 @@ Along-track -- Monitor                  = False
 Cross-track -- Monitor                  = False
 Use Altitude                            = True
 
+Reference - Enable					= True
 Reference - Enable heading				= True
 Reference - Enable surge				= True
 
@@ -91,14 +101,14 @@ Reference - Surge Control Ki			= 1
 
 Reference - Max Integral				= 10
 
-[Maneuver.NetRecovery]
-Enabled 								= Always
-Debug Level								= None
-Entity Label 							= Maneuver Supervisor
+=======
+Entity Label                            = Formation Centroid
+Debug Level                             = None
+Vehicle List                            = ntnu-hexa-003,	# should get this list from somewhere else, or defined globally
+                                          ntnu-hexa-004
+>>>>>>> config: uav/netrecovery/formation: only master copter should run the path controller
 
-[Plan.NetRecovery]
-Enabled 								= Always
-Debug Level								= Debug
-Entity Label 							= NetRecovery Plan Dispatcher
-
-
+[Control.Formation.Coordinator]
+Enabled                                 = Always
+Entity Label                            = Formation Coordinator
+Debug Level                             = Debug                                        
