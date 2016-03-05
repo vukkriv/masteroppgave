@@ -307,6 +307,8 @@ namespace Control
         Reference m_reference;
         //! Current desired speed
         IMC::DesiredSpeed m_dspeed;
+        //! Current desired Z
+        IMC::DesiredZ m_dz;
 
 
 
@@ -510,6 +512,7 @@ namespace Control
           bind<IMC::EulerAngles>(this);
           bind<IMC::EstimatedState>(this);
           bind<IMC::DesiredSpeed>(this);
+          bind<IMC::DesiredZ>(this);
 
           // zero-initialize mass-matrices
           for (int i = 0; i < 25; i++)
@@ -521,6 +524,8 @@ namespace Control
           // Default speed
           m_dspeed.speed_units = IMC::SUNITS_METERS_PS;
           m_dspeed.value = 1.5;
+
+
 
 
         }
@@ -606,10 +611,26 @@ namespace Control
 
         }
 
+        virtual bool
+        hasSpecificZControl(void) const
+        {
+          return true;
+        }
+
         void
         consume(const IMC::EstimatedState* estate)
         {
           m_estate = *estate;
+        }
+
+        void
+        consume(const IMC::DesiredZ* zref)
+        {
+          trace("Got Desired Z. ");
+          if (zref->z_units == IMC::Z_ALTITUDE || zref->z_units == IMC::Z_HEIGHT)
+          {
+            m_dz = *zref;
+          }
         }
 
         void
@@ -858,6 +879,19 @@ namespace Control
         {
           (void) state;
 
+          float desiredZ = state.z;
+          // Z ref handling
+          if (m_dz.z_units == IMC::Z_HEIGHT)
+          {
+            desiredZ = state.height - m_dz.value;
+          }
+          else if(m_dz.z_units == IMC::Z_ALTITUDE)
+          {
+            desiredZ = state.z + state.alt - m_dz.value;
+          }
+
+
+
           // Get target position
           TrackingState::Coord targetPosition = ts.end;
 
@@ -870,7 +904,7 @@ namespace Control
           Matrix x_d = Matrix(3, 1, 0.0);
           x_d(0) = targetPosition.x;
           x_d(1) = targetPosition.y;
-          x_d(2) = -targetPosition.z - state.height; // z is received as height. For copters, state.height will usually be zero.
+          x_d(2) = desiredZ; // z is received as height. For copters, state.height will usually be zero.
           trace("x_d:\t [%1.2f, %1.2f, %1.2f]",
               x_d(0), x_d(1), x_d(2));
 
