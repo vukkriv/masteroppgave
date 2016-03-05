@@ -614,7 +614,7 @@ namespace Control
         virtual bool
         hasSpecificZControl(void) const
         {
-          return true;
+          return false;
         }
 
         void
