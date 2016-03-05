@@ -46,9 +46,7 @@ namespace Control
       struct Arguments
       {
         bool use_controller;
-        double max_speed;
         double max_acc;
-        double refmodel_max_speed;
         double refmodel_max_acc;
         double refmodel_omega_n;
         double refmodel_xi;
@@ -56,16 +54,13 @@ namespace Control
         double Kd;
         double Ki;
         bool use_altitude;
-        bool disable_heave;
         double max_integral;
         bool reset_integral_on_path_activation;
-        std::string controller_type;
         float copter_mass_kg;
         float suspended_rope_length;
         float suspended_load_mass_g;
         float ks[3];
         float pd;
-        bool activate_delayed_feedback;
         int tau_d_extra_ms;
         double Gd_extra;
         bool reset_to_state;
@@ -279,8 +274,6 @@ namespace Control
         Matrix m_integrator_value;
         //! Timestamp of previous step
         double m_timestamp_prev_step;
-        //! Controller type
-        ControllerType m_controllerType;
         //! Reference history for input shaper
         queue<ReferenceHistoryContainer> m_refhistory;
         //! Input shaper preferences
@@ -312,6 +305,8 @@ namespace Control
         InputShapingFilterState m_input_shaping_state;
         //! The current reference
         Reference m_reference;
+        //! Current desired speed
+        IMC::DesiredSpeed m_dspeed;
 
 
 
@@ -319,7 +314,6 @@ namespace Control
           DUNE::Control::PathController(name, ctx),
           m_integrator_value(3,1, 0.0),
           m_timestamp_prev_step(0.0),
-          m_controllerType(CT_PID),
           m_prev_controller_output(3,1, 0.0),
           m_MassMatrix(5, 5, 0.0),
           m_CoreolisMatrix(5,5, 0.0),
@@ -334,155 +328,115 @@ namespace Control
           .defaultValue("false")
           .description("Enable Acc Controller");
 
-          param("Max Speed", m_args.max_speed)
-          .defaultValue("5.0")
-          .units(Units::MeterPerSecond)
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .description("Max speed of the vehicle");
-
           param("Max Acceleration", m_args.max_acc)
           .defaultValue("3")
           .units(Units::MeterPerSquareSecond)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Max acceleration of the vehicle");
 
-          param("Reference Model - Max Speed", m_args.refmodel_max_speed)
-          .defaultValue("1.5")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .description("Max speed of the reference model.");
-
-          param("Reference Model - Max Acceleration", m_args.refmodel_max_acc)
+          param("Ref - Max Acceleration", m_args.refmodel_max_acc)
           .defaultValue("1.5")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Max acceleration of the reference model.");
 
-          param("Reference Model - Natural Frequency",m_args.refmodel_omega_n)
+          param("Ref - Natural Frequency",m_args.refmodel_omega_n)
           .units(Units::RadianPerSecond)
           .defaultValue("0.5")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Natural frequency for the speed reference model");
 
-          param("Reference Model - Relative Damping", m_args.refmodel_xi)
+          param("Ref - Relative Damping", m_args.refmodel_xi)
           .units(Units::None)
           .defaultValue("0.9")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Relative Damping Factor of the speed reference model");
 
-          param("Acceleration Controller - Kp", m_args.Kp)
+          param("Ref - Pre-filter Time Constant", m_args.prefilter_time_constant)
+          .defaultValue("0.05")
+          .minimumValue("0.01")
+          .maximumValue("0.99")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Sets the pre-filter time constant. Higher value for slower transition. ");
+
+          param("Reset to position on path startup", m_args.reset_to_state)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Set to reset to state rather than previus ref_pos on change");
+
+          param("Controller - Bandwidth", m_args.ctrl_omega_b)
+          .defaultValue("0.7")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Controller bandwidth");
+
+          param("Controller - Relative Damping", m_args.ctrl_xi)
+          .defaultValue("1.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Controller damping");
+
+          param("Controller - Kp", m_args.Kp)
           .units(Units::None)
           .defaultValue("1.152")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("P-Gain of the velocity controller");
 
-          param("Acceleration Controller - Kd", m_args.Kd)
+          param("Controller - Kd", m_args.Kd)
           .units(Units::None)
           .defaultValue("2.24")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("D-Gain of the velocity controller");
 
-          param("Acceleration Controller - Ki", m_args.Ki)
+          param("Controller - Ki", m_args.Ki)
           .units(Units::None)
           .defaultValue("0.08064")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("I-Gain of the velocity controller");
 
-          param("Use Altitude", m_args.use_altitude)
+          param("Controller - Enable Integrator", m_args.enable_integrator)
+          .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Enable or disable I-term in controller.");
+
+          param("Controller - Max Integral", m_args.max_integral)
+          .defaultValue("20")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Max integral value");
+
+          param("Controller - Use Altitude", m_args.use_altitude)
           .defaultValue("true")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Choose whether altitude is controlled or not (set to 0 if not).");
 
-          param("Disable Heave flag", m_args.disable_heave)
-          .defaultValue("false")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Choose whether to disable heave flag. In turn, this will utilize new rate controller on some targets");
-
-          param("Reset integrator on path activation", m_args.reset_integral_on_path_activation)
+          param("Controller - Reset integrator on path activation", m_args.reset_integral_on_path_activation)
           .defaultValue("false")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Choose whether to reset the integrator in a path activation. ");
 
-          param("Acceleration Controller - Max Integral", m_args.max_integral)
-          .defaultValue("20")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Max integral value");
-
-          param("Copter Mass", m_args.copter_mass_kg)
+          param("Model - Copter Mass", m_args.copter_mass_kg)
           .defaultValue("2.5")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .units(Units::Kilogram)
           .description("Mass of the copter");
 
-          param("Controller Type", m_args.controller_type)
-          .values("PID,PID-InputShaper,SuspendedLoad,SuspendedLoad-InputShaper")
-          .defaultValue("PID")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .description("Sets type of controller to use");
-
-          param("Suspended Rope Length", m_args.suspended_rope_length)
-          .defaultValue("4.3")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Length of suspended rope. Used for various filters. ");
-
-          param("Suspended Load mass", m_args.suspended_load_mass_g)
+          param("Model - Suspended Load Mass", m_args.suspended_load_mass_g)
           .defaultValue("250")
           .units(Units::Gram)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Mass of suspended object. Used for various filters. ");
 
-          param("Activate Delayed Feedback", m_args.activate_delayed_feedback)
-          .defaultValue("false")
+          param("Model - Suspended Rope Length", m_args.suspended_rope_length)
+          .defaultValue("4.3")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER);
+          .description("Length of suspended rope. Used for various filters. ");
 
-          char buf[10];
-          for (int i = 0; i < 3; i++)
-          {
-            sprintf(buf, "%d", i+1);
-            param("K" + std::string(buf), m_args.ks[i])
-            .defaultValue("1")
-            .units(Units::None)
-            .visibility(Tasks::Parameter::VISIBILITY_USER)
-            .description("Gain for suspended controller. 3 is overall beta-changer. ");
-          }
-
-
-          param("pd", m_args.pd)
-          .defaultValue("0.01")
-          .units(Units::None)
+          param("Model - Wind Drag Coefficient", m_args.wind_drag_coefficient)
+          .defaultValue("0.15")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Estimated angle-damping.  ");
-
-          param("tau_d extra", m_args.tau_d_extra_ms)
-          .defaultValue("-600")
-          .units(Units::Millisecond)
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Extra delay taime  ");
-
-          param("Gd extra", m_args.Gd_extra)
-          .defaultValue("1.0")
-          .units(Units::None)
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Estimated angle-damping.  ");
-
-          param("Reset to position on path startup", m_args.reset_to_state)
-          .defaultValue("false")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .description("Set to reset to state rather than previus ref_pos on change");
-
-          param("Enable Input Shaping", m_args.enable_input_shaping)
-          .defaultValue("false")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .description("Enable or disable input shaping on reference signal");
+          .scope(Tasks::Parameter::SCOPE_PLAN)
+          .description("Coefficient to use in wind ff");
 
           param("Enable Delayed Feedback", m_args.enable_delayed_feedback)
           .defaultValue("false")
@@ -490,11 +444,46 @@ namespace Control
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Enable or disable delayed feedback for slung angle minimization");
 
+          param("Delayed - pd", m_args.pd)
+          .defaultValue("0.01")
+          .units(Units::None)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Estimated angle-damping.  ");
+
+          param("Delayed - tau_d extra", m_args.tau_d_extra_ms)
+          .defaultValue("-600")
+          .units(Units::Millisecond)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Extra delay taime  ");
+
+          param("Delayed - Gd extra", m_args.Gd_extra)
+          .defaultValue("1.0")
+          .units(Units::None)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Estimated angle-damping.  ");
+
           param("Enable Slung Control", m_args.enable_slung_control)
           .defaultValue("false")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Enable or disable slung control compensation");
+
+          char buf[10];
+          for (int i = 0; i < 3; i++)
+          {
+            sprintf(buf, "%d", i+1);
+            param("Slung K" + std::string(buf), m_args.ks[i])
+            .defaultValue("1")
+            .units(Units::None)
+            .visibility(Tasks::Parameter::VISIBILITY_USER)
+            .description("Gain for suspended controller. 3 is overall beta-changer. ");
+          }
+
+          param("Enable Input Shaping", m_args.enable_input_shaping)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Enable or disable input shaping on reference signal");
 
           param("Enable Hold Position", m_args.enable_hold_position)
           .defaultValue("false")
@@ -502,53 +491,21 @@ namespace Control
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Enable or disable hold current position functionality");
 
-          param("Enable Output Division By Mass", m_args.enable_mass_division)
+          param("CtrlMisc - Enable Output Division By Mass", m_args.enable_mass_division)
           .defaultValue("true")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Enable or disable division by copter mass in final output");
 
-          param("Enable Integrator", m_args.enable_integrator)
-          .defaultValue("true")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          //.scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .description("Enable or disable I-term in controller.");
-
-          param("Acceleration Controller Bandwidth", m_args.ctrl_omega_b)
-          .defaultValue("0.7")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          //.scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .description("Controller bandwidth");
-
-          param("Acceleration Controller Relative Damping", m_args.ctrl_xi)
-          .defaultValue("1.0")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          //.scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .description("Controller damping");
-
-          param("Enable Wind Feed Forward", m_args.enable_wind_ff)
+          param("CtrlMisc - Enable Wind Feed Forward", m_args.enable_wind_ff)
           .defaultValue("true")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_PLAN)
           .description("Enable to feed-forward wind effects");
 
-          param("Enable Square Wind Velocity", m_args.enable_wind_square_vel)
+          param("CtrlMisc - Enable Square Wind Velocity", m_args.enable_wind_square_vel)
           .defaultValue("true")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Use the square of the velocity to calculate wind ff");
-
-          param("Wind Drag Coefficient", m_args.wind_drag_coefficient)
-          .defaultValue("0.15")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_PLAN)
-          .description("Coefficient to use in wind ff");
-
-          param("Pre-filter Time Constant", m_args.prefilter_time_constant)
-          .defaultValue("0.05")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Sets the pre-filter time constant. Higher value for slower transition. ");
-
-
-
 
           bind<IMC::EulerAngles>(this);
           bind<IMC::EstimatedState>(this);
@@ -561,6 +518,10 @@ namespace Control
             m_coreolisMatrix[i] = 0.0;
           }
 
+          // Default speed
+          m_dspeed.speed_units = IMC::SUNITS_METERS_PS;
+          m_dspeed.value = 1.5;
+
 
         }
 
@@ -568,16 +529,6 @@ namespace Control
         onUpdateParameters(void)
         {
           PathController::onUpdateParameters();
-
-          // Set controller type
-          if (m_args.controller_type == "PID")
-            m_controllerType = CT_PID;
-          else if (m_args.controller_type == "PID-InputShaper")
-            m_controllerType = CT_PID_INPUT;
-          else if (m_args.controller_type == "SuspendedLoad")
-            m_controllerType = CT_SUSPENDED;
-          else if (m_args.controller_type == "SuspendedLoad-InputShaper")
-            m_controllerType = CT_SUSPENDED_INPUT;
 
           // Set input shaper preferences
 
@@ -664,13 +615,13 @@ namespace Control
         void
         consume(const IMC::DesiredSpeed* dspeed)
         {
-          // Actually set one with the "correct" speed
-          IMC::DesiredSpeed desiredSpeed;
 
-          desiredSpeed.speed_units = IMC::SUNITS_METERS_PS;
-          desiredSpeed.value       = m_args.refmodel_max_speed;
-
-          dispatch(desiredSpeed);
+          // Sanity check, and set internal speed.
+          if (dspeed->speed_units == IMC::SUNITS_METERS_PS &&
+              dspeed->value > 0 && dspeed->value < 10)
+          {
+            m_dspeed.value = dspeed->value;
+          }
 
           PathController::consume(dspeed);
         }
@@ -925,10 +876,10 @@ namespace Control
 
           trace("Using parameters k[1-3]: %.4f, %.4f, %.4f", m_refmodel.k1, m_refmodel.k2, m_refmodel.k3 );
 
-          double T = m_args.prefilter_time_constant;
+          //double T = m_args.prefilter_time_constant;
           //m_refmodel.prefilterState += ts.delta * (-(1/T)*m_refmodel.prefilterState + (1/T)*x_d);
 
-          double beta = 0.9;
+          double beta = m_args.prefilter_time_constant;
           m_refmodel.prefilterState = (beta) * m_refmodel.prefilterState + (1-beta) * x_d;
 
           // Step 1: V-part
@@ -938,9 +889,9 @@ namespace Control
           if (!m_args.use_altitude)
             tau1(2) = 0.0;
 
-          if (tau1.norm_2() > m_args.refmodel_max_speed)
+          if (tau1.norm_2() > m_dspeed.value)
           {
-            tau1 = m_args.refmodel_max_speed * tau1 / tau1.norm_2();
+            tau1 = m_dspeed.value * tau1 / tau1.norm_2();
           }
 
           // Step 2: A-part
@@ -1009,9 +960,6 @@ namespace Control
           trace("x_d:\t [%1.2f, %1.2f, %1.2f]",
               x_d(0), x_d(1), x_d(2));
 
-          double T = m_args.prefilter_time_constant;
-          m_refmodel.prefilterState += ts.delta * (-(1/T)*m_refmodel.prefilterState + (1/T)*x_d);
-
           Matrix old_pos = m_refmodel.getPos();
           Matrix old_vel = m_refmodel.getVel();
           // Update reference
@@ -1031,10 +979,10 @@ namespace Control
 
 
           bool limited_vel = false;
-          if (vel.norm_2() > m_args.refmodel_max_speed)
+          if (vel.norm_2() > m_dspeed.value)
           {
             limited_vel = true;
-            vel = m_args.refmodel_max_speed * vel / vel.norm_2();
+            vel = m_dspeed.value * vel / vel.norm_2();
             m_refmodel.setVel(vel);
 
             // Recalculate pos
@@ -1056,7 +1004,7 @@ namespace Control
           {
             // numeric filter
             m_refmodel.a_out = (m_refmodel.getVel() - old_vel) / ts.delta;
-            T /= 10.0;
+
             // Numeric filter with smoothing time constant.
             //m_refmodel.a_out += ts.delta * (-(1/T)*m_refmodel.a_out + (1/T)*(m_refmodel.getVel() - old_vel) / ts.delta);
 
@@ -1451,7 +1399,7 @@ namespace Control
 
           m_desired_control.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y | IMC::DesiredControl::FL_Z;
 
-          if(m_args.disable_heave || !m_args.use_altitude)
+          if(!m_args.use_altitude)
             m_desired_control.flags = IMC::DesiredControl::FL_X | IMC::DesiredControl::FL_Y;
 
 
