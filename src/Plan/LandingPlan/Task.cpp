@@ -28,6 +28,8 @@
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 
+#include <vector>
+
 namespace Plan
 {
   namespace LandingPlan
@@ -65,6 +67,11 @@ namespace Plan
 
       }
 
+      //! Construct Dubins Path between two waypoints with given heading
+      void dubinsPath()
+      {
+
+      }
       //! Reserve entity identifiers.
       void
       onEntityReservation(void)
