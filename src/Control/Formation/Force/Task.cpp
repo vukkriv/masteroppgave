@@ -209,6 +209,10 @@ namespace Control
           m_i(0), 
           m_N(0), 
           m_L(0),
+          m_v(3,1,0.0),
+          m_a(3,1,0.0),
+          m_v_mission_centroid(3,1,0.0),
+          m_a_mission_centroid(3,1,0.0),
           m_curr_desired_heading(0.0),
           m_curr_heading(0.0),
           m_v_int_value(3, 1, 0.0),
@@ -382,7 +386,7 @@ namespace Control
         void
         onUpdateParameters(void)
         {
-          debug("Starting update of parametes.");
+          debug("Starting update of parameters.");
 
           bool calc_desired_diff_var = false;
 
@@ -644,11 +648,12 @@ namespace Control
 
           if (msg->getSource() == this->getSystemId())
           {
-            //extract centroid heading
             if (resolveEntity(msg->getSourceEntity()).c_str() == m_args.centroid_els_entity_label)
+            {
+              //centroid message, extract heading and return
               m_curr_heading = msg->psi;
-            else
               return;
+            }
             m_est_l_state = *msg;
             // Update BODY velocity (only really needed from local vehicle)
             m_v(0) = msg->u;
@@ -1134,7 +1139,7 @@ namespace Control
         Matrix
         RNedCentroid() const
         {
-          return Rzyx(0,0,m_curr_heading);
+          return Rz(m_curr_heading);
         }
 
         Matrix
@@ -1142,6 +1147,16 @@ namespace Control
         {
           return Rzyx(m_est_l_state.phi,m_est_l_state.theta,m_est_l_state.psi);
         }
+
+        //! @return  Rotation yaw matrix.
+        Matrix
+        Rz(double psi) const
+        {
+          double R_en_elements[] =
+            { cos(psi), -sin(psi), 0, sin(psi), cos(psi), 0, 0, 0, 1 };
+          return Matrix(R_en_elements, 3, 3);
+        }
+
         //! @return  Rotation matrix.
         Matrix
         Rzyx(double phi, double theta, double psi) const
