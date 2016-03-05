@@ -42,12 +42,27 @@ namespace Plan
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Task(name, ctx)
       {
+        bind<IMC::EstimatedState>(this);
+        bind<IMC::PlanGeneration>(this);
       }
 
       //! Update internal state with new parameter values.
       void
       onUpdateParameters(void)
       {
+      }
+
+      //! Update estimatedState
+      void
+      consume(const IMC::EstimatedState *msg)
+      {
+
+      }
+      //! Receive nett pose and landing spesifications
+      void
+      consume(const IMC::PlanGeneration *msg)
+      {
+
       }
 
       //! Reserve entity identifiers.
