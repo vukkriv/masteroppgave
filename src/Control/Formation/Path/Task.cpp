@@ -602,6 +602,8 @@ namespace Control
           // Integrate (Euler)
           spew("Integrate Euler");
           m_refsim.x_des += ts.delta * (m_refsim.x_dot_des);
+
+          m_refsim.x_des(R_HEADING) = Angles::normalizeRadian(m_refsim.x_des(R_HEADING));
           spew("Step refsim done.");
 
           IMC::ControlParcel parcel_s = m_parcels[PC_PID_SURGE];
