@@ -185,11 +185,15 @@ namespace Control
         //! Rate [Hz] and delay [ms] of position update for each vehicle. Both zero for vehicles we have yet to receive positions from.
         Matrix m_pos_update_rate, m_pos_update_delay;
 
-        //! Desired velocity
+        //! Desired force on this agent
         IMC::DesiredControl m_desired_force;
 
+        //! Last received ELS from this agent
         IMC::EstimatedLocalState m_est_l_state;
+
+        //! Last received desired heading from master agent
         IMC::DesiredHeading m_desired_heading;
+        //! Last received desired linear setpoint from master agent
         IMC::DesiredLinearState m_linear_setpoint;
 
         double m_curr_desired_heading;
@@ -438,7 +442,7 @@ namespace Control
                   "Desired formation positons matrix is empty!");
             if (m_args.desired_formation.size() % 3 != 0)
               throw DUNE::Exception(
-                  "Unvalid number of coordinates in desired formation positions matrix!");
+                  "Invalid number of coordinates in desired formation positions matrix!");
             if ((unsigned int)m_args.desired_formation.size() / 3 != m_N)
               throw DUNE::Exception(
                   "Incorrect number of vehicles in desired formation positions matrix!");
@@ -526,7 +530,7 @@ namespace Control
 
             // Check dimension
             if (m_args.const_mission_velocity.rows() != 3)
-              throw DUNE::Exception("Unvalid mission velocity vector!");
+              throw DUNE::Exception("Invalid mission velocity vector!");
 
             // Set constant mission velocity
             m_v_mission_centroid = m_args.const_mission_velocity;
@@ -600,7 +604,7 @@ namespace Control
           double now = Clock::getSinceEpoch();
           
 
-          //low pass filterd heading
+          //low pass filtered heading
           if (m_args.lowpass_heading)
           {
             double diff = now - m_last_heading_update(m_i); //m_i is me
@@ -770,8 +774,8 @@ namespace Control
         void
         consume(const IMC::DesiredLinearState* msg)
         {
-          if (msg->getSource() != this->getSystemId())
-            return;
+          //Desired linear state should only come from master only
+
           //should contain the desired centroid velocity and acceleration
           m_v_mission_centroid(0) = msg->vx;
           m_v_mission_centroid(1) = msg->vy;
@@ -785,8 +789,8 @@ namespace Control
         void
         consume(const IMC::DesiredHeading* msg)
         {
-          if (msg->getSource() != this->getSystemId())
-            return;
+          //Desired heading should always come master only
+
           //check if message from Ardupilot, then discard it
           /*
           std::string entity_id = resolveEntity(msg->getSourceEntity());
@@ -1024,7 +1028,7 @@ namespace Control
           return u_coll;
         }
 
-        //! Calculate mission velocity
+        //! Calculate mission velocity (in CENTROID body)
         Matrix
         missionVelocity(void)
         {
@@ -1037,6 +1041,9 @@ namespace Control
             u_mission = m_args.const_mission_velocity;
           else
             u_mission = m_v_mission_centroid;
+
+          if (!m_args.use_altitude)
+            u_mission(2) = 0;
   /*
           spew("u_mission: [%1.1f, %1.1f, %1.1f]", u_mission(0), u_mission(1),
                u_mission(2));
@@ -1044,16 +1051,20 @@ namespace Control
           return u_mission;
         }
 
-        //! Control velocity in NED frame
+        //! Control velocity in AGENT frame, return desired force in NED
+        //! v_des in AGENT body
+        //! a_des in AGENT body
         Matrix
         velocityControl(Matrix v_des, Matrix a_des)
         {
-          Matrix F_i = Matrix(3, 1, 0.0);
-          Matrix Rni = RNedCopter();
-          Matrix Ric = RCopterCentroid();
+          //m_v and m_a in AGENT body
 
-          Matrix e_v_est = Ric*v_des - m_v;
-          Matrix e_a_est = Ric*a_des - m_a;
+          //F_i in AGENT i body
+          Matrix F_i = Matrix(3, 1, 0.0);
+          Matrix Rni = RNedAgent();
+
+          Matrix e_v_est = v_des - m_v;
+          Matrix e_a_est = a_des - m_a;
 
           F_i(0) = m_args.Kp(0) * e_v_est(0) + m_args.Kd(0) * e_a_est(0);
           F_i(1) = m_args.Kp(1) * e_v_est(1) + m_args.Kd(1) * e_a_est(1);
@@ -1107,15 +1118,16 @@ namespace Control
           // Check if we should abort
           checkFormation();
 
-          // Calculate external feedback, u
+          // Calculate external feedback, u (desired velocity in NED)
           Matrix u = formationVelocity() + collAvoidVelocity();
-
-          // Calculate internal feedback, alpha
-          Matrix alpha = transpose(RNedCopter())*u + missionVelocity();
 
           // Set heave to zero if not controlling altitude
           if (!m_args.use_altitude)
-            alpha(2) = 0;
+            u(2) = 0;
+
+          // Calculate internal feedback, alpha in AGENT body
+          // missionVelocity in CENTROID body
+          Matrix alpha = transpose(RNedAgent())*u + RAgentCentroid()*missionVelocity();
 
           // Saturate and dispatch control output
           alpha = saturate(alpha, m_args.max_speed);
@@ -1124,26 +1136,29 @@ namespace Control
           m_time_diff = Clock::getMsec() - m_time_end;
           m_time_end = Clock::getMsec();
 
-          Matrix tau = velocityControl(alpha,m_a_mission_centroid);
+          Matrix tau = velocityControl(alpha,RAgentCentroid()*m_a_mission_centroid);
           if (m_args.disable_force_output)
             return;
           sendDesiredForce(tau);
         }
 
+        //! R^(agent)_(centroid)
         Matrix
-        RCopterCentroid() const
+        RAgentCentroid() const
         {
-          return transpose(RNedCentroid())*RNedCopter();
+          return transpose(RNedAgent())*RNedCentroid();
         }
 
+        //! R^(n)_(centroid)
         Matrix
         RNedCentroid() const
         {
           return Rz(m_curr_heading);
         }
 
+        //! R^(n)_(agent)
         Matrix
-        RNedCopter() const
+        RNedAgent() const
         {
           return Rzyx(m_est_l_state.phi,m_est_l_state.theta,m_est_l_state.psi);
         }
