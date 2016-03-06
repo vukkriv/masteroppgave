@@ -48,6 +48,8 @@ namespace UserInterfaces
       std::string uart_dev;
       //! Serial port baud rate.
       unsigned uart_baud;
+      //! Rate
+      int rate;
     };
 
     // This task connects to an APM, and gets its raw RC input value.
@@ -86,6 +88,12 @@ namespace UserInterfaces
         param("Serial Port - Baud Rate", m_args.uart_baud)
         .defaultValue("115200")
         .description("Serial port baud rate");
+
+        param("Rate", m_args.rate)
+        .minimumValue("1")
+        .maximumValue("25")
+        .defaultValue("10");
+
 
         m_time_of_previous_packet = Clock::get();
 
@@ -161,7 +169,7 @@ namespace UserInterfaces
       onResourceAcquisition(void)
       {
         openConnection();
-        setupRate(10);
+        setupRate(m_args.rate);
       }
 
       void
