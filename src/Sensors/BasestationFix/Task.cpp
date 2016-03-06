@@ -76,6 +76,8 @@ namespace Sensors
       onUpdateParameters(void)
       {
         debug("Updating parameters");
+
+
         if ((paramChanged(m_args.base_is_fixed)) && (m_args.base_is_fixed == true))
         {
           //Base pos has been locked by the operator
@@ -86,7 +88,7 @@ namespace Sensors
             m_rtkfix.base_lat = m_fix.lat;
             m_rtkfix.base_lon = m_fix.lon;
             m_rtkfix.base_height = m_fix.height;
-            m_rtkfix.validity |= IMC::GpsFixRtk::RFV_VALID_BASE;
+            m_rtkfix.validity = IMC::GpsFixRtk::RFV_VALID_BASE;
             
             //Send base pos to all rovers
             debug("Dispatching base position");
@@ -96,7 +98,22 @@ namespace Sensors
           {
             //GPS pos is not valid
             debug("Unfixing base due to invalid GPS pos");
-            m_args.base_is_fixed = false;
+            //m_args.base_is_fixed = false;
+
+            IMC::EntityParameter fix_base;
+            fix_base.name = "BaseIsFixed";
+            fix_base.value = "False";
+
+            MessageList<IMC::EntityParameter> msgList;
+            msgList.push_back(fix_base);
+
+            IMC::SetEntityParameters toSet;
+            toSet.name = getEntityLabel();
+            toSet.params = msgList;
+
+            dispatch(toSet, DF_LOOP_BACK);
+
+
           }
         }
 
@@ -126,13 +143,13 @@ namespace Sensors
       void
       onEntityResolution(void)
       {
-        try
-        {
+        try {
           m_gps_eid = resolveEntity(m_args.elabel_gps);
         }
         catch (...)
         {
           m_gps_eid = 0;
+          war("Unable to resolve entity. ");
         }
       }
 
