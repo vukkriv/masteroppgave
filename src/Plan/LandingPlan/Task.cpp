@@ -25,6 +25,7 @@
 // Author: Kjetilhs                                                         *
 //***************************************************************************
 
+// This task generates a dubins path that can be used for landing
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 
@@ -36,8 +37,32 @@ namespace Plan
   {
     using DUNE_NAMESPACES;
 
+    struct Arguments
+    {
+
+    };
+
     struct Task: public DUNE::Tasks::Task
     {
+      //! Task arguments
+      Arguments m_arg;
+      //! Accumulated EstimatedState message
+      IMC::EstimatedState m_estate;
+      //! Start turning circle
+      double m_Rs;
+      //! Finish turning circle
+      double m_Rf;
+      //! Angle of descent
+      double m_gamma_d;
+      //! Angle of attack
+      double m_gamma_a;
+      //! Calculated path
+      std::vector<double [3]> m_path;
+      //! Start pose
+      std::vector<double [4]> m_Xs;
+      //! Finish pose
+      std:: vector<double [4]> m_Xf;
+
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
