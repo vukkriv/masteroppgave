@@ -74,19 +74,23 @@ namespace Control
         ReferenceSimArguments refsim;
       };
 
-      static const std::string c_parcel_names[] =
-        { DTR_RT("PID"), "PID-X", "PID-Y", "PID-Z", "ERROR" };
+      static const std::string c_parcel_names[] = { DTR_RT("PID"), "PID-X", "PID-Y", "PID-Z", "ERROR" };
 
       enum Parcel
       {
-        PC_PID = 0, PC_PID_X = 1, PC_PID_Y = 2, PC_PID_Z = 3, PC_ERROR = 4
+        PC_PID   = 0,
+        PC_PID_X = 1,
+        PC_PID_Y = 2,
+        PC_PID_Z = 3,
+        PC_ERROR = 4
       };
 
       static const int NUM_PARCELS = 5;
 
       enum RefState
       {
-        R_SURGE = 0, R_HEADING = 1
+        R_SURGE   = 0,
+        R_HEADING = 1
       };
 
       class ReferenceSimulator
@@ -94,10 +98,16 @@ namespace Control
       public:
 
         ReferenceSimulator() :
-            A(3, 3, 0.0), B(3, 2, 0.0), H1(1, 3, 0.0), H2(1, 3, 0.0), x_des(
-                3, 1, 0.0), x_dot_des(3, 1, 0.0), x_ref(3, 1, 0.0), Kp(2, 2,
-                                                                       0.0), Ki(
-                2, 2, 0.0), Kd(2, 2, 0.0)
+          A(3, 3, 0.0),
+          B(3, 2, 0.0),
+          H1(1, 3, 0.0),
+          H2(1, 3, 0.0),
+          x_des(3, 1, 0.0),
+          x_dot_des(3, 1, 0.0),
+          x_ref(3, 1, 0.0),
+          Kp(2, 2,0.0),
+          Ki(2, 2, 0.0),
+          Kd(2, 2, 0.0)
         {
           H1(0) = 1;
           H1(1) = 1;
