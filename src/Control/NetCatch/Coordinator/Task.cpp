@@ -1410,13 +1410,22 @@ namespace Control
         Matrix
         RNedCentroid() const
         {
-          return Rzyx(0,0,m_centroid_heading);
+          return Rz(m_centroid_heading);
         }
 
         Matrix
         RNedPath() const
         {
           return Rzyx(0,m_runway.theta,m_runway.alpha);
+        }
+
+        //! @return  Rotation yaw matrix.
+        Matrix
+        Rz(double psi) const
+        {
+          double R_en_elements[] =
+            { cos(psi), -sin(psi), 0, sin(psi), cos(psi), 0, 0, 0, 1 };
+          return Matrix(R_en_elements, 3, 3);
         }
 
         //! @return  Rotation matrix.
