@@ -212,6 +212,11 @@ namespace Transports
           state.ax = a_b(0);
           state.ay = a_b(1);
           state.az = a_b(2);
+
+          //all vehicles should have the same reference point
+          state.lat     = states[0].lat;
+          state.lon     = states[0].lon;
+          state.height  = states[0].height;
         }
       private:
 
