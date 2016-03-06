@@ -130,6 +130,20 @@ namespace Sensors
         // Defining origin.
         m_fix = *msg;
 
+        // Dispatch to navigation task. Set own id.
+        m_fix.setSourceEntity(getEntityId());
+        m_fix.setTimeStamp();
+
+        if (m_args.base_is_fixed)
+        {
+          // override fields
+          m_fix.lat = m_rtkfix.base_lat;
+          m_fix.lon = m_rtkfix.base_lon;
+          m_fix.height = m_rtkfix.base_height;
+        }
+
+        dispatch(m_fix);
+
         spew("Im at lat %f lon %f", m_fix.lat, m_fix.lon);
       }
 
