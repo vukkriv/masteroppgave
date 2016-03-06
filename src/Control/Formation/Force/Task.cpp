@@ -319,11 +319,6 @@ namespace Control
           .units(Units::Second)
           .description("Frequency of pos.data prints. Zero => Print on every update.");
 
-          param("Print Frequency", m_args.print_frequency)
-          .defaultValue("0.0")
-          .units(Units::Second)
-          .description("Frequency of pos.data prints. Zero => Print on every update.");
-
           param("Print EstimatedLocalState warning", m_args.print_EstimatedLocalState_warning)
           .defaultValue("false")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
