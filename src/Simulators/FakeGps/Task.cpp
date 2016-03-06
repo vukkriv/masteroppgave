@@ -54,6 +54,7 @@ namespace Simulators
       {
         param("Valid Position", m_args.valid_pos)
 		.defaultValue("True")
+    .visibility(Parameter::VISIBILITY_USER)
 		.description("Chose whether the position is valid or not ");
 
         bind<IMC::GpsFixRtk>(this);
@@ -119,16 +120,19 @@ namespace Simulators
         m_fix.lat = Angles::radians(-35.363261);
         m_fix.lon = Angles::radians(149.165230);
         m_fix.height = 584.353;
-        if (m_args.valid_pos)
-        {
-        	m_fix.validity |= IMC::GpsFix::GFV_VALID_POS;
-        }
-        else
-        {
-        	m_fix.validity &= ~IMC::GpsFix::GFV_VALID_POS;
-      	}
+
         while (!stopping())
         {
+          if (m_args.valid_pos)
+          {
+            m_fix.validity |= IMC::GpsFix::GFV_VALID_POS;
+          }
+          else
+          {
+            m_fix.validity &= ~IMC::GpsFix::GFV_VALID_POS;
+          }
+
+
           waitForMessages(1.0);
           m_fix.lat += 0.000001;
           dispatch(m_fix);
