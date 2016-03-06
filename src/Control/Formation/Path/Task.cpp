@@ -421,6 +421,7 @@ namespace Control
         {
           PathFormationController::onUpdateParameters();
 
+          debug("Setting new surge tuning parameters");
           double Kp_s = m_args.refsim.c_surge.Kp;
           double Ki_s = m_args.refsim.c_surge.Ki;
           double Kd_s = m_args.refsim.c_surge.Kd;
@@ -435,6 +436,7 @@ namespace Control
           }
           m_refsim.setPID(Kp_s,Ki_s,Kd_s,static_cast<int>(R_SURGE));
 
+          debug("Setting new heading tuning parameters");
           double Kp_h = m_args.refsim.c_heading.Kp;
           double Ki_h = m_args.refsim.c_heading.Ki;
           double Kd_h = m_args.refsim.c_heading.Kd;
@@ -445,16 +447,18 @@ namespace Control
             Kd_h = (1-2*m_args.refsim.c_heading.xi*m_args.refsim.c_heading.omega*m_args.refsim.heading_T)/m_args.refsim.heading_K;
           }
           m_refsim.setPID(Kp_h,Ki_h,Kd_h,static_cast<int>(R_HEADING));
-
+          debug("New parameters set");
         }
 
         //! Reserve entity identifiers.
         void
         onEntityReservation(void)
         {
+          debug("Reserve entities");
           PathFormationController::onEntityReservation();
           for (unsigned i = 0; i < NUM_PARCELS; ++i)
             m_parcels[i].setSourceEntity(reserveEntity(c_parcel_names[i] + " Parcel"));
+          debug("Entities reserved");
         }
 
         void
@@ -496,6 +500,7 @@ namespace Control
         void
         initRefSim(const IMC::EstimatedLocalState& state)
         {
+          debug("Initialize reference simulator");
           // Restart refmodel
           if (m_args.reset_to_state || Clock::get() - m_timestamp_prev_step > 2.0)
           {
@@ -510,15 +515,17 @@ namespace Control
             m_refsim.x_des(1) = state.psi;
             m_refsim.x_des(2) = state.r;
           }
-
+          inf("Set reference simulator matrices");
           //set model, A matrix is dynamic and must updated each step
           setMatrixA();
           setMatrixB();
+          debug("Reference simulator initialized");
         }
 
         void
         stepRefSim(const IMC::EstimatedLocalState& state, const TrackingState& ts)
         {
+          spew("Step refsim");
           //get target speed and heading (these or the reference states should be logged somehow)
           double ref_heading = ts.course;
           double ref_speed = ts.speed;
@@ -540,6 +547,7 @@ namespace Control
           m_refsim.x_dot_des = m_refsim.getDesXdot(u);
           // Integrate (Euler)
           m_refsim.x_des += ts.delta * (m_refsim.x_dot_des);
+          spew("Step refsim done.");
         }
 
         void
@@ -560,6 +568,7 @@ namespace Control
           if (!m_args.use_controller)
             return;
 
+          spew("Step task");
           double now = Clock::get();
 
           updateReferenceSim(state, ts, now);
@@ -578,6 +587,7 @@ namespace Control
           dispatch(m_desired_heading);
           //
           m_timestamp_prev_step = Clock::get();
+          spew("Step task done.");
         }
 
         void
@@ -617,9 +627,11 @@ namespace Control
         void
         updateMatrixA()
         {
+          spew("Update A matrix");
         	m_refsim.A(0,0) = -(m_args.refsim.surge_d/m_args.refsim.surge_m)*abs(m_refsim.getDesSpeed()); //quadratic drag term
         	//m_Amatrix[0] = -(m_args.refsim.surge_d/m_args.refsim.surge_m)*abs(m_refsim.getDesSpeed()); //quadratic drag term
             //m_refsim.A = Matrix(m_Amatrix, 3, 3);
+        	spew("A matrix updated");
         }
 
 
