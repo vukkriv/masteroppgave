@@ -155,6 +155,9 @@ namespace Simulators
         // Reset
         m_eta = Matrix(5, 1, 0.0);
         m_nu  = Matrix(5, 1, 0.0);
+
+
+        m_time_prev_step = Time::Clock::get() - 1.0;
       }
 
       void
