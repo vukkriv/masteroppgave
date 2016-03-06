@@ -50,10 +50,9 @@ namespace Transports
 
       class Vehicles
       {
-        public:
-        Vehicles():
-          m_i(0),
-          m_N(0)
+      public:
+        Vehicles() :
+            m_i(0), m_N(0)
         {
 
         }
@@ -70,39 +69,40 @@ namespace Transports
         setVehicleList(std::vector<std::string> list, DUNE::Tasks::Task *task)
         {
           // Extract vehicle IDs
-           m_uav_ID.clear();
-           if (list.empty())
-           {
-             m_uav_ID.push_back(task->getSystemId());
-             m_N = 1;
-             m_i = 0;
-           }
-           else
-           {
-             m_N = list.size();
-             bool found_self = false;
-             for (unsigned int uav = 0; uav < m_N; uav++)
-             {
-               m_uav_ID.push_back(task->resolveSystemName(list[uav]));
-               if (m_uav_ID[uav] == task->getSystemId())
-               {
-                 m_i = uav; // Set my formation id
-                 found_self = true;
-               }
-             }
-             if (!found_self)
-               throw DUNE::Exception(
-                   "Vehicle not found in formation vehicle list!");
-           }
-           connected = std::vector<bool> (m_N,false);
+          m_uav_ID.clear();
+          if (list.empty())
+          {
+            m_uav_ID.push_back(task->getSystemId());
+            m_N = 1;
+            m_i = 0;
+          }
+          else
+          {
+            m_N = list.size();
+            bool found_self = false;
+            for (unsigned int uav = 0; uav < m_N; uav++)
+            {
+              m_uav_ID.push_back(task->resolveSystemName(list[uav]));
+              if (m_uav_ID[uav] == task->getSystemId())
+              {
+                m_i = uav; // Set my formation id
+                found_self = true;
+              }
+            }
+            if (!found_self)
+              throw DUNE::Exception(
+                  "Vehicle not found in formation vehicle list!");
+          }
+          connected = std::vector<bool>(m_N, false);
         }
 
         bool
         allConnected()
         {
           bool allConn = true;
-          for (std::vector<bool>::iterator it = connected.begin(); it != connected.end(); ++it)
-             allConn *= *it;
+          for (std::vector<bool>::iterator it = connected.begin();
+              it != connected.end(); ++it)
+            allConn *= *it;
           return allConn;
         }
 
@@ -119,7 +119,7 @@ namespace Transports
             }
           }
           if (vehicle != -1)
-              connected[vehicle] = true;
+            connected[vehicle] = true;
           return vehicle;
         }
 
@@ -127,16 +127,16 @@ namespace Transports
 
       class Centroid
       {
-        public:
-        Centroid():
-        m_N(1),
-        v_b(Matrix(3,1,0.0)),
-        a_b(Matrix(3,1,0.0)),
-        v_n(Matrix(3,1,0.0)),
-        a_n(Matrix(3,1,0.0)),
-        omega(Matrix(3,1,0.0)),
-        omega_i(Matrix(3,1,0.0)),
-        alpha(Matrix(3,1,0.0))
+      public:
+        Centroid() :
+          m_N(1),
+          v_b(Matrix(3, 1, 0.0)),
+          a_b(Matrix(3, 1, 0.0)),
+          v_n(Matrix(3, 1, 0.0)),
+          a_n(Matrix(3, 1, 0.0)),
+          omega(Matrix(3, 1, 0.0)),
+          omega_i(Matrix(3, 1, 0.0)),
+          alpha(Matrix(3, 1, 0.0))
         {
         }
         int m_N;
@@ -151,10 +151,10 @@ namespace Transports
 
         IMC::EstimatedLocalState state;
 
-
         void
-        calculateCentroid(std::vector<IMC::EstimatedLocalState> &states, int noAgents)
-        {                    
+        calculateCentroid(std::vector<IMC::EstimatedLocalState> &states,
+            int noAgents)
+        {
           this->m_N = noAgents;
 
           state.x = 0;
@@ -162,26 +162,26 @@ namespace Transports
           state.z = 0;
           v_n *= 0;
           a_n *= 0;
-          for (int i=0; i < noAgents; i++)
+          for (int i = 0; i < noAgents; i++)
           {
-              double factor = (double)1 / double(noAgents);
-              state.x  +=  factor*(states[i].x);
-              state.y  +=  factor*(states[i].y);
-              state.z  +=  factor*(states[i].z);
+            double factor = (double)1 / double(noAgents);
+            state.x += factor * (states[i].x);
+            state.y += factor * (states[i].y);
+            state.z += factor * (states[i].z);
 
-              v_n(0) +=  factor*(states[i].vx);
-              v_n(1) +=  factor*(states[i].vy);
-              v_n(2) +=  factor*(states[i].vz);
+            v_n(0) += factor * (states[i].vx);
+            v_n(1) += factor * (states[i].vy);
+            v_n(2) += factor * (states[i].vz);
 
-              omega_i(0) = states[i].p;
-              omega_i(1) = states[i].q;
-              omega_i(2) = states[i].r;
+            omega_i(0) = states[i].p;
+            omega_i(1) = states[i].q;
+            omega_i(2) = states[i].r;
 
-              alpha = skew(omega_i)*v_n;
-              //Acceleration is BODY acceleration differentiated in NED frame from Ardupilot interface
-              a_n(0) +=  factor*(states[i].ax + alpha(0));
-              a_n(1) +=  factor*(states[i].ay + alpha(1));
-              a_n(2) +=  factor*(states[i].az + alpha(2));
+            alpha = skew(omega_i) * v_n;
+            //Acceleration is BODY acceleration differentiated in NED frame from Ardupilot interface
+            a_n(0) += factor * (states[i].ax + alpha(0));
+            a_n(1) += factor * (states[i].ay + alpha(1));
+            a_n(2) += factor * (states[i].az + alpha(2));
           };
 
           state.vx = v_n(0);
@@ -189,44 +189,44 @@ namespace Transports
           state.vz = v_n(2);
 
           /*
-          let the internal localstate acc be in body
-          state.ax = a_n(0);
-          state.ay = a_n(1);
-          state.az = a_n(2);
-          */
+           let the internal localstate acc be in body
+           state.ax = a_n(0);
+           state.ay = a_n(1);
+           state.az = a_n(2);
+           */
 
-          state.phi   = 0;
-          state.theta = 0;          
-          state.psi   = this->centroidHeading(states);
+          state.phi = 0;
+          state.theta = 0;
+          state.psi = this->centroidHeading(states);
 
-          state.p   = 0;
-          state.q   = 0;          
-          state.r   = 0;  //TODO: find expression for this
-          omega(2)  = state.r;
+          state.p = 0;
+          state.q = 0;
+          state.r = 0;  //TODO: find expression for this
+          omega(2) = state.r;
 
           v_b = getBodyVelocity();
           state.u = v_b(0);
           state.v = v_b(1);
-          state.w = v_b(2);            
+          state.w = v_b(2);
           a_b = getBodyAcceleration();
           state.ax = a_b(0);
           state.ay = a_b(1);
-          state.az = a_b(2);                      
+          state.az = a_b(2);
         }
-        private:
-        
-        fp32_t 
+      private:
+
+        fp32_t
         centroidHeading(std::vector<IMC::EstimatedLocalState> &states)
         {
           if (this->m_N > 1)
           {
             Matrix p = Matrix(2, this->m_N, 0);
-            for (int i=0; i < this->m_N; i++)
+            for (int i = 0; i < this->m_N; i++)
             {
-              p(0,i) = states[i].x;
-              p(1,i) = states[i].y;
+              p(0, i) = states[i].x;
+              p(1, i) = states[i].y;
             }
-            return atan2(p(0,1)-p(0,0),p(1,1)-p(1,0));
+            return atan2(p(0, 1) - p(0, 0), p(1, 1) - p(1, 0));
           }
           else
           {
@@ -238,14 +238,14 @@ namespace Transports
         getBodyVelocity()
         {
           Matrix Rcn = transpose(Rz(state.psi));
-          return Rcn*v_n;
+          return Rcn * v_n;
         }
 
         Matrix
         getBodyAcceleration()
         {
           Matrix Rcn = transpose(Rz(state.psi));
-          return Rcn*(a_n - skew(omega)*v_n);
+          return Rcn * (a_n - skew(omega) * v_n);
         }
 
         //! @return  Rotation yaw matrix.
@@ -253,14 +253,12 @@ namespace Transports
         Rz(double psi) const
         {
           double R_en_elements[] =
-            { cos(psi), -sin(psi), 0,
-              sin(psi),  cos(psi), 0,
-                     0,         0, 1 };
+            { cos(psi), -sin(psi), 0, sin(psi), cos(psi), 0, 0, 0, 1 };
           return Matrix(R_en_elements, 3, 3);
-        }        
+        }
       };
 
-      struct Task: public DUNE::Tasks::Task
+      struct Task : public DUNE::Tasks::Task
       {
         //! Task arguments
         Arguments m_args;
@@ -278,19 +276,21 @@ namespace Transports
         //! Constructor.
         //! @param[in] name task name.
         //! @param[in] ctx context.
-        Task(const std::string& name, Tasks::Context& ctx):
-          DUNE::Tasks::Task(name, ctx)
+        Task(const std::string& name, Tasks::Context& ctx) :
+            DUNE::Tasks::Task(name, ctx)
         {
-         param("Formation Centroid", m_args.use_task).visibility(
-              Tasks::Parameter::VISIBILITY_USER).scope(
-              Tasks::Parameter::SCOPE_MANEUVER).defaultValue("false").description(
-              "Enable Formation Centroid EstimatedLocalState.");
+          param("Formation Centroid", m_args.use_task)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .defaultValue("false")
+          .description("Enable Formation Centroid EstimatedLocalState.");
 
-         param("Vehicle List", m_args.formation_systems).defaultValue("").visibility(
-              Tasks::Parameter::VISIBILITY_USER).description(
-              "System name list of the formation vehicles.");
+          param("Vehicle List", m_args.formation_systems)
+          .defaultValue("")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("System name list of the formation vehicles.");
 
-         bind<IMC::EstimatedLocalState>(this);
+          bind<IMC::EstimatedLocalState>(this);
         }
 
         //! Update internal state with new parameter values.
@@ -301,8 +301,8 @@ namespace Transports
           if (paramChanged(m_args.formation_systems))
           {
             inf("New Formation vehicles' list.");
-            m_vehicles.setVehicleList(m_args.formation_systems,this);
-            states = std::vector<IMC::EstimatedLocalState> (m_vehicles.m_N);
+            m_vehicles.setVehicleList(m_args.formation_systems, this);
+            states = std::vector<IMC::EstimatedLocalState>(m_vehicles.m_N);
           }
         }
 
@@ -341,36 +341,37 @@ namespace Transports
         consume(const IMC::EstimatedLocalState* msg)
         {
           std::string vh_name = resolveSystemId(msg->getSource());
-          spew("Got EstimatedLocalState \nfrom '%s'",vh_name.c_str());
+          spew("Got EstimatedLocalState \nfrom '%s'", vh_name.c_str());
 
-          if(msg->getSource() == this->getSystemId())
-            spew("Entity '%s'",resolveEntity(msg->getSourceEntity()).c_str());
+          if (msg->getSource() == this->getSystemId())
+            spew("Entity '%s'", resolveEntity(msg->getSourceEntity()).c_str());
           int vh_id = m_vehicles.getVehicle(msg->getSource());
-          spew("Vehicle[%d]",vh_id);
+          spew("Vehicle[%d]", vh_id);
           if (vh_id != -1)
           {
             states[vh_id] = *msg;
-            spew("Pos x: [%f]",states[vh_id].x);
+            spew("Pos x: [%f]", states[vh_id].x);
           }
           else
           {
             spew("Unknown vehicle");
             return;
           }
-/*
-          for (unsigned int i=0; i < m_vehicles.m_N; i++)
-          {
-            spew("msgSource=%d",msg->getSource());
-            spew("m_uav_ID[%d]=%d",i,m_vehicles.m_uav_ID[i]);
-          }
-*/
+          /*
+           for (unsigned int i=0; i < m_vehicles.m_N; i++)
+           {
+           spew("msgSource=%d",msg->getSource());
+           spew("m_uav_ID[%d]=%d",i,m_vehicles.m_uav_ID[i]);
+           }
+           */
           //calculate centroid (if received from all and the current message is from itself)
-          if (m_vehicles.allConnected() && msg->getSource() == this->getSystemId())
+          if (m_vehicles.allConnected()
+              && msg->getSource() == this->getSystemId())
           {
-            m_centroid.calculateCentroid(states,m_vehicles.m_N);
-            spew("Dispatching centroid EstimatedLocalState, heading: %f [deg], noAgents=[%d]",
-                Angles::degrees(m_centroid.state.psi),
-                m_centroid.m_N);
+            m_centroid.calculateCentroid(states, m_vehicles.m_N);
+            spew(
+                "Dispatching centroid EstimatedLocalState, heading: %f [deg], noAgents=[%d]",
+                Angles::degrees(m_centroid.state.psi), m_centroid.m_N);
             //set sourceEntity here, make sure NOT to send the centroid message inbetween vehicles
             m_centroid.state.ots = msg->getTimeStamp();
             dispatch(m_centroid.state);
