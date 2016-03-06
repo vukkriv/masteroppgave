@@ -226,7 +226,9 @@ namespace Transports
               p(0, i) = states[i].x;
               p(1, i) = states[i].y;
             }
-            return atan2(p(0, 1) - p(0, 0), p(1, 1) - p(1, 0));
+            Matrix p_diff = p.column(1) - p.column(0);
+
+            return -atan2(p_diff(0), p_diff(1));
           }
           else
           {
