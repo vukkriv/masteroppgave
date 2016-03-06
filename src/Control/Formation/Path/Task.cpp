@@ -71,21 +71,21 @@ namespace Control
         bool reset_to_state;
         bool reset_integral_on_path_activation;
         bool enable_refsim;
+        float print_frequency;
         ReferenceSimArguments refsim;
       };
 
-      static const std::string c_parcel_names[] = { DTR_RT("PID"), "PID-SURGE", "PID-HEADING", "PID-Z", "ERROR" };
+      static const std::string c_parcel_names[] = { "PID-SURGE", "PID-HEADING", "ERROR-SURGE", "ERROR-HEADING"};
 
       enum Parcel
       {
-        PC_PID   = 0,
-        PC_PID_SURGE = 1,
-        PC_PID_HEADING = 2,
-        PC_PID_Z = 3,
-        PC_ERROR = 4
+        PC_PID_SURGE = 0,
+        PC_PID_HEADING = 1,
+        PC_ERROR_SURGE = 2,
+        PC_ERROR_HEADING = 3
       };
 
-      static const int NUM_PARCELS = 5;
+      static const int NUM_PARCELS = 4;
 
       enum RefState
       {
@@ -419,6 +419,11 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Set to reset to state rather than previous ref_pos on change");
+
+          param("Print Frequency", m_args.print_frequency)
+          .defaultValue("0.0")
+          .units(Units::Second)
+          .description("Frequency of pos.data prints. Zero => Print on every update.");
         }
 
         //! Consumer for DesiredSpeed message.
@@ -437,7 +442,9 @@ namespace Control
             m_desired_speed = m_args.refsim.max_speed;
             debug("Trying to set a speed above maximum speed. ");
           }
+          m_refsim.x_ref = Matrix(3,1,0.0);
           m_refsim.setRefSpeed(m_desired_speed);
+          debug("New surge reference: [%f] m/s",m_refsim.x_ref(R_SURGE));
 
           PathFormationController::consume(dspeed);
         }
@@ -540,7 +547,7 @@ namespace Control
           if (m_args.reset_to_state || Clock::get() - m_timestamp_prev_step > 2.0)
           {
             m_refsim.x_ref    = Matrix(3, 1, 0.0);
-            m_refsim.x_ref(0) = state.u;
+            m_refsim.x_ref(0) = m_desired_speed;
             m_refsim.x_ref(1) = state.psi;
             m_refsim.x_ref(2) = state.r;
 
@@ -576,30 +583,55 @@ namespace Control
           updateMatrixA();
 
           spew("Get integrator value");
-          m_integrator_value += ts.delta*m_refsim.getError();
+          Matrix e     = m_refsim.getError();
+          Matrix e_dot = m_refsim.getDError();
+
+          m_integrator_value += ts.delta*e;
           // Constrain
           if (m_integrator_value.norm_2() > m_args.max_integral)
             m_integrator_value = m_args.max_integral * m_integrator_value / m_integrator_value.norm_2();
 
           spew("Calculate u");
-          Matrix u   = m_refsim.Kp*m_refsim.getError() +
-                       m_refsim.Ki*m_integrator_value;
-                       m_refsim.Kd*m_refsim.getDError();
+
+          Matrix u_p = m_refsim.Kp*e;
+          Matrix u_i = m_refsim.Ki*m_integrator_value;
+          Matrix u_d = m_refsim.Kd*e_dot;
+          Matrix u   = u_p + u_i + u_d;
           spew("Set x_dot_des");
           m_refsim.x_dot_des = m_refsim.getDesXdot(u);
           // Integrate (Euler)
           spew("Integrate Euler");
           m_refsim.x_des += ts.delta * (m_refsim.x_dot_des);
           spew("Step refsim done.");
+
+          IMC::ControlParcel parcel_s = m_parcels[PC_PID_SURGE];
+          parcel_s.p = u_p(0);
+          parcel_s.d = u_d(0);
+          parcel_s.i = u_i(0);
+          dispatch(parcel_s);
+          IMC::ControlParcel errors_s = m_parcels[PC_ERROR_SURGE];
+          errors_s.p = e(0);
+          errors_s.d = e_dot(0);
+          errors_s.i = m_integrator_value(0);
+          dispatch(errors_s);
+
+          IMC::ControlParcel parcel_h = m_parcels[PC_PID_HEADING];
+          parcel_h.p = u_p(1);
+          parcel_h.d = u_d(1);
+          parcel_h.i = u_i(1);
+          dispatch(parcel_h);
+          IMC::ControlParcel errors_h = m_parcels[PC_ERROR_HEADING];
+          errors_h.p = e(1);
+          errors_h.d = e_dot(1);
+          errors_h.i = m_integrator_value(1);
+          dispatch(errors_h);
         }
 
         void
         updateReferenceSim(const IMC::EstimatedLocalState& state, const TrackingState& ts, double now)
         {
           double ref_heading = ts.los_angle;
-          double ref_speed = ts.speed;
           m_refsim.setRefHeading(ref_heading);
-          m_refsim.setRefSpeed(ref_speed);
 
           stepRefSim(state, ts);
 
@@ -633,7 +665,6 @@ namespace Control
           if (!m_args.use_controller)
             return;
 
-          spew("Step task");
           double now = Clock::get();
 
           updateReferenceSim(state, ts, now);
@@ -646,13 +677,22 @@ namespace Control
           m_desired_linear.ax = m_refsim.getDesAcc();
           m_desired_linear.ay = 0;
           m_desired_linear.az = 0;
+
           dispatch(m_desired_linear);
           //Desired heading
           m_desired_heading.value = m_refsim.getDesHeading();
           dispatch(m_desired_heading);
           //
           m_timestamp_prev_step = Clock::get();
-          spew("Step task done.");
+
+          static double last_print;
+          if (!m_args.print_frequency || !last_print
+              || (now - last_print) > 1.0 / m_args.print_frequency)
+          {
+            trace("Surge:\nRef: [%f]   \nDes: [%f]",m_refsim.x_ref(R_SURGE),  m_refsim.x_des(R_SURGE));
+            trace("Heading:\nRef: [%f] \nDes: [%f]",m_refsim.x_ref(R_HEADING),m_refsim.x_des(R_HEADING));
+            last_print = now;
+          }
         }
 
         void
@@ -670,7 +710,7 @@ namespace Control
           */
           m_refsim.A = Matrix(3,3,0.0);
           m_refsim.A(1,2) = 1;
-          m_refsim.A(2,2) = -1/m_args.refsim.heading_T;
+          m_refsim.A(2,2) = -(double)1 / m_args.refsim.heading_T;
           updateMatrixA();
         }
 
@@ -687,7 +727,7 @@ namespace Control
             m_refsim.B = Matrix(m_Bmatrix, 2, 3);
             */
           m_refsim.B = Matrix(3,2,0.0);
-        	m_refsim.B(0,0) = 1/m_args.refsim.surge_m;
+        	m_refsim.B(0,0) = (double)1/m_args.refsim.surge_m;
         	m_refsim.B(2,1) = m_args.refsim.heading_K;
         }
 
