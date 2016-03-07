@@ -124,6 +124,19 @@ namespace Control
           enableControlLoops(IMC::CL_PITCH);
         }
 
+        virtual void
+        onPathStartup(const IMC::EstimatedState& state, const TrackingState& ts)
+        {
+          (void)state;
+          (void)ts;
+
+          if (!m_args.use_controller)
+            return;
+          // Activate controller
+          enableControlLoops(IMC::CL_SPEED); //Throttle considered as cl speed atm.
+          enableControlLoops(IMC::CL_PITCH);
+        }
+
         bool
         hasSpecificZControl(void) const
         {
