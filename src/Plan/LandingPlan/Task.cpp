@@ -282,6 +282,19 @@ namespace Plan
         else
           return 1;
       }
+      //! Constructs an arc from theta[0] to theta[m_N] with R radius
+      void
+      ConstructArc(const double theta[m_N],const double theta0,const double R,const double center[2],std::vector<double [2]> &arc)
+      {
+        double tempP[2];
+        for (int i=0;i<m_N;i++)
+        {
+          tempP[0] = center[0] + R*std::cos(theta0+theta[i]);
+          tempP[1] = center[1] + R*std::sin(theta0+theta[i]);
+          arc.push_back(tempP);
+        }
+
+      }
       //! Reserve entity identifiers.
       void
       onEntityReservation(void)
