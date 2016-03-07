@@ -30,6 +30,8 @@
 #include <DUNE/DUNE.hpp>
 
 #include <vector>
+#include <cmath>
+#define PI 3.1415926535897932384626433832795
 
 namespace Plan
 {
@@ -62,6 +64,8 @@ namespace Plan
       std::vector<double [4]> m_Xs;
       //! Finish pose
       std:: vector<double [4]> m_Xf;
+      //! Number of points in arc
+      int m_N;
 
       //! Constructor.
       //! @param[in] name task name.
@@ -93,8 +97,157 @@ namespace Plan
       }
 
       //! Construct Dubins Path between two waypoints with given heading
-      void dubinsPath()
+      bool dubinsPath(const double Xs[3],const double Xf[3], std::vector<double[3]> &Path,bool &EndTurn,double &OF[2])
       {
+        //! Define turning directions
+        bool RightS;
+        bool RightF;
+        //! Declare parameters
+        //! Start circle center
+        double Xcs;
+        double Ycs;
+        //! Finish circle center
+        double Xcf;
+        double Ycf;
+        //! Radius of secound end turning circle
+        double Rsec;
+
+        //! Define start turning circle center (Ocs)
+
+        if (std::atan2(Xs[1]-Xf[1],Xs[0]-Xf[0])<0)
+        {
+          RightS = false;
+          Xcs = Xs[0]-m_Rs*std::cos(Xs[2]-PI/2);
+          Ycs = Xs[1]-m_Rs*std::sin(Xs[2]-PI/2);
+        }
+        else
+        {
+          RightS = true;
+          Xcs = Xs[0]-m_Rs*std::cos(Xs[2]+PI/2);
+          Ycs = Xs[1]-m_Rs*std::sin(Xs[2]+PI/2);
+        }
+
+        //! Define end turning circle center (Ofs)
+
+        if (std::atan2(Xs[1]-Xf[1],Xs[0]-Xf[0])<0)
+        {
+          RightF = false;
+          Xcf = Xf[0]-m_Rf*std::cos(Xf[2]-PI/2);
+          Ycf = Xf[1]-m_Rf*std::sin(Xf[2]-PI/2);
+        }
+        else
+        {
+          RightF = true;
+          Xcf = Xf[0]-m_Rf*std::cos(Xf[2]+PI/2);
+          Ycf = Xf[1]-m_Rf*std::sin(Xf[2]+PI/2);
+        }
+        //! Calculate radius of second end turning circle
+        Rsec = std::abs(m_Rf-m_Rs);
+
+        //! Calculate the line between Ocs and Ofs
+        double cbx = Xcs;
+        double cax = Xcf - cbx;
+        double cby = Ycs;
+        double cay = Ycf - cby;
+
+        //! Calculate the length of c
+        double dc = std::sqrt(std::pow(cax,2)+std::pow(cay,2));
+        //! Check that Dubins path exists
+        if (Rsec>dc)
+        {
+          war("Dubins Path does not exist from start position to end position");
+          return false;
+        }
+        //! Calculate distance from start pose to end pose
+        double dXsXf = sqrt(std::pow(Xs[0]-Xf[0],2)+std::pow(Xs[1]-Xf[1],2));
+
+        //! Check if the start pose and end pose is to close
+        if (dXsXf<2*m_Rf)
+        {
+          war("The start pose and end pose are to close.");
+          return false;
+        }
+
+        //! Calculate alpha
+        double alpha = std::asin((m_Rf-m_Rs)/dc);
+
+        //! Calculate beta
+        double beta = std::atan2(Ycf-Ycs,Xcf-Xcs);
+
+        //! Define tangent points
+        //! First
+        double thetaS = turn(RightS,alpha,beta);
+        //! Second
+        double thetaF = turn(RightF,alpha,beta);
+        //! Exit tangent point for first circle
+        double Pchi[2];
+        Pchi[0] = Xcs+m_Rs*cos(thetaS);
+        Pchi[1] = Ycs+m_Rs*sin(thetaS);
+        //! Entry tangent point
+        double PN[2];
+        PN[0] = Xcf+m_Rf*cos(thetaF);
+        PN[1] = Ycf+m_Rf*sin(thetaF);
+        //! Define turning arc
+        double arc[2];
+        //! Declare angle array
+        double theta[m_N];
+        //! First arc
+        double theta0 = std::atan2(Xs[1]-Ycs,Xs[0]-Xcs);
+        double theta1 = std::atan2(Pchi[1]-Ycs,Pchi[0]-Xcs);
+        if (RightS)
+        {
+          if (Angles::normalizeRadian(theta1-PI)>=theta0 || (theta0>theta1 && sign(theta1)==sign(theta0)))
+          {
+            calculateTurningArcAngle(-std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
+          }
+          else
+          {
+            calculateTurningArcAngle(-(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0))),theta);
+          }
+        }
+        else
+        {
+          if (Angles::normalizeRadian(theta1-PI)<=theta0 && sign(theat1-PI)==sign(theta0) || (theta0<theta1 && (sign(theta0)==sign(theta1) || theta0==0)))
+          {
+            calculateTurningArcAngle(std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
+          }
+          else
+          {
+            calculateTurningArcAngle(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
+          }
+        }
+        ConstructArc(theta,arc);
+        AddToPath(arc,Path);
+        //! Second arc
+        theta0 = std::atan2(PN[1]-Ycf,PN[0]-Xcf);
+        theta1 = std::atan2(Xf[1]-Ycf,Xf[0]-Xcf);
+        if (RightF)
+        {
+          if((Angles::normalizeRadian(theta1-PI)<=theta0) || (theta0>theta1 && (sign(theta1)==sign(theta0))))
+          {
+            calculateTurningArcAngle(-std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
+          }
+          else
+          {
+            calculateTurningArcAngle(-(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0))),theta);
+          }
+        }
+        else
+        {
+          if ((Angles::normalizeRadian(theta1-PI)<=theta0 && sign(theta1-PI)==sign(theta0)) || (theta0<theta1 && sign(theta0)==sign(theta1)))
+          {
+            calculateTurningArcAngle(std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
+            }
+            else
+            {
+              calculateTurningArcAngle(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
+            }
+        }
+        ConstructArc(theta,arc);
+        AddToPath(arc,Path);
+        OF[0] = Xcf;
+        OF[1] = Ycf;
+        return true;
 
       }
       //! Reserve entity identifiers.
