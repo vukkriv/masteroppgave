@@ -97,7 +97,7 @@ namespace Plan
       }
 
       //! Construct Dubins Path between two waypoints with given heading
-      bool dubinsPath(const double Xs[3],const double Xf[3], std::vector<double[3]> &Path,bool &EndTurn,double &OF[2])
+      bool dubinsPath(const double Xs[3],const double Xf[3], std::vector<double[3]> &Path,bool &EndTurn,double &OCF[2])
       {
         //! Define turning directions
         bool RightS;
@@ -106,6 +106,7 @@ namespace Plan
         //! Start circle center
         double Xcs;
         double Ycs;
+        double OCS[2];
         //! Finish circle center
         double Xcf;
         double Ycf;
@@ -126,6 +127,8 @@ namespace Plan
           Xcs = Xs[0]-m_Rs*std::cos(Xs[2]+PI/2);
           Ycs = Xs[1]-m_Rs*std::sin(Xs[2]+PI/2);
         }
+        OCS[0] = Xcs;
+        OCS[1] = Ycs;
 
         //! Define end turning circle center (Ofs)
 
@@ -141,6 +144,8 @@ namespace Plan
           Xcf = Xf[0]-m_Rf*std::cos(Xf[2]+PI/2);
           Ycf = Xf[1]-m_Rf*std::sin(Xf[2]+PI/2);
         }
+        OCF[0] = Xcf;
+        OCF[1] = Ycf;
         //! Calculate radius of second end turning circle
         Rsec = std::abs(m_Rf-m_Rs);
 
@@ -188,7 +193,7 @@ namespace Plan
         PN[0] = Xcf+m_Rf*cos(thetaF);
         PN[1] = Ycf+m_Rf*sin(thetaF);
         //! Define turning arc
-        double arc[2];
+        std::vector<double [2]> arc;
         //! Declare angle array
         double theta[m_N];
         //! First arc
@@ -207,7 +212,7 @@ namespace Plan
         }
         else
         {
-          if (Angles::normalizeRadian(theta1-PI)<=theta0 && sign(theat1-PI)==sign(theta0) || (theta0<theta1 && (sign(theta0)==sign(theta1) || theta0==0)))
+          if (Angles::normalizeRadian(theta1-PI)<=theta0 && sign(theta1-PI)==sign(theta0) || (theta0<theta1 && (sign(theta0)==sign(theta1) || theta0==0)))
           {
             calculateTurningArcAngle(std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
           }
@@ -216,7 +221,7 @@ namespace Plan
             calculateTurningArcAngle(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
           }
         }
-        ConstructArc(theta,arc);
+        ConstructArc(theta,theta0,m_Rs,OCS,arc);
         AddToPath(arc,Path);
         //! Second arc
         theta0 = std::atan2(PN[1]-Ycf,PN[0]-Xcf);
@@ -243,10 +248,8 @@ namespace Plan
               calculateTurningArcAngle(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
             }
         }
-        ConstructArc(theta,arc);
+        ConstructArc(theta,theta0,m_Rf,OCF,arc);
         AddToPath(arc,Path);
-        OF[0] = Xcf;
-        OF[1] = Ycf;
         return true;
 
       }
@@ -254,7 +257,7 @@ namespace Plan
       double
       turn(const bool Right,const double alpha,const double beta)
       {
-        if Right
+        if (Right)
         {
           return alpha+beta+PI/2;
         }
