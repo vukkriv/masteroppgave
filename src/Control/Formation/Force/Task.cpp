@@ -128,7 +128,8 @@ namespace Control
 
         std::string centroid_els_entity_label;
 
-        std::string desired_entity_label;
+        std::vector<std::string> desired_heading_entity_labels;
+        std::vector<std::string> desired_linear_entity_labels;
       };
 
       struct Task : public DUNE::Control::PeriodicUAVAutopilot
@@ -376,9 +377,13 @@ namespace Control
           .defaultValue("Formation Centroid")
           .description("Entity label for the centroid EstimatedLocalState");
 
-          param("Desired Entity Label", m_args.desired_entity_label)
-          .defaultValue("Desired")
-          .description("Entity label for the centroid EstimatedLocalState");
+          param("Desired Heading Entity Labels", m_args.desired_heading_entity_labels)
+          .defaultValue("Desired Heading")
+          .description("Entity labels for the DesiredHeading message");
+
+          param("Desired Linear Entity Labels", m_args.desired_linear_entity_labels)
+          .defaultValue("Desired Linear")
+          .description("Entity labels for the DesiredLinearState message");
 
           // Bind incoming IMC messages
           bind<IMC::DesiredLinearState>(this);
@@ -772,13 +777,34 @@ namespace Control
             }
           }
         }
+
+        bool
+        isDesiredLinear(uint8_t msgSourceEntity)
+        {
+          std::string msgEntity = resolveEntity(msgSourceEntity).c_str();
+          for (std::vector<std::string>::iterator it = m_args.desired_linear_entity_labels.begin(); it != m_args.desired_linear_entity_labels.end(); ++it)
+            if (*it == msgEntity)
+              return true;
+          return false;
+        }
+
+        bool
+        isDesiredHeading(uint8_t msgSourceEntity)
+        {
+          std::string msgEntity = resolveEntity(msgSourceEntity).c_str();
+          for (std::vector<std::string>::iterator it = m_args.desired_heading_entity_labels.begin(); it != m_args.desired_heading_entity_labels.end(); ++it)
+            if (*it == msgEntity)
+              return true;
+          return false;
+        }
+
         void
         consume(const IMC::DesiredLinearState* msg)
         {
           //Desired linear state should only come from master only
           //if receiving local message, it should have the correct entity (desired vs reference)
           if (   msg->getSource() == this->getSystemId()
-              && resolveEntity(msg->getSourceEntity()).c_str() != m_args.desired_entity_label)
+              && !isDesiredLinear(msg->getSourceEntity())      )
             return;
 
           //should contain the desired centroid velocity and acceleration
@@ -789,6 +815,16 @@ namespace Control
           m_a_mission_centroid(0) = msg->ax;
           m_a_mission_centroid(1) = msg->ay;
           m_a_mission_centroid(2) = msg->az;
+          static double last_print;
+          double now = Clock::getSinceEpoch();
+          if (!m_args.print_frequency || !last_print
+              || (now - last_print) > 1.0 / m_args.print_frequency)
+          {
+            spew("Got DesiredLinearState from system '%s'",
+                  resolveEntity(msg->getSourceEntity()).c_str());
+            spew("DesiredSurde [%f]",msg->vx);
+            last_print = now;
+          }
         }
 
         void
@@ -797,7 +833,7 @@ namespace Control
           //Desired heading should only come from master only
           //if receiving local message, it should have the correct entity (desired vs reference)
           if (   msg->getSource() == this->getSystemId()
-              && resolveEntity(msg->getSourceEntity()).c_str() != m_args.desired_entity_label)
+              && !isDesiredHeading(msg->getSourceEntity())      )
             return;
 
           static double last_print;
@@ -805,9 +841,9 @@ namespace Control
           if (!m_args.print_frequency || !last_print
               || (now - last_print) > 1.0 / m_args.print_frequency)
           {
-            spew("Got DesiredHeading from system '%s' and entity '%s'.",
-                  resolveSystemId(msg->getSource()),
+            spew("Got DesiredHeading from system '%s'.",
                   resolveEntity(msg->getSourceEntity()).c_str());
+            spew("DesiredHeading [%f]",msg->value);
             last_print = now;
           }
 
