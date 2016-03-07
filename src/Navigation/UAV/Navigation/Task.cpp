@@ -48,6 +48,7 @@ namespace Navigation
         std::string rtk_fix_level_activate;
         std::string rtk_fix_level_deactivate;
         double base_alt;
+        double antenna_height;
 
       };
 
@@ -114,6 +115,13 @@ namespace Navigation
           .units(Units::Meter)
           .visibility(Parameter::VISIBILITY_USER)
           .description("Altitude of the base antenna for RTK. Is used to calculate the altitude of the vehicle. ");
+
+          param("Antenna Height", m_args.antenna_height)
+          .defaultValue("0.0")
+          .minimumValue("0.0")
+          .maximumValue("1.0")
+          .units(Units::Meter)
+          .description("If > 0, apply correction from attitude");
 
           // Default, we use full external state
           m_navsources.mask = (NS_EXTERNAL_FULLSTATE | NS_EXTERNAL_AHRS | NS_EXTERNAL_POSREF);
@@ -268,6 +276,20 @@ namespace Navigation
             m_estate.y = m_rtk.e;
             m_estate.z = m_rtk.d;
 
+            // Apply antenna offset
+            if( m_args.antenna_height > 0 )
+            {
+              float ox, oy, oz;
+              BodyFixedFrame::toInertialFrame(m_estate.phi, m_estate.theta, m_estate.psi,
+                                              0.0, 0.0, -m_args.antenna_height,
+                                              &ox, &oy, &oz);
+
+              m_estate.x -= ox;
+              m_estate.y -= oy;
+              m_estate.z -= oz;
+
+              spew("Added antenna offset (ned): %.3f, %.3f, %.3f", ox, oy, oz);
+            }
             // Calculate altitude
             m_estate.alt = m_args.base_alt - m_rtk.d;
 
