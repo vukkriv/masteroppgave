@@ -233,7 +233,7 @@ namespace Transports
             }
             Matrix p_diff = p.column(1) - p.column(0);
 
-            return Angles::normalizeRadian(-atan2(p_diff(0), p_diff(1)));
+            return Angles::normalizeRadian(-std::atan2(p_diff(0), p_diff(1)));
           }
           else
           {
