@@ -45,31 +45,7 @@ namespace Control
           double lookahead_time;
         };
 
-        class ReferencePosition
-        {
 
-          public:
-            ReferencePosition(IMC::EstimatedState estate):
-              m_ref_lat(estate.lat), m_ref_lon(estate.lon), m_ref_hae(estate.height),
-              m_x(estate.x), m_y(estate.y), m_z(estate.z),
-              lat(0.0), lon(0.0), hae(0.0)
-            { };
-
-            void advance(Matrix velocity, double lookahead_time)
-            {
-
-            }
-
-            double lat;
-            double lon;
-            double hae;
-
-          private:
-            double m_ref_lat;
-            double m_ref_lon;
-            double m_ref_hae;
-            double m_x,m_y,m_z;
-        };
 
         enum PwmChannel {
           CH_X = 1,
