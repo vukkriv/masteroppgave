@@ -47,6 +47,7 @@ namespace Navigation
         float rtk_min_fix_time;
         std::string rtk_fix_level_activate;
         std::string rtk_fix_level_deactivate;
+        double base_alt;
 
       };
 
@@ -105,6 +106,12 @@ namespace Navigation
           param("RTK - Minimum Fix Type to Deactivate", m_args.rtk_fix_level_deactivate)
           .values("Fix,Float")
           .defaultValue("Float");
+
+          param("Base Altitude", m_args.base_alt)
+          .minimumValue("0.0")
+          .defaultValue("1.6")
+          .units(Units::Meter)
+          .description("Altitude of the base antenna for RTK. Is used to calculate the altitude of the vehicle. ");
 
           // Default, we use full external state
           m_navsources.mask = (NS_EXTERNAL_FULLSTATE | NS_EXTERNAL_AHRS | NS_EXTERNAL_POSREF);
@@ -258,6 +265,9 @@ namespace Navigation
             m_estate.x = m_rtk.n;
             m_estate.y = m_rtk.e;
             m_estate.z = m_rtk.d;
+
+            // Calculate altitude
+            m_estate.alt = m_args.base_alt - m_rtk.d;
 
             if (m_rtk.validity & IMC::GpsFixRtk::RFV_VALID_VEL)
             {
