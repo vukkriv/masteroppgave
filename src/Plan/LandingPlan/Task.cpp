@@ -250,6 +250,19 @@ namespace Plan
         return true;
 
       }
+      //! Return turn direction
+      double
+      turn(const bool Right,const double alpha,const double beta)
+      {
+        if Right
+        {
+          return alpha+beta+PI/2;
+        }
+        else
+        {
+          return beta-alpha+(3*PI)/2;
+        }
+      }
       //! Reserve entity identifiers.
       void
       onEntityReservation(void)
