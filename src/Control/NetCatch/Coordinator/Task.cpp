@@ -521,7 +521,7 @@ namespace Control
         }
 
         void
-        consume(const IMC::EstimatedLocalState* estate)
+        consume(const IMC::EstimatedLocalState* el)
         {
           //this one should read only fixed-wing and centroid states
 
@@ -529,17 +529,17 @@ namespace Control
             return;
 
           //local centroid messages
-          if (estate->getSource() == this->getSystemId() &&
-              resolveEntity(estate->getSourceEntity()).c_str() == m_args.centroid_els_entity_label)
-            m_centroid_heading = estate->psi;
+          if (el->getSource() == this->getSystemId() &&
+              resolveEntity(el->getSourceEntity()).c_str() == m_args.centroid_els_entity_label)
+            m_centroid_heading = el->state->psi;
 
 
           if (!m_initializedCoord)
           {
             debug("Initializing coordinator after EstimatedLocalState");
-            m_ref_lat = estate->lat;
-            m_ref_lon = estate->lon;
-            m_ref_hae = estate->height;
+            m_ref_lat = el->state->lat;
+            m_ref_lon = el->state->lon;
+            m_ref_hae = el->state->height;
             m_ref_valid = true;
             initCoordinator();
             initRunwayPath();
@@ -548,10 +548,10 @@ namespace Control
           }
 
           //spew("Got EstimatedState \nfrom '%s' at '%s'",
-          //     resolveEntity(estate->getSourceEntity()).c_str(),
-          //     resolveSystemId(estate->getSource()));
+          //     resolveEntity(el->getSourceEntity()).c_str(),
+          //     resolveSystemId(el->getSource()));
 
-          std::string vh_id = resolveSystemId(estate->getSource());
+          std::string vh_id = resolveSystemId(el->getSource());
           //debug("Received EstimatedLocalState from %s: ",vh_id.c_str());
           int s = getVehicle(vh_id);
           //spew("s=%d",s);
@@ -561,18 +561,18 @@ namespace Control
           Matrix p = Matrix(3, 1, 0); //position in NED
           Matrix v = Matrix(3, 1, 0); //velocity in NED
 
-          p(0) = estate->x;
-          p(1) = estate->y;
-          p(2) = estate->z;
+          p(0) = el->state->x;
+          p(1) = el->state->y;
+          p(2) = el->state->z;
           m_p[s] = p;
 
-          v(0) = estate->vx;
-          v(1) = estate->vy;
-          v(2) = estate->vz;
+          v(0) = el->state->vx;
+          v(1) = el->state->vy;
+          v(2) = el->state->vz;
           m_v[s] = v;
 
           m_initialized[s] = true;
-          m_estate[s] = *estate;
+          m_estate[s] = *el;
 
           calcPathErrors(p, v, s);
           updateMeanValues(s);
