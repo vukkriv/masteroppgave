@@ -149,44 +149,44 @@ namespace Transports
         Matrix omega_i;
         Matrix alpha;
 
-        IMC::EstimatedLocalState state;
+        IMC::EstimatedLocalState els;
 
         void
-        calculateCentroid(std::vector<IMC::EstimatedLocalState> &states,
+        calculateCentroid(std::vector<IMC::EstimatedLocalState> &el_v,
             int noAgents)
         {
           this->m_N = noAgents;
 
-          state.x = 0;
-          state.y = 0;
-          state.z = 0;
+          els.state->x = 0;
+          els.state->y = 0;
+          els.state->z = 0;
           v_n *= 0;
           a_n *= 0;
           for (int i = 0; i < noAgents; i++)
           {
             double factor = (double)1 / double(noAgents);
-            state.x += factor * (states[i].x);
-            state.y += factor * (states[i].y);
-            state.z += factor * (states[i].z);
+            els.state->x += factor * (el_v[i].state->x);
+            els.state->y += factor * (el_v[i].state->y);
+            els.state->z += factor * (el_v[i].state->z);
 
-            v_n(0) += factor * (states[i].vx);
-            v_n(1) += factor * (states[i].vy);
-            v_n(2) += factor * (states[i].vz);
+            v_n(0) += factor * (el_v[i].state->vx);
+            v_n(1) += factor * (el_v[i].state->vy);
+            v_n(2) += factor * (el_v[i].state->vz);
 
-            omega_i(0) = states[i].p;
-            omega_i(1) = states[i].q;
-            omega_i(2) = states[i].r;
+            omega_i(0) = el_v[i].state->p;
+            omega_i(1) = el_v[i].state->q;
+            omega_i(2) = el_v[i].state->r;
 
             alpha = skew(omega_i) * v_n;
             //Acceleration is BODY acceleration differentiated in NED frame from Ardupilot interface
-            a_n(0) += factor * (states[i].ax + alpha(0));
-            a_n(1) += factor * (states[i].ay + alpha(1));
-            a_n(2) += factor * (states[i].az + alpha(2));
+            a_n(0) += factor * (el_v[i].acc->x + alpha(0));
+            a_n(1) += factor * (el_v[i].acc->y + alpha(1));
+            a_n(2) += factor * (el_v[i].acc->z + alpha(2));
           };
 
-          state.vx = v_n(0);
-          state.vy = v_n(1);
-          state.vz = v_n(2);
+          els.state->vx = v_n(0);
+          els.state->vy = v_n(1);
+          els.state->vz = v_n(2);
 
           /*
            let the internal localstate acc be in body
@@ -195,41 +195,41 @@ namespace Transports
            state.az = a_n(2);
            */
 
-          state.phi = 0;
-          state.theta = 0;
-          state.psi = this->centroidHeading(states);
+          els.state->phi = 0;
+          els.state->theta = 0;
+          els.state->psi = this->centroidHeading(el_v);
 
-          state.p = 0;
-          state.q = 0;
-          state.r = 0;  //TODO: find expression for this
-          omega(2) = state.r;
+          els.state->p = 0;
+          els.state->q = 0;
+          els.state->r = 0;  //TODO: find expression for this
+          omega(2) = els.state->r;
 
           v_b = getBodyVelocity();
-          state.u = v_b(0);
-          state.v = v_b(1);
-          state.w = v_b(2);
+          els.state->u = v_b(0);
+          els.state->v = v_b(1);
+          els.state->w = v_b(2);
           a_b = getBodyAcceleration();
-          state.ax = a_b(0);
-          state.ay = a_b(1);
-          state.az = a_b(2);
+          els.acc->x = a_b(0);
+          els.acc->y = a_b(1);
+          els.acc->z = a_b(2);
 
           //all vehicles should have the same reference point
-          state.lat     = states[0].lat;
-          state.lon     = states[0].lon;
-          state.height  = states[0].height;
+          els.state->lat     = el_v[0].state->lat;
+          els.state->lon     = el_v[0].state->lon;
+          els.state->height  = el_v[0].state->height;
         }
       private:
 
         fp32_t
-        centroidHeading(std::vector<IMC::EstimatedLocalState> &states)
+        centroidHeading(std::vector<IMC::EstimatedLocalState> &el_v)
         {
           if (this->m_N > 1)
           {
             Matrix p = Matrix(2, this->m_N, 0);
             for (int i = 0; i < this->m_N; i++)
             {
-              p(0, i) = states[i].x;
-              p(1, i) = states[i].y;
+              p(0, i) = el_v[i].state->x;
+              p(1, i) = el_v[i].state->y;
             }
             Matrix p_diff = p.column(1) - p.column(0);
 
@@ -237,21 +237,21 @@ namespace Transports
           }
           else
           {
-            return states[1].psi;
+            return el_v[1].state->psi;
           }
         }
 
         Matrix
         getBodyVelocity()
         {
-          Matrix Rcn = transpose(Rz(state.psi));
+          Matrix Rcn = transpose(Rz(els.state->psi));
           return Rcn * v_n;
         }
 
         Matrix
         getBodyAcceleration()
         {
-          Matrix Rcn = transpose(Rz(state.psi));
+          Matrix Rcn = transpose(Rz(els.state->psi));
           return Rcn * (a_n - skew(omega) * v_n);
         }
 
@@ -356,7 +356,7 @@ namespace Transports
           if (vh_id != -1)
           {
             states[vh_id] = *msg;
-            spew("Pos x: [%f]", states[vh_id].x);
+            spew("Pos x: [%f]", states[vh_id].state->x);
           }
           else
           {
@@ -377,10 +377,10 @@ namespace Transports
             m_centroid.calculateCentroid(states, m_vehicles.m_N);
             spew(
                 "Dispatching centroid EstimatedLocalState, heading: %f [deg], noAgents=[%d]",
-                Angles::degrees(m_centroid.state.psi), m_centroid.m_N);
+                Angles::degrees(m_centroid.els.state->psi), m_centroid.m_N);
             //set sourceEntity here, make sure NOT to send the centroid message inbetween vehicles
-            m_centroid.state.ots = msg->getTimeStamp();
-            dispatch(m_centroid.state);
+            m_centroid.els.ots = msg->getTimeStamp();
+            dispatch(m_centroid.els);
           }
         }
 
