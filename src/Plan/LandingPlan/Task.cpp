@@ -212,7 +212,7 @@ namespace Plan
         }
         else
         {
-          if (((Angles::normalizeRadian(theta1-PI)<=theta0) && sign(theta1-PI)==sign(theta0)) || (theta0<theta1 && (sign(theta0)==sign(theta1) || theta0==0)))
+          if (((Angles::normalizeRadian(theta1-PI)<=theta0) && sign(Angles::normalizeRadian(theta1-PI))==sign(theta0)) || (theta0<theta1 && (sign(theta0)==sign(theta1) || theta0==0)))
           {
             calculateTurningArcAngle(std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
           }
@@ -239,14 +239,14 @@ namespace Plan
         }
         else
         {
-          if ((Angles::normalizeRadian(theta1-PI)<=theta0 && sign(theta1-PI)==sign(theta0)) || (theta0<theta1 && sign(theta0)==sign(theta1)))
+          if ((Angles::normalizeRadian(theta1-PI)<=theta0 && sign(Angles::normalizeRadian(theta1-PI))==sign(theta0)) || (theta0<theta1 && sign(theta0)==sign(theta1)))
           {
             calculateTurningArcAngle(std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
-            }
-            else
-            {
-              calculateTurningArcAngle(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
-            }
+          }
+          else
+          {
+            calculateTurningArcAngle(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
+          }
         }
         ConstructArc(theta,theta0,m_Rf,OCF,arc);
         AddToPath(arc,Path);
@@ -338,6 +338,88 @@ namespace Plan
             Path[i+1](2,0) = Path[i](2,0);
           }
         }
+      }
+      //! Create a spiral path towards the desired height dHeight
+      void
+      glideSpiral(const Matrix OF,const bool RightF,const double dHeight,bool &correctHeigth, double descentAngle,std::vector<Matrix> &Path)
+      {
+        if(correctHeigth)
+        {
+          return;
+        }
+        double theta0 = std::atan2(Path[Path.size()-1](1,0)-OF(1,0),Path[Path.size()-1](0,0)-OF(0,0));
+        Matrix WP4 = Path.back();
+        Matrix theta = Matrix(1,m_N);
+        if (RightF)
+        {
+          calculateTurningArcAngle(-2*PI,theta);
+        }
+        else
+        {
+          calculateTurningArcAngle(2*PI,theta);
+        }
+        Matrix WPS0 = Path.back();
+        double xnn = OF(0,0) + m_Rf*cos(theta0+theta(0,1));
+        double ynn = OF(1,0) + m_Rf*sin(theta0+theta(0,1));
+        double D = std::sqrt(std::pow(xnn-WPS0(0,0),2)+std::pow(ynn-WPS0(1,0),2));
+        double znn = WPS0(2,0)+D*std::tan(descentAngle);
+        Matrix WPS1 = Matrix(3,1,0.0);
+        WPS1(0,0) = xnn;
+        WPS1(1,0) = ynn;
+        WPS1(2,0) = znn;
+        int n = 3;
+        Path.push_back(WPS0);
+        Path.push_back(WPS1);
+        while(!correctHeigth)
+        {
+          if (std::abs(std::atan2(dHeight-WPS1(2,0),D))<abs(descentAngle))
+          {
+            descentAngle = std::atan2(dHeight-WPS1(2,0),D);
+            correctHeigth = true;
+          }
+          WPS0 = WPS1;
+          xnn = OF(0,0) + m_Rf*cos(theta0+theta(0,n));
+          ynn = OF(1,0) + m_Rf*sin(theta0+theta(0,n));
+          D = std::sqrt(std::pow(xnn-WPS0(0,0),2)+std::pow(ynn-WPS0(1,0),2));
+          znn = WPS0(2,0)+D*std::tan(descentAngle);
+          WPS1(0,0) = xnn;
+          WPS1(1,0) = ynn;
+          WPS1(2,0) = znn;
+          Path.push_back(WPS1);
+          n = n+1;
+          //! Check if n has reached m_N. Then set to 1, such that the 0 value is only used once
+          if (n>m_N)
+          {
+            n = 1;
+          }
+        }
+        double thetaH0 = std::atan2(WPS1(1,0)-OF(1,0),WPS1(0,0)-OF(0,0));
+        double thetaH1 = std::atan2(WP4(1,0)-OF(1,0),WP4(0,0)-OF(0,0));
+        Matrix arc;
+        if (RightF)
+        {
+          if ((Angles::normalizeRadian(thetaH1-PI)>=thetaH0 && sign(Angles::normalizeRadian(thetaH1-PI))==sign(thetaH0)) || (thetaH0>thetaH1 && sign(thetaH1)==sign(thetaH0)))
+          {
+            calculateTurningArcAngle(-std::abs(Angles::normalizeRadian(thetaH1-thetaH0)),theta);
+          }
+          else
+          {
+            calculateTurningArcAngle(-(2*PI-std::abs(Angles::normalizeRadian(thetaH1-thetaH0))),theta);
+          }
+        }
+        else
+        {
+          if ((Angles::normalizeRadian(thetaH1-PI)<=thetaH0 && sign(Angles::normalizeRadian(thetaH1-PI))==sign(thetaH0)) || (thetaH0<thetaH1 && sign(thetaH1)==sign(thetaH0)))
+          {
+            calculateTurningArcAngle(std::abs(Angles::normalizeRadian(thetaH1-thetaH0)),theta);
+          }
+          else
+          {
+            calculateTurningArcAngle((2*PI-std::abs(Angles::normalizeRadian(thetaH1-thetaH0))),theta);
+          }
+        }
+        ConstructArc(theta,thetaH0,m_Rf,OF,arc);
+        AddToPath(arc,Path);
       }
       //! Reserve entity identifiers.
       void
