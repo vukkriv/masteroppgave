@@ -97,7 +97,7 @@ namespace Plan
       }
 
       //! Construct Dubins Path between two waypoints with given heading
-      bool dubinsPath(const double Xs[3],const double Xf[3], std::vector<double[3]> &Path,bool &EndTurn,double &OCF[2])
+      bool dubinsPath(const double Xs[3],const double Xf[3], std::vector<double[2]> &Path,bool &EndTurn,double &OCF[2])
       {
         //! Define turning directions
         bool RightS;
@@ -296,6 +296,19 @@ namespace Plan
           tempP[1] = center[1] + R*std::sin(theta0+theta[i]);
           arc.push_back(tempP);
         }
+
+      }
+      //! Add an arc to the path.
+      void
+      AddToPath(std::vector<double [2]> &arc,std::vector<double [2]> &path)
+      {
+        std::vector<double [2]>::iterator it;
+        for (it=arc.begin();it!=arc.end();it++)
+        {
+          path.push_back(*it);
+        }
+        //! Empty arc
+        arc.erase(arc.begin(),arc.end());
 
       }
       //! Reserve entity identifiers.
