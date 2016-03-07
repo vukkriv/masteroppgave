@@ -53,6 +53,7 @@ namespace Control
         bool use_mean_window_aircraft;
         //! Disable Z flag, this will utilize new rate controller on some targets
         bool disable_Z;
+
         // Max vel approach
         double max_vy_app;
         // Max pos cross-track approach
@@ -79,8 +80,9 @@ namespace Control
         Matrix Ki;
         Matrix Kd;
 
-        double max_integral;
+
         double max_norm_v;
+        double max_integral;
 
         //! Frequency of controller
         double m_freq;
@@ -92,6 +94,14 @@ namespace Control
 
         std::string centroid_els_entity_label;
       };
+
+      static const std::string c_desired_names[] = {"Reference","Desired"};
+      enum DesiredEntites
+      {
+        D_DESIRED = 0,
+        D_REFERENCE = 1
+      };
+      static const int NUM_DESIRED = 2;
 
       struct VirtualRunway
       {
@@ -152,8 +162,10 @@ namespace Control
         //! Current state
         IMC::NetRecoveryState::NetRecoveryLevelEnum m_curr_state;
 
-        //! Desired net heading
-        IMC::DesiredHeading m_heading;
+        //! Reference and desired linear state, the reference message only sent for logging
+        IMC::DesiredLinearState m_desired_linear[NUM_DESIRED];
+        //! Reference and desired heading, the reference message only sent for logging
+        IMC::DesiredHeading m_desired_heading[NUM_DESIRED];
 
         //! Current desired Z
         IMC::DesiredZ m_dz;
@@ -276,11 +288,10 @@ namespace Control
               Tasks::Parameter::SCOPE_MANEUVER).defaultValue("false").description(
               "Enable Path Controller");
 
-          param("Offset cross-track", m_args.m_crosstrack_offset)
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-   	      .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .defaultValue("0.0")
-          .description("Cross-track offset, subtracts the offset from the y-position of the airplane in the path frame");
+          param("Offset cross-track", m_args.m_crosstrack_offset).visibility(
+              Tasks::Parameter::VISIBILITY_USER)
+  //	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .defaultValue("0.0").description("Cross-track offset, subtract the offset from the y-position of the airplane in the path frame");
 
           param("Stop at end-of-runway", m_args.enable_stop_endRunway).visibility(
               Tasks::Parameter::VISIBILITY_USER)
@@ -377,7 +388,7 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Max integral value");
 
-          param("EstimatedLocalState Centroid Label", m_args.centroid_els_entity_label)
+          param("EstimatedLocalState Entity Label", m_args.centroid_els_entity_label)
           .defaultValue("Formation Centroid")
           .description("Entity label for the centroid EstimatedLocalState");
 
@@ -390,8 +401,15 @@ namespace Control
         void
         onEntityReservation(void)
         {
+          debug("Reserve entities");
           for (unsigned i = 0; i < NUM_PARCELS; ++i)
-            m_parcels[i].setSourceEntity(reserveEntity(c_parcel_names[i] + " NetCatch Parcel"));
+            m_parcels[i].setSourceEntity(reserveEntity(c_parcel_names[i] + " Parcel"));         
+          for (unsigned i = 0; i < NUM_DESIRED; ++i)
+          {
+            m_desired_linear[i].setSourceEntity(reserveEntity(c_desired_names[i]));
+            m_desired_heading[i].setSourceEntity(reserveEntity(c_desired_names[i]));
+          }
+          debug("Entities reserved");
         }
 
         //! Update internal state with new parameter values.
@@ -753,8 +771,11 @@ namespace Control
 
           m_runway.alpha  =  atan2(deltaWP(1), deltaWP(0));
           m_runway.theta  = -atan2(deltaWP_NE, deltaWP(2)) + Angles::radians(90);
-          m_heading.value = m_runway.alpha;
-          dispatch(m_heading);
+          m_desired_heading[D_REFERENCE].value = m_runway.alpha;
+          // might add a smoothing filter here
+          m_desired_heading[D_DESIRED].value = m_desired_heading[D_REFERENCE].value;
+          dispatch(m_desired_heading[D_REFERENCE]);
+          dispatch(m_desired_heading[D_DESIRED]);
         }
 
         void
