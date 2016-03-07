@@ -88,8 +88,8 @@ namespace Control
       static const std::string c_desired_names[] = {"Reference","Desired"};
       enum DesiredEntites
       {
-        D_DESIRED = 0,
-        D_REFERENCE = 1
+        D_REFERENCE = 0,
+        D_DESIRED = 1
       };
       static const int NUM_DESIRED = 2;
 
@@ -315,7 +315,6 @@ namespace Control
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Max acceleration of the reference simulator.");
 
-
           param("Reference - Enable surge", m_args.refsim.c_surge.use_controller)
           .defaultValue("True")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -447,14 +446,18 @@ namespace Control
             m_desired_speed = m_args.refsim.max_speed;
             debug("Trying to set a speed above maximum speed. ");
           }
+
+          PathFormationController::consume(dspeed);
+
+          if (!m_args.use_controller)
+            return;
+
           m_refsim.x_ref = Matrix(3,1,0.0);
           m_refsim.setRefSpeed(m_desired_speed);
           m_desired_linear[D_REFERENCE].vx = m_refsim.x_ref(R_SURGE);
           dispatch(m_desired_linear[D_REFERENCE]);
 
           debug("New surge reference: [%f] m/s",m_refsim.x_ref(R_SURGE));
-
-          PathFormationController::consume(dspeed);
         }
         //! Update internal state with new parameter values.
         void
@@ -501,11 +504,13 @@ namespace Control
           debug("Reserve entities");
           PathFormationController::onEntityReservation();
           for (unsigned i = 0; i < NUM_PARCELS; ++i)
-            m_parcels[i].setSourceEntity(reserveEntity(c_parcel_names[i] + " Parcel"));
+            m_parcels[i].setSourceEntity(reserveEntity(c_parcel_names[i] + " Parcel " +  this->getEntityLabel()));
           for (unsigned i = 0; i < NUM_DESIRED; ++i)
           {
-            m_desired_linear[i].setSourceEntity(reserveEntity(c_desired_names[i]));
-            m_desired_heading[i].setSourceEntity(reserveEntity(c_desired_names[i]));
+            m_desired_linear[i].setSourceEntity(reserveEntity(c_desired_names[i] + " Linear " + this->getEntityLabel()));
+            debug("Entity label '%s' for DesiredLinearState reserved",resolveEntity(m_desired_linear[i].getSourceEntity()).c_str());
+            m_desired_heading[i].setSourceEntity(reserveEntity(c_desired_names[i] + " Heading " + this->getEntityLabel()));
+            debug("Entity label '%s' for DesiredHeading reserved",resolveEntity(m_desired_heading[i].getSourceEntity()).c_str());
           }
           debug("Entities reserved");
         }
@@ -698,7 +703,7 @@ namespace Control
           dispatch(m_desired_linear[D_DESIRED]);
           //Desired heading
           m_desired_heading[D_DESIRED].value = m_refsim.getDesHeading();
-          dispatch(m_desired_heading);
+          dispatch(m_desired_heading[D_DESIRED]);
           //
           m_timestamp_prev_step = Clock::get();
 
