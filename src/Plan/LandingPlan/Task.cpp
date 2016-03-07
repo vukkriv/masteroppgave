@@ -63,7 +63,7 @@ namespace Plan
       //! Start pose
       std::vector<double [4]> m_Xs;
       //! Finish pose
-      std:: vector<double [4]> m_Xf;
+      std::vector<double [4]> m_Xf;
       //! Number of points in arc
       int m_N;
 
@@ -97,7 +97,7 @@ namespace Plan
       }
 
       //! Construct Dubins Path between two waypoints with given heading
-      bool dubinsPath(const double Xs[3],const double Xf[3], std::vector<double[2]> &Path,bool &EndTurn,double &OCF[2])
+      bool dubinsPath(const double Xs[3],const double Xf[3], std::vector<Matrix> Path,bool &EndTurn,double OCF[2])
       {
         //! Define turning directions
         bool RightS;
@@ -193,7 +193,7 @@ namespace Plan
         PN[0] = Xcf+m_Rf*cos(thetaF);
         PN[1] = Ycf+m_Rf*sin(thetaF);
         //! Define turning arc
-        std::vector<double [2]> arc;
+        std::vector<Matrix> arc;
         //! Declare angle array
         double theta[m_N];
         //! First arc
@@ -221,8 +221,8 @@ namespace Plan
             calculateTurningArcAngle(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
           }
         }
-        ConstructArc(theta,theta0,m_Rs,OCS,arc);
-        AddToPath(arc,Path);
+        //ConstructArc(theta,theta0,m_Rs,OCS,arc);
+        //AddToPath(arc,Path);
         //! Second arc
         theta0 = std::atan2(PN[1]-Ycf,PN[0]-Xcf);
         theta1 = std::atan2(Xf[1]-Ycf,Xf[0]-Xcf);
@@ -248,8 +248,8 @@ namespace Plan
               calculateTurningArcAngle(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
             }
         }
-        ConstructArc(theta,theta0,m_Rf,OCF,arc);
-        AddToPath(arc,Path);
+        //ConstructArc(theta,theta0,m_Rf,OCF,arc);
+        //AddToPath(arc,Path);
         return true;
 
       }
@@ -268,7 +268,7 @@ namespace Plan
       }
       //! Return N angle from 0 theta
       void
-      calculateTurningArcAngle(const double theta_limit,double &theta[m_N])
+      calculateTurningArcAngle(const double theta_limit,double theta[])
       {
         double step = theta_limit/(m_N-1);
         for (int i=0;i<m_N;i++)
@@ -287,22 +287,23 @@ namespace Plan
       }
       //! Constructs an arc from theta[0] to theta[m_N] with R radius
       void
-      ConstructArc(const double theta[m_N],const double theta0,const double R,const double center[2],std::vector<double [2]> &arc)
+      ConstructArc(const double theta[],const double theta0,const double R,const double center[2],std::vector<Matrix> arc)
       {
-        double tempP[2];
+        Matrix tempP = Matrix(2,1,0.0);
         for (int i=0;i<m_N;i++)
         {
-          tempP[0] = center[0] + R*std::cos(theta0+theta[i]);
-          tempP[1] = center[1] + R*std::sin(theta0+theta[i]);
+
+          tempP(0,0) = center[0] + R*std::cos(theta0+theta[i]);
+          tempP(1,0) = center[1] + R*std::sin(theta0+theta[i]);
           arc.push_back(tempP);
         }
 
       }
       //! Add an arc to the path.
       void
-      AddToPath(std::vector<double [2]> &arc,std::vector<double [2]> &path)
+      AddToPath(std::vector<Matrix> arc,std::vector<Matrix> &path)
       {
-        std::vector<double [2]>::iterator it;
+        std::vector<Matrix>::iterator it;
         for (it=arc.begin();it!=arc.end();it++)
         {
           path.push_back(*it);
