@@ -61,11 +61,12 @@ namespace Control
         Matrix Ki;
         Matrix Kd;
 
-        double max_integral;
         double max_norm_F;
+        double max_integral;
 
         //! Frequency of controller
         double m_freq;
+        std::string centroid_els_entity_label;
       };
 
       static const std::string c_parcel_names[] = { "PID-X",   "PID-Y",   "PID-Z",
@@ -79,7 +80,6 @@ namespace Control
         PC_ERROR_Y = 4,
         PC_ERROR_Z = 5
       };
-	  std::string centroid_els_entity_label;
 
       static const int NUM_PARCELS = 6;
 
@@ -101,11 +101,9 @@ namespace Control
         Matrix Ki_path;
         Matrix Kd_path;
 
-        //! Last messages received
-        IMC::DesiredVelocity m_v_des;
-        IMC::DesiredHeading m_desired_heading;
-        IMC::EstimatedLocalState m_est_l_state;
-        IMC::Acceleration m_a_est;
+        //! Last EstimatedLocalState received
+        IMC::DesiredLinearState m_ls_des;
+        IMC::EstimatedLocalState m_local;
 
         IMC::ControlParcel m_parcels[NUM_PARCELS];
 
@@ -163,15 +161,15 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Velocity Controller tuning parameter Kd");
 
-          param("Max Integral", m_args.max_integral)
-          .defaultValue("1.0")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Max integral value");
-
           param("Maximum Normalized Force", m_args.max_norm_F)
           .defaultValue("5.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Maximum Normalized Force of the Vehicle");
+
+          param("Max Integral", m_args.max_integral)
+          .defaultValue("20")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Max integral value");
 
           param("Disable Z flag", m_args.disable_Z)
           .defaultValue("false")
@@ -273,7 +271,7 @@ namespace Control
           if (msg->getSource() != this->getSystemId() ||
               resolveEntity(msg->getSourceEntity()).c_str() == m_args.centroid_els_entity_label)
             return;
-          m_est_l_state = *msg;
+          m_local = *msg;
         }
 
         //! Control velocity in BODY frame, dispatch desired force in NED
@@ -351,14 +349,14 @@ namespace Control
           m_time_end = Clock::getMsec();
 
           Matrix v_est = Matrix(3,1,0);
-          v_est(0) = m_est_l_state.u;
-          v_est(1) = m_est_l_state.v;
-          v_est(2) = m_est_l_state.w;
+          v_est(0) = m_local.state->u;
+          v_est(1) = m_local.state->v;
+          v_est(2) = m_local.state->w;
 
           Matrix a_est = Matrix(3,1,0);
-          a_est(0) = m_est_l_state.ax;
-          a_est(1) = m_est_l_state.ay;
-          a_est(2) = m_est_l_state.az;
+          a_est(0) = m_local.acc->x;
+          a_est(1) = m_local.acc->y;
+          a_est(2) = m_local.acc->z;
 
           Matrix v_des = Matrix(3,1,0);
           v_des(0) = m_ls_des.vx;
@@ -380,7 +378,7 @@ namespace Control
         Matrix
         RNedCopter() const
         {
-          return Rzyx(m_est_l_state.phi,m_est_l_state.theta,m_est_l_state.psi);
+          return Rzyx(m_local.state->phi,m_local.state->theta,m_local.state->psi);
         }
         //! @return  Rotation matrix.
         Matrix Rzyx(double phi, double theta, double psi) const
