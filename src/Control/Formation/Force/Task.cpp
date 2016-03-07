@@ -192,7 +192,7 @@ namespace Control
         IMC::DesiredControl m_desired_force;
 
         //! Last received ELS from this agent
-        IMC::EstimatedLocalState m_est_l_state;
+        IMC::EstimatedLocalState m_local_state;
 
         //! Last received desired heading from master agent
         IMC::DesiredHeading m_desired_heading;
@@ -661,18 +661,18 @@ namespace Control
             if (resolveEntity(msg->getSourceEntity()).c_str() == m_args.centroid_els_entity_label)
             {
               //centroid message, extract heading and return
-              m_curr_heading = msg->psi;
+              m_curr_heading = msg->state->psi;
               return;
             }
-            m_est_l_state = *msg;
+            m_local_state = *msg;
             // Update BODY velocity (only really needed from local vehicle)
-            m_v(0) = msg->u;
-            m_v(1) = msg->v;
-            m_v(2) = msg->w;
+            m_v(0) = msg->state->u;
+            m_v(1) = msg->state->v;
+            m_v(2) = msg->state->w;
             // Update BODY acceleration (only really needed from local vehicle)
-            m_a(0) = msg->ax;
-            m_a(1) = msg->ay;
-            m_a(2) = msg->az;
+            m_a(0) = msg->acc->x;
+            m_a(1) = msg->acc->y;
+            m_a(2) = msg->acc->z;
           }
 
           for (unsigned int uav = 0; uav < m_N; uav++)
@@ -723,9 +723,9 @@ namespace Control
               }
 
               // Update position
-              m_x(0, uav) = msg->x;
-              m_x(1, uav) = msg->y;
-              m_x(2, uav) = msg->z;
+              m_x(0, uav) = msg->state->x;
+              m_x(1, uav) = msg->state->y;
+              m_x(2, uav) = msg->state->z;
 
               m_last_pos_update(uav) = now;
 
@@ -1196,7 +1196,7 @@ namespace Control
         Matrix
         RNedAgent() const
         {
-          return Rzyx(m_est_l_state.phi,m_est_l_state.theta,m_est_l_state.psi);
+          return Rzyx(m_local_state.state->phi,m_local_state.state->theta,m_local_state.state->psi);
         }
 
         //! @return  Rotation yaw matrix.
