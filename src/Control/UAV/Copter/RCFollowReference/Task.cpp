@@ -43,6 +43,7 @@ namespace Control
           double max_speed_xy;
           double max_speed_z;
           double lookahead_time;
+          bool auto_enable;
         };
 
 
@@ -74,6 +75,15 @@ namespace Control
 
           //! PWM inputs
           unsigned int m_pwm_inputs[8];
+
+          //! Last received plan control state.
+          IMC::PlanControlState m_pcs;
+
+          //! Last received autopilot mode
+          IMC::AutopilotMode m_apmode;
+
+          //! Last sent reference
+          IMC::Reference m_ref;
           //!
           //! Constructor.
           //! @param[in] name task name.
@@ -97,11 +107,16 @@ namespace Control
             .defaultValue("8")
             .units(Units::Second);
 
+            param("Automatic Enable", m_args.auto_enable)
+            .defaultValue("false")
+            .description("Automatically enable if entering guided and still in service mode. ");
+
 
             bind<IMC::PWM>(this);
             bind<IMC::PlanControlState>(this);
             bind<IMC::RemoteActions>(this);
             bind<IMC::EstimatedState>(this);
+            bind<IMC::AutopilotMode>(this);
 
             m_time_last_dispatch = Clock::get();
 
@@ -136,10 +151,36 @@ namespace Control
           }
 
 
+          void
+          consume(const IMC::AutopilotMode* apmode)
+          {
+
+            if (apmode->mode == "GUIDED" && m_apmode.mode == "LOITER")
+            {
+              // If we are also in service, check if we should start.
+              if (m_pcs.state == IMC::PlanControlState::PCS_READY
+                  && m_args.auto_enable)
+              {
+                inf("Starting Follow Reference based on mode switch. ");
+                generatePlan();
+              }
+            }
+
+            // Check if disable
+            if (apmode->mode != "GUIDED" && m_fr_is_running)
+            {
+              m_ref.flags |= IMC::Reference::FLAG_MANDONE;
+              dispatch(m_ref);
+            }
+
+            m_apmode = *apmode;
+          }
 
           void
           consume(const IMC::PlanControlState* pcs)
           {
+            m_pcs = *pcs;
+
             if (pcs->plan_id == "RCFollowReference" && pcs->state == IMC::PlanControlState::PCS_EXECUTING)
               m_fr_is_running = true;
             else
@@ -276,6 +317,7 @@ namespace Control
             ref.radius = 0.0;
 
 
+            m_ref = ref;
 
 
             dispatch(ref);
