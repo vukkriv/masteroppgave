@@ -98,8 +98,8 @@ namespace Control
       static const std::string c_desired_names[] = {"Reference","Desired"};
       enum DesiredEntites
       {
-        D_DESIRED = 0,
-        D_REFERENCE = 1
+        D_REFERENCE = 0,
+        D_DESIRED = 1
       };
       static const int NUM_DESIRED = 2;
 
@@ -406,8 +406,10 @@ namespace Control
             m_parcels[i].setSourceEntity(reserveEntity(c_parcel_names[i] + " Parcel"));         
           for (unsigned i = 0; i < NUM_DESIRED; ++i)
           {
-            m_desired_linear[i].setSourceEntity(reserveEntity(c_desired_names[i]));
-            m_desired_heading[i].setSourceEntity(reserveEntity(c_desired_names[i]));
+            m_desired_linear[i].setSourceEntity(reserveEntity(c_desired_names[i] + " Linear " + this->getEntityLabel()));
+            debug("Entity label '%s' for DesiredLinearState reserved",resolveEntity(m_desired_linear[i].getSourceEntity()).c_str());
+            m_desired_heading[i].setSourceEntity(reserveEntity(c_desired_names[i] + " Heading " + this->getEntityLabel()));
+            debug("Entity label '%s' for DesiredHeading reserved",resolveEntity(m_desired_heading[i].getSourceEntity()).c_str());
           }
           debug("Entities reserved");
         }
