@@ -49,7 +49,9 @@ namespace Test
     struct Task: public Tasks::Periodic
     {
       Arguments m_args;
-      IMC::EstimatedLocalState m_state;
+      IMC::EstimatedState m_state;
+      IMC::Acceleration m_acc;
+      IMC::EstimatedLocalState m_local;
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
@@ -91,9 +93,6 @@ namespace Test
         m_state.u      = m_args.vel_body(0);
         m_state.v      = m_args.vel_body(1);
         m_state.w      = m_args.vel_body(2);
-        m_state.ax     = m_args.acc_body(0);
-        m_state.ay     = m_args.acc_body(1);
-        m_state.az     = m_args.acc_body(2);
         m_state.phi    = m_args.euler_orient(0);
         m_state.theta  = m_args.euler_orient(1);
         m_state.psi    = m_args.euler_orient(2);    
@@ -102,7 +101,10 @@ namespace Test
         m_state.r      = m_args.omega(2);                
         m_state.lat    = m_args.LLH(0);
         m_state.lon    = m_args.LLH(1);
-        m_state.height = m_args.LLH(2);          
+        m_state.height = m_args.LLH(2);
+        m_acc.x     = m_args.acc_body(0);
+        m_acc.y     = m_args.acc_body(1);
+        m_acc.z     = m_args.acc_body(2);
         inf("Frequency: %f",this->getFrequency());              
       }
 
