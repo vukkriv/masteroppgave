@@ -97,18 +97,22 @@ namespace Control
 
             param("Max Speed - XY", m_args.max_speed_xy)
             .defaultValue("5")
+            .visibility(Parameter::VISIBILITY_USER)
             .units(Units::MeterPerSecond);
 
             param("Max Speed - Z", m_args.max_speed_z)
             .defaultValue("2")
+            .visibility(Parameter::VISIBILITY_USER)
             .units(Units::MeterPerSecond);
 
             param("Lookahead Time", m_args.lookahead_time)
             .defaultValue("8")
+            .visibility(Parameter::VISIBILITY_USER)
             .units(Units::Second);
 
             param("Automatic Enable", m_args.auto_enable)
             .defaultValue("false")
+            .visibility(Parameter::VISIBILITY_USER)
             .description("Automatically enable if entering guided and still in service mode. ");
 
 
@@ -128,7 +132,7 @@ namespace Control
 
 
           double
-          pwmToValueDeadband(double val_min, double val_max, unsigned int rc_min, unsigned int rc_max, double deadbandPercent, unsigned int rc_in)
+          pwmToValueDeadband(double val_min, double val_max, unsigned int rc_min, unsigned int rc_max, int inverse, double deadbandPercent, unsigned int rc_in)
           {
             unsigned int rc_trim = (rc_max + rc_min)/2;
             unsigned int dead_zone = (rc_max - rc_min) * deadbandPercent;
@@ -146,7 +150,12 @@ namespace Control
             if ( rc_in < rc_min )
               rc_in = rc_min;
 
+
             int reverse_mul = 1;
+            if( inverse == 1 )
+              reverse_mul = -1;
+
+
             if(rc_in > rc_trim_high) {
                 return reverse_mul * ((double)val_max * (rc_in - (int)rc_trim_high)) / (rc_max  - rc_trim_high);
             }else if(rc_in < rc_trim_low) {
@@ -240,9 +249,9 @@ namespace Control
             Matrix vel = Matrix(3,1, 0.0);
 
 
-            vel(0) = pwmToValueDeadband(-m_args.max_speed_xy, m_args.max_speed_xy, 900, 2100, 0.1, m_pwm_inputs[CH_X]);
-            vel(1) = pwmToValueDeadband(-m_args.max_speed_xy, m_args.max_speed_xy, 900, 2100, 0.1, m_pwm_inputs[CH_Y]);
-            vel(2) = pwmToValueDeadband( m_args.max_speed_z, -m_args.max_speed_z,  900, 2100, 0.1, m_pwm_inputs[CH_Z]);
+            vel(0) = pwmToValueDeadband(-m_args.max_speed_xy, m_args.max_speed_xy, 900, 2100, 1, 0.1, m_pwm_inputs[CH_X]);
+            vel(1) = pwmToValueDeadband(-m_args.max_speed_xy, m_args.max_speed_xy, 900, 2100, 0, 0.1, m_pwm_inputs[CH_Y]);
+            vel(2) = pwmToValueDeadband( m_args.max_speed_z, -m_args.max_speed_z,  900, 2100, 0, 0.1, m_pwm_inputs[CH_Z]);
 
             // Rotate velocity
             double u,v,w;
