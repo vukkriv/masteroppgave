@@ -127,6 +127,8 @@ namespace Control
         double heading_smoothing_T;
 
         std::string centroid_els_entity_label;
+
+        std::string desired_entity_label;
       };
 
       struct Task : public DUNE::Control::PeriodicUAVAutopilot
@@ -370,8 +372,12 @@ namespace Control
           .units(Units::Second)
           .description("Time constant used in low-pass smoothing of heading input");
 
-          param("EstimatedLocalState Centroid Label", m_args.centroid_els_entity_label)
+          param("EstimatedLocalState Entity Label", m_args.centroid_els_entity_label)
           .defaultValue("Formation Centroid")
+          .description("Entity label for the centroid EstimatedLocalState");
+
+          param("Desired Entity Label", m_args.desired_entity_label)
+          .defaultValue("Desired")
           .description("Entity label for the centroid EstimatedLocalState");
 
           // Bind incoming IMC messages
@@ -770,6 +776,10 @@ namespace Control
         consume(const IMC::DesiredLinearState* msg)
         {
           //Desired linear state should only come from master only
+          //if receiving local message, it should have the correct entity (desired vs reference)
+          if (   msg->getSource() == this->getSystemId()
+              && resolveEntity(msg->getSourceEntity()).c_str() != m_args.desired_entity_label)
+            return;
 
           //should contain the desired centroid velocity and acceleration
           m_v_mission_centroid(0) = msg->vx;
@@ -784,16 +794,11 @@ namespace Control
         void
         consume(const IMC::DesiredHeading* msg)
         {
-          //Desired heading should always come master only
-
-          //check if message from Ardupilot, then discard it
-          /*
-          std::string entity_id = resolveEntity(msg->getSourceEntity());
-          if ( entity_id == "Autopilot" )
-          {
+          //Desired heading should only come from master only
+          //if receiving local message, it should have the correct entity (desired vs reference)
+          if (   msg->getSource() == this->getSystemId()
+              && resolveEntity(msg->getSourceEntity()).c_str() != m_args.desired_entity_label)
             return;
-          }
-          */
 
           static double last_print;
           double now = Clock::getSinceEpoch();
