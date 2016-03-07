@@ -76,7 +76,6 @@ namespace Control
       };
 
       static const std::string c_parcel_names[] = { "PID-SURGE", "PID-HEADING", "ERROR-SURGE", "ERROR-HEADING"};
-
       enum Parcel
       {
         PC_PID_SURGE = 0,
@@ -84,8 +83,15 @@ namespace Control
         PC_ERROR_SURGE = 2,
         PC_ERROR_HEADING = 3
       };
-
       static const int NUM_PARCELS = 4;
+
+      static const std::string c_desired_names[] = {"Reference","Desired"};
+      enum DesiredEntites
+      {
+        D_DESIRED = 0,
+        D_REFERENCE = 1
+      };
+      static const int NUM_DESIRED = 2;
 
       enum RefState
       {
@@ -257,11 +263,10 @@ namespace Control
         //! The current reference
         DesiredReference m_desired;
 
-        //IMC::DesiredVelocity m_desired_velocity;
-        //use this one with a internal entity --> centroid body
-        IMC::DesiredLinearState m_desired_linear;
-        //IMC::DesiredSpeed 	 m_desired_speed;
-        IMC::DesiredHeading m_desired_heading;
+        //! Reference and desired linear state, the reference message only sent for logging
+        IMC::DesiredLinearState m_desired_linear[NUM_DESIRED];
+        //! Reference and desired heading, the reference message only sent for logging
+        IMC::DesiredHeading m_desired_heading[NUM_DESIRED];
         //! Last Estimated Local State received
         IMC::EstimatedLocalState m_elstate;
 
@@ -444,6 +449,9 @@ namespace Control
           }
           m_refsim.x_ref = Matrix(3,1,0.0);
           m_refsim.setRefSpeed(m_desired_speed);
+          m_desired_linear[D_REFERENCE].vx = m_refsim.x_ref(R_SURGE);
+          dispatch(m_desired_linear[D_REFERENCE]);
+
           debug("New surge reference: [%f] m/s",m_refsim.x_ref(R_SURGE));
 
           PathFormationController::consume(dspeed);
@@ -494,6 +502,11 @@ namespace Control
           PathFormationController::onEntityReservation();
           for (unsigned i = 0; i < NUM_PARCELS; ++i)
             m_parcels[i].setSourceEntity(reserveEntity(c_parcel_names[i] + " Parcel"));
+          for (unsigned i = 0; i < NUM_DESIRED; ++i)
+          {
+            m_desired_linear[i].setSourceEntity(reserveEntity(c_desired_names[i]));
+            m_desired_heading[i].setSourceEntity(reserveEntity(c_desired_names[i]));
+          }
           debug("Entities reserved");
         }
 
@@ -634,6 +647,8 @@ namespace Control
         {
           double ref_heading = ts.los_angle;
           m_refsim.setRefHeading(ref_heading);
+          m_desired_heading[D_REFERENCE].value = m_refsim.x_ref(R_HEADING);
+          dispatch(m_desired_heading[D_REFERENCE]);
 
           stepRefSim(state, ts);
 
@@ -672,17 +687,17 @@ namespace Control
           updateReferenceSim(state, ts, now);
 
           //Desired acceleration and velocity in body
-          m_desired_linear.vx = m_refsim.getDesSpeed();
-          m_desired_linear.vy = 0;
-          m_desired_linear.vz = 0;
+          m_desired_linear[D_DESIRED].vx = m_refsim.getDesSpeed();
+          m_desired_linear[D_DESIRED].vy = 0;
+          m_desired_linear[D_DESIRED].vz = 0;
           //Desired acceleration in body
-          m_desired_linear.ax = m_refsim.getDesAcc();
-          m_desired_linear.ay = 0;
-          m_desired_linear.az = 0;
+          m_desired_linear[D_DESIRED].ax = m_refsim.getDesAcc();
+          m_desired_linear[D_DESIRED].ay = 0;
+          m_desired_linear[D_DESIRED].az = 0;
 
-          dispatch(m_desired_linear);
+          dispatch(m_desired_linear[D_DESIRED]);
           //Desired heading
-          m_desired_heading.value = m_refsim.getDesHeading();
+          m_desired_heading[D_DESIRED].value = m_refsim.getDesHeading();
           dispatch(m_desired_heading);
           //
           m_timestamp_prev_step = Clock::get();
