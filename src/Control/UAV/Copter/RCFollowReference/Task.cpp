@@ -140,6 +140,12 @@ namespace Control
             if ((rc_trim_low - rc_min) == 0 || (rc_max - rc_trim_high) == 0)
                 return 0;
 
+            // Sanity checks
+            if ( rc_in > rc_max )
+              rc_in = rc_max;
+            if ( rc_in < rc_min )
+              rc_in = rc_min;
+
             int reverse_mul = 1;
             if(rc_in > rc_trim_high) {
                 return reverse_mul * ((double)val_max * (rc_in - (int)rc_trim_high)) / (rc_max  - rc_trim_high);
@@ -254,13 +260,15 @@ namespace Control
             // Increase pos offset in z to get more "punch"
             pos_offset(2) *= 3;
 
-            // We cannot set a reference to lower alt than 0.
-            if( m_estate.alt + pos_offset(2) < 0 )
+            // We cannot set a reference to lower alt than -1 (to be able to land).
+            if( m_estate.alt - pos_offset(2) < -1 )
             {
-              pos_offset(2) = -m_estate.alt;
-              vel(2) = pos_offset(2)/2;
+              pos_offset(2) = m_estate.alt + 1;
+              vel(2) = pos_offset(2)/m_args.lookahead_time;
+              trace("Limiting velz. ");
             }
 
+            trace("z offset: %.2f, alt: %.2f, resulting alt: %.2f", pos_offset(2), m_estate.alt, m_estate.alt - pos_offset(2));
 
             // Also handle initialization.
             if ((vel.norm_2() > 0.5) || WGS84::distance(m_lat, m_lon, (float)m_hae, m_estate.lat, m_estate.lon, m_estate.height) > 1000)
