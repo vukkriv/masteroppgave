@@ -604,6 +604,9 @@ namespace Control
           Matrix e     = m_refsim.getError();
           Matrix e_dot = m_refsim.getDError();
 
+          //Normalize angle error
+          e(R_HEADING) = Angles::normalizeRadian(e(R_HEADING));
+
           m_integrator_value += ts.delta*e;
           // Constrain
           if (m_integrator_value.norm_2() > m_args.max_integral)
