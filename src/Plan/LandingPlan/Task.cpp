@@ -273,6 +273,15 @@ namespace Plan
           theta[i]=i*theta_limit;
         }
       }
+      //! Return the sign of a number. 0 is considered positive
+      int
+      sign(double x)
+      {
+        if (x<0)
+          return -1;
+        else
+          return 1;
+      }
       //! Reserve entity identifiers.
       void
       onEntityReservation(void)
