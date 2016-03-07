@@ -320,7 +320,8 @@ namespace Plan
         Path[1](2,0) = x0(2,0);
         correctHeigth = false;
         double D;
-        for (int i=0;i<Path.size()-1;i++)
+        int interationLength = Path.size()-1;
+        for (int i=0;i<interationLength;i++)
         {
           D = sqrt(std::pow(Path[i+1](0,0)-Path[i](0,0),2)+std::pow(Path[i+1](1,0)-Path[i](1,0),2));
           if (std::abs(std::atan2(WP(2,3)-Path[i](2,0),D))<abs(descentAngle))
