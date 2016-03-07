@@ -97,7 +97,7 @@ namespace Plan
       }
 
       //! Construct Dubins Path between two waypoints with given heading
-      bool dubinsPath(const double Xs[3],const double Xf[3], std::vector<Matrix> Path,bool &EndTurn,double OCF[2])
+      bool dubinsPath(const double Xs[3],const double Xf[3], std::vector<Matrix> Path,bool &EndTurn,Matrix &OCF)
       {
         //! Define turning directions
         bool RightS;
@@ -106,7 +106,7 @@ namespace Plan
         //! Start circle center
         double Xcs;
         double Ycs;
-        double OCS[2];
+        Matrix OCS = Matrix(2,1,0.0);
         //! Finish circle center
         double Xcf;
         double Ycf;
@@ -127,8 +127,8 @@ namespace Plan
           Xcs = Xs[0]-m_Rs*std::cos(Xs[2]+PI/2);
           Ycs = Xs[1]-m_Rs*std::sin(Xs[2]+PI/2);
         }
-        OCS[0] = Xcs;
-        OCS[1] = Ycs;
+        OCS(0,0) = Xcs;
+        OCS(1,0) = Ycs;
 
         //! Define end turning circle center (Ofs)
 
@@ -144,8 +144,8 @@ namespace Plan
           Xcf = Xf[0]-m_Rf*std::cos(Xf[2]+PI/2);
           Ycf = Xf[1]-m_Rf*std::sin(Xf[2]+PI/2);
         }
-        OCF[0] = Xcf;
-        OCF[1] = Ycf;
+        OCF(0,0) = Xcf;
+        OCF(1,0) = Ycf;
         //! Calculate radius of second end turning circle
         Rsec = std::abs(m_Rf-m_Rs);
 
@@ -287,14 +287,14 @@ namespace Plan
       }
       //! Constructs an arc from theta[0] to theta[m_N] with R radius
       void
-      ConstructArc(const Matrix theta,const double theta0,const double R,const double center[2],std::vector<Matrix> arc)
+      ConstructArc(const Matrix theta,const double theta0,const double R,const Matrix center,std::vector<Matrix> arc)
       {
         Matrix tempP = Matrix(2,1,0.0);
         for (int i=0;i<m_N;i++)
         {
 
-          tempP(0,0) = center[0] + R*std::cos(theta0+theta(0,i));
-          tempP(1,0) = center[1] + R*std::sin(theta0+theta(0,i));
+          tempP(0,0) = center(0,0) + R*std::cos(theta0+theta(0,i));
+          tempP(1,0) = center(1,0) + R*std::sin(theta0+theta(0,i));
           arc.push_back(tempP);
         }
 
@@ -395,7 +395,7 @@ namespace Plan
         }
         double thetaH0 = std::atan2(WPS1(1,0)-OF(1,0),WPS1(0,0)-OF(0,0));
         double thetaH1 = std::atan2(WP4(1,0)-OF(1,0),WP4(0,0)-OF(0,0));
-        Matrix arc;
+        std::vector<Matrix> arc;
         if (RightF)
         {
           if ((Angles::normalizeRadian(thetaH1-PI)>=thetaH0 && sign(Angles::normalizeRadian(thetaH1-PI))==sign(thetaH0)) || (thetaH0>thetaH1 && sign(thetaH1)==sign(thetaH0)))
