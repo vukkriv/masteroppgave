@@ -55,7 +55,9 @@ namespace Transports
       fp32_t m_ref_hae;
       bool m_ref_valid;
 
-      IMC::EstimatedLocalState m_state;    
+      IMC::EstimatedLocalState m_elstate;
+      IMC::EstimatedState m_estate;
+      IMC::Acceleration m_acc;
 
 
       //! Constructor.
@@ -84,9 +86,9 @@ namespace Transports
         .visibility(Tasks::Parameter::VISIBILITY_USER)
         .description("Static reference LLH is set from config file");
 
-          // Bind to incoming IMC messages
-          bind<IMC::EstimatedState>(this);
-          bind<IMC::Acceleration>(this);
+        // Bind to incoming IMC messages
+        bind<IMC::EstimatedState>(this);
+        bind<IMC::Acceleration>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -149,83 +151,72 @@ namespace Transports
       consume(const IMC::EstimatedState* msg)
       {
         //Message should be from this vehicle
-       if ( msg->getSource() != getSystemId() )
+        if ( msg->getSource() != getSystemId() )
         return;
 
-       if (!m_ref_valid && m_args.use_static_ref)
-       {
+        if (!m_ref_valid && m_args.use_static_ref)
+        {
          war("Ignored ESTATE; valid reference LLH not set!");
          return;
-       }
+        }
 
-       spew("Got Estimated State from system '%s' and entity '%s'.",
-       resolveSystemId(msg->getSource()),
-       resolveEntity(msg->getSourceEntity()).c_str());
-       if (m_args.use_static_ref)
-       {
-         m_state.lat    = m_ref_lat;
-         m_state.lon    = m_ref_lon;
-         m_state.height = m_ref_hae;
+        spew("Got Estimated State from system '%s' and entity '%s'.",
+        resolveSystemId(msg->getSource()),
+        resolveEntity(msg->getSourceEntity()).c_str());
+        if (m_args.use_static_ref)
+        {
+         m_estate.lat    = m_ref_lat;
+         m_estate.lon    = m_ref_lon;
+         m_estate.height = m_ref_hae;
          WGS84::displacement(m_ref_lat, m_ref_lon, m_ref_hae,
                              msg->lat, msg->lon, msg->height,
-                             &m_state.x, &m_state.y, &m_state.z);
+                             &m_estate.x, &m_estate.y, &m_estate.z);
          // Add displacement from agent reference
-         m_state.x += msg->x;
-         m_state.y += msg->y;
-         m_state.z += msg->z;
+         m_estate.x += msg->x;
+         m_estate.y += msg->y;
+         m_estate.z += msg->z;
+        }
+        else
+        {
+         m_estate.lat    = msg->lat;
+         m_estate.lon    = msg->lon;
+         m_estate.height = msg->height;
+         m_estate.x = msg->x;
+         m_estate.y = msg->y;
+         m_estate.z = msg->z;
+        }
 
-         m_state.ref    = IMC::EstimatedLocalState::REF_FIXED;
-       }
-       else
-       {
-         m_state.lat    = msg->lat;
-         m_state.lon    = msg->lon;
-         m_state.height = msg->height;
-         m_state.x = msg->x;
-         m_state.y = msg->y;
-         m_state.z = msg->z;
-         m_state.ref = IMC::EstimatedLocalState::REF_MOVING;
-       }
-        m_state.u = msg->u;
-        m_state.v = msg->v;
-        m_state.w = msg->w;
+        m_estate.vx = msg->vx;
+        m_estate.vy = msg->vy;
+        m_estate.vz = msg->vz;
 
-        m_state.phi   = msg->phi;
-        m_state.theta = msg->theta;
-        m_state.psi   = msg->psi;
+        m_estate.u = msg->u;
+        m_estate.v = msg->v;
+        m_estate.w = msg->w;
 
-        m_state.p = msg->p;
-        m_state.q = msg->q;
-        m_state.r = msg->r;
+        m_estate.phi   = msg->phi;
+        m_estate.theta = msg->theta;
+        m_estate.psi   = msg->psi;
+
+        m_estate.p = msg->p;
+        m_estate.q = msg->q;
+        m_estate.r = msg->r;
 
         // Set time stamp
-        m_state.ots = msg->getTimeStamp();
+        m_elstate.ots = msg->getTimeStamp();
+        m_elstate.state.set(m_estate);
+        m_elstate.acc.set(m_acc);
 
-        // Set velocity
-        m_state.vx = msg->vx;
-        m_state.vy = msg->vy;
-        m_state.vz = msg->vz;
-
-        //the following are not neccesary anymore?
-        m_state.source = IMC::EstimatedLocalState::SRC_GPS;
-
-
-        //Send the current timestamp
-        m_state.ots = msg->getTimeStamp();
-        // Keep source entity and source ID
-        //m_state.setSource(msg->getSource());
-        //m_state.setSourceEntity(msg->getSourceEntity());
-        //dispatch(m_state, DF_KEEP_SRC_EID);
-        dispatch(m_state);
+        dispatch(m_elstate);
         spew("Sent Estimated Local State");
       }
 
       void
       consume(const IMC::Acceleration* msg)
       {
-        m_state.ax = msg->x;
-        m_state.ay = msg->y;
-        m_state.az = msg->z;
+        m_acc.x = msg->x;
+        m_acc.y = msg->y;
+        m_acc.z = msg->z;
       }
       //! Main loop.
       void
