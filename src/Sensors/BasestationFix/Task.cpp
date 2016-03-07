@@ -38,6 +38,7 @@ namespace Sensors
     {
       bool base_is_fixed;
       std::string elabel_gps;
+      double hae_offset;
     };
     struct Task: public DUNE::Tasks::Periodic
     {
@@ -64,6 +65,12 @@ namespace Sensors
         param("Entity Label - GPS", m_args.elabel_gps)
         .description("Entity label of 'GpsFix' and 'GroundVelocity' messages");
 
+        param("Height Offset", m_args.hae_offset)
+        .minimumValue("-100.0")
+        .defaultValue("0.0")
+        .maximumValue("100.0")
+        .description("Offset in height to apply. ");
+
 
         clearMessages();
 
@@ -87,7 +94,7 @@ namespace Sensors
             //Set the gps pos of the base
             m_rtkfix.base_lat = m_fix.lat;
             m_rtkfix.base_lon = m_fix.lon;
-            m_rtkfix.base_height = m_fix.height;
+            m_rtkfix.base_height = m_fix.height + m_args.hae_offset;
             m_rtkfix.validity = IMC::GpsFixRtk::RFV_VALID_BASE;
             
             //Send base pos to all rovers
