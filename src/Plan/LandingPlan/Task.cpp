@@ -312,6 +312,33 @@ namespace Plan
         arc.erase(arc.begin(),arc.end());
 
       }
+      //! Constructs a glideslope from x0 towards height of loiter point along dubins path
+      void
+      glideSlope(const Matrix x0,const Matrix WP,double descentAngle,bool &correctHeigth,std::vector<Matrix> &Path)
+      {
+        //! The path starts at the same height as x0
+        Path[1](2,0) = x0(2,0);
+        correctHeigth = false;
+        double D;
+        for (int i=0;i<Path.size()-1;i++)
+        {
+          D = sqrt(std::pow(Path[i+1](0,0)-Path[i](0,0),2)+std::pow(Path[i+1](1,0)-Path[i](1,0),2));
+          if (std::abs(std::atan2(WP(2,3)-Path[i](2,0),D))<abs(descentAngle))
+          {
+            correctHeigth = true;
+            descentAngle = std::atan2(WP(2,3)-Path[i](2,0),D);
+            Path[i+1](2,0) = Path[i](2,0)+D*tan(descentAngle);
+          }
+          else if (!correctHeigth)
+          {
+            Path[i+1](2,0) = Path[i](2,0) + D*tan(descentAngle);
+          }
+          else
+          {
+            Path[i+1](2,0) = Path[i](2,0);
+          }
+        }
+      }
       //! Reserve entity identifiers.
       void
       onEntityReservation(void)
