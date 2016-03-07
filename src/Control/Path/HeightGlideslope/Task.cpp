@@ -247,7 +247,7 @@ namespace Control
 
           double h_error = (zref.value - (state.height - state.z))*cos(glideslope_angle); // H_error w.r.t flight-path
 
-          inf("H_error: %f",h_error);
+          spew("H_error: %f",h_error);
 
           //Integrator
           double timestep = m_last_step.getDelta();
@@ -265,23 +265,23 @@ namespace Control
             double h_error_trimmed = trimValue(abs(h_error),0.0,m_args.k_r_up-0.5); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             double h_app = sqrt(m_args.k_r_up*m_args.k_r_up - h_error_trimmed*h_error_trimmed);
             los_angle = atan2(m_args.k_ph_up*h_error + m_args.k_ih_up*m_integrator,h_app); //Calculate LOS-angle glideslope up
-            inf("Glideslope UP! %f",glideslope_angle);
+            spew("Glideslope UP! %f",glideslope_angle);
           }
           else if(glideslope_angle_nofilter < 0){ //Glideslope down
             double h_error_trimmed = trimValue(abs(h_error),0.0,m_args.k_r_down-0.5); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             double h_app = sqrt(m_args.k_r_down*m_args.k_r_down - h_error_trimmed*h_error_trimmed);
             los_angle = atan2(m_args.k_ph_down*h_error + m_args.k_ih_down*m_integrator,h_app); //Calculate LOS-angle glideslope down
-            inf("Glideslope DOWN! %f",glideslope_angle);
+            spew("Glideslope DOWN! %f",glideslope_angle);
           }
           else{//Straight line
             double h_error_trimmed = trimValue(abs(h_error),0.0,m_args.k_r_line-0.5); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             double h_app = sqrt(m_args.k_r_line*m_args.k_r_line - h_error_trimmed*h_error_trimmed);
             los_angle = atan2(m_args.k_ph_line*h_error + m_args.k_ih_line*m_integrator,h_app); //Calculate LOS-angle glideslope down
-            inf("Glideslope LINE ! %f",glideslope_angle);
+            spew("Glideslope LINE ! %f",glideslope_angle);
           }
           //Limit los_angle based on saturation limit for climb-rate.
           los_angle = trimValue(los_angle,-0.15,0.15);
-          inf("Los_angle: %f",los_angle*(180/3.14159265));
+          spew("Los_angle: %f",los_angle*(180/3.14159265));
 
           double gamma_cmd = glideslope_angle + los_angle; //Commanded flight path angle
           double h_dot_desired = Vg*sin(gamma_cmd);		 //Convert commanded flight path angle to demanded vertical-rate.
