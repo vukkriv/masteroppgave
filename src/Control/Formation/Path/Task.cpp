@@ -553,7 +553,7 @@ namespace Control
         }
 
         void
-        initRefSim(const IMC::EstimatedLocalState& state)
+        initRefSim(const IMC::EstimatedLocalState& el)
         {
           debug("Initialize reference simulator");
           // Restart refmodel
@@ -562,14 +562,14 @@ namespace Control
           {
             m_refsim.x_ref    = Matrix(3, 1, 0.0);
             m_refsim.x_ref(0) = m_desired_speed;
-            m_refsim.x_ref(1) = state.psi;
-            m_refsim.x_ref(2) = state.r;
+            m_refsim.x_ref(1) = el.state->psi;
+            m_refsim.x_ref(2) = el.state->r;
 
             //set the desired output to the same as the initial reference to avoid steps
             m_refsim.x_des = Matrix(3, 1, 0.0);
-            m_refsim.x_des(0) = state.u;
-            m_refsim.x_des(1) = state.psi;
-            m_refsim.x_des(2) = state.r;
+            m_refsim.x_des(0) = el.state->u;
+            m_refsim.x_des(1) = el.state->psi;
+            m_refsim.x_des(2) = el.state->r;
           }
           debug("Set H1 and H2 matrices");
           //H1 access [surge heading]' from m_refsim.x_#
