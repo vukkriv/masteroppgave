@@ -234,6 +234,16 @@ namespace Control
             // Calculate position offset
             Matrix pos_offset = vel * m_args.lookahead_time;
 
+            // Increase pos offset in z to get more "punch"
+            pos_offset(2) *= 3;
+
+            // We cannot set a reference to lower alt than 0.
+            if( m_estate.alt + pos_offset(2) < 0 )
+            {
+              pos_offset(2) = -m_estate.alt;
+              vel(2) = pos_offset(2)/2;
+            }
+
 
             // Also handle initialization.
             if ((vel.norm_2() > 0.5) || WGS84::distance(m_lat, m_lon, (float)m_hae, m_estate.lat, m_estate.lon, m_estate.height) > 1000)
