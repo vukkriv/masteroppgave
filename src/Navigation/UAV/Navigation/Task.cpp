@@ -101,6 +101,7 @@ namespace Navigation
 
           param("RTK - Minimum Fix Level to Activate", m_args.rtk_fix_level_activate)
           .values("Fix,Float")
+          .visibility(Parameter::VISIBILITY_USER)
           .defaultValue("Fix");
 
           param("RTK - Minimum Fix Type to Deactivate", m_args.rtk_fix_level_deactivate)
@@ -111,6 +112,7 @@ namespace Navigation
           .minimumValue("0.0")
           .defaultValue("1.6")
           .units(Units::Meter)
+          .visibility(Parameter::VISIBILITY_USER)
           .description("Altitude of the base antenna for RTK. Is used to calculate the altitude of the vehicle. ");
 
           // Default, we use full external state
