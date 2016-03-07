@@ -195,7 +195,7 @@ namespace Plan
         //! Define turning arc
         std::vector<Matrix> arc;
         //! Declare angle array
-        double theta[m_N];
+        Matrix theta =Matrix(1,m_N,0.0);
         //! First arc
         double theta0 = std::atan2(Xs[1]-Ycs,Xs[0]-Xcs);
         double theta1 = std::atan2(Pchi[1]-Ycs,Pchi[0]-Xcs);
@@ -212,7 +212,7 @@ namespace Plan
         }
         else
         {
-          if (Angles::normalizeRadian(theta1-PI)<=theta0 && sign(theta1-PI)==sign(theta0) || (theta0<theta1 && (sign(theta0)==sign(theta1) || theta0==0)))
+          if (((Angles::normalizeRadian(theta1-PI)<=theta0) && sign(theta1-PI)==sign(theta0)) || (theta0<theta1 && (sign(theta0)==sign(theta1) || theta0==0)))
           {
             calculateTurningArcAngle(std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
           }
@@ -221,8 +221,8 @@ namespace Plan
             calculateTurningArcAngle(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
           }
         }
-        //ConstructArc(theta,theta0,m_Rs,OCS,arc);
-        //AddToPath(arc,Path);
+        ConstructArc(theta,theta0,m_Rs,OCS,arc);
+        AddToPath(arc,Path);
         //! Second arc
         theta0 = std::atan2(PN[1]-Ycf,PN[0]-Xcf);
         theta1 = std::atan2(Xf[1]-Ycf,Xf[0]-Xcf);
@@ -248,8 +248,8 @@ namespace Plan
               calculateTurningArcAngle(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
             }
         }
-        //ConstructArc(theta,theta0,m_Rf,OCF,arc);
-        //AddToPath(arc,Path);
+        ConstructArc(theta,theta0,m_Rf,OCF,arc);
+        AddToPath(arc,Path);
         return true;
 
       }
@@ -268,12 +268,12 @@ namespace Plan
       }
       //! Return N angle from 0 theta
       void
-      calculateTurningArcAngle(const double theta_limit,double theta[])
+      calculateTurningArcAngle(const double theta_limit,Matrix &theta)
       {
         double step = theta_limit/(m_N-1);
         for (int i=0;i<m_N;i++)
         {
-          theta[i]=i*theta_limit;
+          theta(0,i)=i*step;
         }
       }
       //! Return the sign of a number. 0 is considered positive
@@ -287,14 +287,14 @@ namespace Plan
       }
       //! Constructs an arc from theta[0] to theta[m_N] with R radius
       void
-      ConstructArc(const double theta[],const double theta0,const double R,const double center[2],std::vector<Matrix> arc)
+      ConstructArc(const Matrix theta,const double theta0,const double R,const double center[2],std::vector<Matrix> arc)
       {
         Matrix tempP = Matrix(2,1,0.0);
         for (int i=0;i<m_N;i++)
         {
 
-          tempP(0,0) = center[0] + R*std::cos(theta0+theta[i]);
-          tempP(1,0) = center[1] + R*std::sin(theta0+theta[i]);
+          tempP(0,0) = center[0] + R*std::cos(theta0+theta(0,i));
+          tempP(1,0) = center[1] + R*std::sin(theta0+theta(0,i));
           arc.push_back(tempP);
         }
 
