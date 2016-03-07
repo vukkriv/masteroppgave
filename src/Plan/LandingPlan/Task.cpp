@@ -87,7 +87,7 @@ namespace Plan
       void
       consume(const IMC::EstimatedState *msg)
       {
-
+        m_estate = *msg;
       }
       //! Receive nett pose and landing spesifications
       void
