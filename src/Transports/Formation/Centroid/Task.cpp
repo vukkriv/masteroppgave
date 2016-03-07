@@ -288,7 +288,6 @@ namespace Transports
         {
           param("Formation Centroid", m_args.use_task)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .defaultValue("false")
           .description("Enable Formation Centroid EstimatedLocalState.");
 
