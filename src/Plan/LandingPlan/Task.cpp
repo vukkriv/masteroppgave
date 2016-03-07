@@ -263,6 +263,16 @@ namespace Plan
           return beta-alpha+(3*PI)/2;
         }
       }
+      //! Return N angle from 0 theta
+      void
+      calculateTurningArcAngle(const double theta_limit,double &theta[m_N])
+      {
+        double step = theta_limit/(m_N-1);
+        for (int i=0;i<m_N;i++)
+        {
+          theta[i]=i*theta_limit;
+        }
+      }
       //! Reserve entity identifiers.
       void
       onEntityReservation(void)
