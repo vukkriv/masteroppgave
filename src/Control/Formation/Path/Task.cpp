@@ -297,107 +297,105 @@ namespace Control
           .defaultValue("false")
           .description("Enable Formation Path Controller.");
 
-          param("Reference - Enable",m_args.enable_refsim)
+          param("RefSim--Enable",m_args.enable_refsim)
           .defaultValue("True")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Enable reference simulator output");
 
-          param("Reference - Max Speed", m_args.refsim.max_speed)
+          param("RefSim--Max Speed", m_args.refsim.max_speed)
           .defaultValue("1.5")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Max speed of the reference simulator.");
 
-          param("Reference - Max Acceleration", m_args.refsim.max_acc)
+          param("RefSim--Max Acceleration", m_args.refsim.max_acc)
           .defaultValue("1.5")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          //.scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Max acceleration of the reference simulator.");
 
-          param("Reference - Enable surge", m_args.refsim.c_surge.use_controller)
+          param("RefSim--Enable surge", m_args.refsim.c_surge.use_controller)
           .defaultValue("True")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Enable surge reference simulator output.");
 
-          param("Reference - Enable heading", m_args.refsim.c_heading.use_controller)
+          param("RefSim--Enable heading", m_args.refsim.c_heading.use_controller)
           .defaultValue("True")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Enable heading reference simulator output.");
 
-          param("Reference - Max Integral", m_args.max_integral)
+          param("RefSim--Max Integral", m_args.max_integral)
           .defaultValue("20")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Max integral value");
 
-          param("Reference - Heading T", m_args.refsim.heading_T)
+          param("RefSim--Heading T", m_args.refsim.heading_T)
           .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Reference simulator heading model time constant.");
 
-          param("Reference - Heading K", m_args.refsim.heading_K)
+          param("RefSim--Heading K", m_args.refsim.heading_K)
           .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Reference simulator heading model rudder gain.");
 
-          param("Reference - Surge m", m_args.refsim.surge_m)
+          param("RefSim--Surge m", m_args.refsim.surge_m)
           .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Reference simulator surge model mass.");
 
-          param("Reference - Surge d", m_args.refsim.surge_d)
+          param("RefSim--Surge d", m_args.refsim.surge_d)
           .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Reference simulator surge drag constant.");
 
-          param("Reference - Heading Control Tune Direct", m_args.refsim.c_heading.tunedirect)
+          param("RefSim--Heading Control Tune Direct", m_args.refsim.c_heading.tunedirect)
           .defaultValue("False")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Reference simulator heading controller setting PID parameters directly.");
 
-          param("Reference - Surge Control Tune Direct", m_args.refsim.c_surge.tunedirect)
+          param("RefSim--Surge Control Tune Direct", m_args.refsim.c_surge.tunedirect)
           .defaultValue("False")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Reference simulator surge controller setting PID parameters directly.");
 
-          param("Reference - Heading Control Bandwidth", m_args.refsim.c_heading.omega)
+          param("RefSim--Heading Control Bandwidth", m_args.refsim.c_heading.omega)
           .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Reference simulator heading controller bandwidth.");
 
-          param("Reference - Heading Control Damping", m_args.refsim.c_heading.xi)
+          param("RefSim--Heading Control Damping", m_args.refsim.c_heading.xi)
           .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Reference simulator heading controller damping");
 
-          param("Reference - Heading Control Kp", m_args.refsim.c_heading.Kp)
+          param("RefSim--Heading Control Kp", m_args.refsim.c_heading.Kp)
           .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Reference simulator heading controller gain.");
 
-          param("Reference - Heading Control Ki", m_args.refsim.c_heading.Ki)
+          param("RefSim--Heading Control Ki", m_args.refsim.c_heading.Ki)
           .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Reference simulator heading controller integral gain.");
 
-          param("Reference - Heading Control Kd", m_args.refsim.c_heading.Kd)
+          param("RefSim--Heading Control Kd", m_args.refsim.c_heading.Kd)
           .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Reference simulator heading controller derivative gain.");
 
-          param("Reference - Surge Control Kp", m_args.refsim.c_surge.Kp)
+          param("RefSim--Surge Control Kp", m_args.refsim.c_surge.Kp)
           .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Reference simulator surge controller gain.");
 
-          param("Reference - Surge Control Ki", m_args.refsim.c_surge.Ki)
+          param("RefSim--Surge Control Ki", m_args.refsim.c_surge.Ki)
           .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Reference simulator surge controller integral gain.");
 
-          param("Reference - Surge Control Timeconstant", m_args.refsim.c_surge.T)
+          param("RefSim--Surge Control Timeconstant", m_args.refsim.c_surge.T)
           .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Reference simulator heading controller damping");
@@ -415,13 +413,11 @@ namespace Control
           param("Reset integrator on path activation", m_args.reset_integral_on_path_activation)
           .defaultValue("false")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Choose whether to reset the integrator in a path activation. ");
 
           param("Reset to position on path startup", m_args.reset_to_state)
           .defaultValue("false")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Set to reset to state rather than previous ref_pos on change");
 
           param("Print Frequency", m_args.print_frequency)
