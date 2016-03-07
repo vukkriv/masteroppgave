@@ -74,13 +74,13 @@ namespace Control
         ReferenceSimArguments refsim;
       };
 
-      static const std::string c_parcel_names[] = { DTR_RT("PID"), "PID-X", "PID-Y", "PID-Z", "ERROR" };
+      static const std::string c_parcel_names[] = { DTR_RT("PID"), "PID-SURGE", "PID-HEADING", "PID-Z", "ERROR" };
 
       enum Parcel
       {
         PC_PID   = 0,
-        PC_PID_X = 1,
-        PC_PID_Y = 2,
+        PC_PID_SURGE = 1,
+        PC_PID_HEADING = 2,
         PC_PID_Z = 3,
         PC_ERROR = 4
       };
@@ -100,21 +100,16 @@ namespace Control
         ReferenceSimulator() :
           A(3, 3, 0.0),
           B(3, 2, 0.0),
-          H1(1, 3, 0.0),
-          H2(1, 3, 0.0),
+          H1(2, 3, 0.0),
+          H2(2, 3, 0.0),
           x_des(3, 1, 0.0),
           x_dot_des(3, 1, 0.0),
           x_ref(3, 1, 0.0),
-          Kp(2, 2,0.0),
+          Kp(2, 2, 0.0),
           Ki(2, 2, 0.0),
           Kd(2, 2, 0.0)
         {
-          H1(0) = 1;
-          H1(1) = 1;
-          H1(2) = 0.0;
-          H2(0) = 0.0;
-          H2(1) = 0.0;
-          H2(2) = 1;
+
         }
 
         double
@@ -164,7 +159,7 @@ namespace Control
         void
         setRefSpeed(double& speed)
         {
-          x_ref.put(speed, 0, 0);
+          x_ref(R_SURGE) = speed;
         }
 
         void
@@ -182,13 +177,13 @@ namespace Control
         void
         setDesSpeed(double& speed)
         {
-          x_des.put(speed, 0, 0);
+          x_des(R_SURGE) = speed;
         }
 
         void
         setDesAcc(double& acc)
         {
-          x_dot_des.put(acc, 0, 0);
+          x_dot_des(R_SURGE)= acc;
         }
 
         void
@@ -221,26 +216,26 @@ namespace Control
       {
       public:
         DesiredReference() :
-            x(3, 1, 0.0)
+          x(3, 1, 0.0)
         {
         }
 
         Matrix
         getSpeed(void)
         {
-          return x(0);
+          return x(R_SURGE);
         }
 
         Matrix
         getHeading(void)
         {
-          return x(1);
+          return x(R_HEADING);
         }
 
         void
         setDesiredReference(Matrix& x_new)
         {
-          x.put(0, 0, x_new);
+          x = x_new;
         }
 
       public:
@@ -267,12 +262,14 @@ namespace Control
         IMC::DesiredLinearState m_desired_linear;
         //IMC::DesiredSpeed 	 m_desired_speed;
         IMC::DesiredHeading m_desired_heading;
-
         //! Last Estimated Local State received
         IMC::EstimatedLocalState m_elstate;
 
         //! Timestamp of previous step
         double m_timestamp_prev_step;
+
+        //! Desired speed profile
+        double m_desired_speed;
 
         //double m_Amatrix[9];
         //double m_Bmatrix[6];
@@ -285,8 +282,9 @@ namespace Control
         //! @param[in] ctx context.
         Task(const std::string& name, Tasks::Context& ctx):
           PathFormationController(name, ctx),
-          m_integrator_value(3,1, 0.0),
-          m_timestamp_prev_step(0.0)
+          m_integrator_value(2,1, 0.0),
+          m_timestamp_prev_step(0.0),
+          m_desired_speed(0)
         {
           param("Formation Path Controller", m_args.use_controller)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -298,7 +296,7 @@ namespace Control
           .defaultValue("True")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .description("Enable reference simulator");
+          .description("Enable reference simulator output");
 
           param("Reference - Max Speed", m_args.refsim.max_speed)
           .defaultValue("1.5")
@@ -317,13 +315,13 @@ namespace Control
           .defaultValue("True")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .description("Enable surge reference simulator.");
+          .description("Enable surge reference simulator output.");
 
           param("Reference - Enable heading", m_args.refsim.c_heading.use_controller)
           .defaultValue("True")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .description("Enable heading reference simulator.");
+          .description("Enable heading reference simulator output.");
 
           param("Reference - Max Integral", m_args.max_integral)
           .defaultValue("20")
@@ -421,15 +419,36 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Set to reset to state rather than previous ref_pos on change");
-
-          bind<IMC::EstimatedLocalState>(this);
         }
 
+        //! Consumer for DesiredSpeed message.
+        //! @param dspeed message to consume.
+        void
+        consume(const IMC::DesiredSpeed* dspeed)
+        {
+          // overloaded.
+          // Update desired speed
+          if (dspeed->value < m_args.refsim.max_speed)
+          {
+            m_desired_speed = dspeed->value;
+          }
+          else
+          {
+            m_desired_speed = m_args.refsim.max_speed;
+            debug("Trying to set a speed above maximum speed. ");
+          }
+          m_refsim.setRefSpeed(m_desired_speed);
+
+          PathFormationController::consume(dspeed);
+        }
         //! Update internal state with new parameter values.
         void
         onUpdateParameters(void)
         {
           PathFormationController::onUpdateParameters();
+
+          // update desired speed to max speed
+          m_desired_speed = m_args.refsim.max_speed;
 
           debug("Setting new surge tuning parameters");
           double Kp_s = m_args.refsim.c_surge.Kp;
@@ -492,7 +511,7 @@ namespace Control
           // Reset integral
           // If switch, and always if more than x seconds since last step.
           if (m_args.reset_integral_on_path_activation || Clock::get() - m_timestamp_prev_step > 4.0)
-            m_integrator_value = Matrix(3, 1, 0.0);
+            m_integrator_value = Matrix(2, 1, 0.0);
 
         }
 
@@ -505,6 +524,11 @@ namespace Control
             requestDeactivation();
             return;
           }
+          // Activate velocity controller.
+          enableControlLoops(IMC::CL_SPEED);
+          // Activate height controller
+          enableControlLoops(IMC::CL_ALTITUDE);
+          inf("Formation path controller activated.");
         }
 
         void
@@ -512,6 +536,7 @@ namespace Control
         {
           debug("Initialize reference simulator");
           // Restart refmodel
+          m_desired.x = Matrix(3,1,0.0);
           if (m_args.reset_to_state || Clock::get() - m_timestamp_prev_step > 2.0)
           {
             m_refsim.x_ref    = Matrix(3, 1, 0.0);
@@ -525,7 +550,16 @@ namespace Control
             m_refsim.x_des(1) = state.psi;
             m_refsim.x_des(2) = state.r;
           }
-          inf("Set reference simulator matrices");
+          debug("Set H1 and H2 matrices");
+          //H1 access [surge heading]' from m_refsim.x_#
+          m_refsim.H1 = Matrix(2,3,0.0);
+          m_refsim.H1(0,0) = 1;
+          m_refsim.H1(1,1) = 1;
+          //H2 access [0 heading_rate]' from m_refsim.x_# --> x_dot
+          m_refsim.H2 = Matrix(2,3,0.0);
+          m_refsim.H2(1,2) = 1;
+
+          debug("Set reference simulator matrices");
           //set model, A matrix is dynamic and must updated each step
           setMatrixA();
           setMatrixB();
@@ -537,25 +571,24 @@ namespace Control
         {
           spew("Step refsim");
           //get target speed and heading (these or the reference states should be logged somehow)
-          double ref_heading = ts.course;
-          double ref_speed = ts.speed;
-          m_refsim.setRefHeading(ref_heading);
-          m_refsim.setRefSpeed(ref_speed);
 
           //update system matrix with the current states
           updateMatrixA();
 
+          spew("Get integrator value");
           m_integrator_value += ts.delta*m_refsim.getError();
-
           // Constrain
           if (m_integrator_value.norm_2() > m_args.max_integral)
             m_integrator_value = m_args.max_integral * m_integrator_value / m_integrator_value.norm_2();
 
+          spew("Calculate u");
           Matrix u   = m_refsim.Kp*m_refsim.getError() +
                        m_refsim.Ki*m_integrator_value;
                        m_refsim.Kd*m_refsim.getDError();
+          spew("Set x_dot_des");
           m_refsim.x_dot_des = m_refsim.getDesXdot(u);
           // Integrate (Euler)
+          spew("Integrate Euler");
           m_refsim.x_des += ts.delta * (m_refsim.x_dot_des);
           spew("Step refsim done.");
         }
@@ -563,9 +596,31 @@ namespace Control
         void
         updateReferenceSim(const IMC::EstimatedLocalState& state, const TrackingState& ts, double now)
         {
-        	//the PathFormationController makes sure to filter out the centroid state
-        	stepRefSim(state, ts);
+          double ref_heading = ts.los_angle;
+          double ref_speed = ts.speed;
+          m_refsim.setRefHeading(ref_heading);
+          m_refsim.setRefSpeed(ref_speed);
 
+          stepRefSim(state, ts);
+
+          if (!m_args.enable_refsim)
+          {
+            m_refsim.x_des      = m_refsim.x_ref;
+            m_refsim.x_dot_des  = Matrix(3,1,0.0);
+          }
+
+          if (!m_args.refsim.c_heading.use_controller)
+          {
+            m_refsim.x_des(R_HEADING)     = m_refsim.x_ref(R_HEADING);
+            m_refsim.x_des(R_HEADING+1)     = m_refsim.x_ref(R_HEADING+1);
+            m_refsim.x_dot_des(R_HEADING) = 0;
+            m_refsim.x_dot_des(R_HEADING+1) = 0;
+          }
+          if (!m_args.refsim.c_surge.use_controller)
+          {
+            m_refsim.x_des(R_SURGE)     = m_refsim.x_ref(R_SURGE);
+            m_refsim.x_dot_des(R_SURGE) = 0;
+          }
             // Set reference from reference model
         	m_desired.setDesiredReference(m_refsim.x_des);
         }
@@ -613,8 +668,9 @@ namespace Control
           m_Amatrix[7] = 0;
           m_Amatrix[8] = -1/m_args.refsim.heading_T;
           */
-          m_refsim.A(2,1) = 1;
-          m_refsim.A(2,1) = -1/m_args.refsim.heading_T;
+          m_refsim.A = Matrix(3,3,0.0);
+          m_refsim.A(1,2) = 1;
+          m_refsim.A(2,2) = -1/m_args.refsim.heading_T;
           updateMatrixA();
         }
 
@@ -630,8 +686,9 @@ namespace Control
             m_Bmatrix[5] = m_args.refsim.heading_K;
             m_refsim.B = Matrix(m_Bmatrix, 2, 3);
             */
+          m_refsim.B = Matrix(3,2,0.0);
         	m_refsim.B(0,0) = 1/m_args.refsim.surge_m;
-        	m_refsim.B(2,3) = m_args.refsim.heading_K;
+        	m_refsim.B(2,1) = m_args.refsim.heading_K;
         }
 
         void
