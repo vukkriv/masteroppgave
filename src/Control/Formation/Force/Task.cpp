@@ -208,6 +208,7 @@ namespace Control
         uint64_t m_time_end;
         uint64_t m_time_diff;
 
+        bool m_configured;
         //! Constructor.
         //! @param[in] name task name.
         //! @param[in] ctx context.
@@ -224,7 +225,8 @@ namespace Control
           m_curr_heading(0.0),
           m_v_int_value(3, 1, 0.0),
           m_time_end(0.0), 
-          m_time_diff(0.0) 
+          m_time_diff(0.0),
+          m_configured(false)
         {
           param("Formation Controller", m_args.use_controller)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -390,6 +392,7 @@ namespace Control
           bind<IMC::EstimatedLocalState>(this);
           bind<IMC::DesiredHeading>(this);
           bind<IMC::FormCoord>(this);
+          bind<IMC::CoordConfig>(this);
         }
 
         //! Update internal state with new parameter values.
@@ -643,6 +646,33 @@ namespace Control
           //
         }
 
+        void
+        consume(const IMC::CoordConfig* config)
+        {
+          double now = Clock::getSinceEpoch();
+          static double last_print;
+          if (!m_args.print_frequency || !last_print
+              || (now - last_print) > 1.0 / m_args.print_frequency)
+          {
+            spew("Got CoordConfig from '%s'", resolveSystemId(config->getSource()));
+            last_print = now;
+          }
+          if (!m_configured)
+          {
+            m_configured = true;
+            debug("Configured with IMC::CoordConfig");
+          }
+          const IMC::MessageList<IMC::VehicleFormationParticipant>* list = &config->participants;
+
+          IMC::MessageList<IMC::VehicleFormationParticipant>::const_iterator itr;
+
+          for (itr = list->begin(); itr != list->end(); itr++)
+          {
+            //(*itr)->off_x;
+          }
+          debug("CoordConfig handled");
+        }
+
         //! Consume Formation Position
         void
         consume(const IMC::EstimatedLocalState* msg)
@@ -723,10 +753,12 @@ namespace Control
               }
 
               // Update position
+              spew("Update positions, uav=%d,m_x.size()=%d",uav,m_x.size());
               m_x(0, uav) = msg->state->x;
               m_x(1, uav) = msg->state->y;
               m_x(2, uav) = msg->state->z;
 
+              spew("m_last_pos_update.size()=%d",m_last_pos_update.size());
               m_last_pos_update(uav) = now;
 
               if (!m_args.print_frequency || !last_print
@@ -801,6 +833,15 @@ namespace Control
         void
         consume(const IMC::DesiredLinearState* msg)
         {
+          double now = Clock::getSinceEpoch();
+          static double last_print;
+          if (!m_args.print_frequency || !last_print
+              || (now - last_print) > 1.0 / m_args.print_frequency)
+          {
+            spew("Got DesiredLinearState from '%s'", resolveSystemId(msg->getSource()));
+            spew("DesiredSurge [%f]",msg->vx);
+            last_print = now;
+          }
           //Desired linear state should only come from master only
           //if receiving local message, it should have the correct entity (desired vs reference)
           if (   msg->getSource() == this->getSystemId()
@@ -815,38 +856,25 @@ namespace Control
           m_a_mission_centroid(0) = msg->ax;
           m_a_mission_centroid(1) = msg->ay;
           m_a_mission_centroid(2) = msg->az;
-          static double last_print;
-          double now = Clock::getSinceEpoch();
-          if (!m_args.print_frequency || !last_print
-              || (now - last_print) > 1.0 / m_args.print_frequency)
-          {
-            spew("Got DesiredLinearState from system '%s'",
-                  resolveEntity(msg->getSourceEntity()).c_str());
-            spew("DesiredSurde [%f]",msg->vx);
-            last_print = now;
-          }
         }
 
         void
         consume(const IMC::DesiredHeading* msg)
         {
+          double now = Clock::getSinceEpoch();
+          static double last_print;
+          if (!m_args.print_frequency || !last_print
+              || (now - last_print) > 1.0 / m_args.print_frequency)
+          {
+            spew("Got DesiredHeading from '%s'", resolveSystemId(msg->getSource()));
+            spew("DesiredHeading [%f]",msg->value);
+            last_print = now;
+          }
           //Desired heading should only come from master only
           //if receiving local message, it should have the correct entity (desired vs reference)
           if (   msg->getSource() == this->getSystemId()
               && !isDesiredHeading(msg->getSourceEntity())      )
             return;
-
-          static double last_print;
-          double now = Clock::getSinceEpoch();
-          if (!m_args.print_frequency || !last_print
-              || (now - last_print) > 1.0 / m_args.print_frequency)
-          {
-            spew("Got DesiredHeading from system '%s'.",
-                  resolveEntity(msg->getSourceEntity()).c_str());
-            spew("DesiredHeading [%f]",msg->value);
-            last_print = now;
-          }
-
           /*
           if (abs(msg->value - m_desired_heading.value) > 0.0)
           {
@@ -1144,7 +1172,7 @@ namespace Control
         void
         task(void)
         {
-          if (!m_args.use_controller || !isActive())
+          if (!m_args.use_controller || !isActive() || !m_configured)
             return;
 
           // update formation based on current desired heading
