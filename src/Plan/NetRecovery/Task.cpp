@@ -321,10 +321,12 @@ namespace Plan
         IMC::PlanTransition* transition = new IMC::PlanTransition;
         transition->source_man = "1";
         transition->dest_man   = "2";
+        transition->conditions = "ManeuverIsDone";
 
         IMC::PlanTransition* transition2 = new IMC::PlanTransition;
         transition2->source_man = "2";
         transition2->dest_man   = "1";
+        transition2->conditions = "ManeuverIsDone";
 
         IMC::MessageList<IMC::PlanTransition> translist;
         translist.push_back(transition);
