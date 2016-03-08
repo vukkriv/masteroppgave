@@ -401,7 +401,7 @@ namespace Plan
       void
       ConstructArc(const Matrix theta,const double theta0,const double R,const Matrix center,std::vector<Matrix> arc)
       {
-        Matrix tempP = Matrix(2,1,0.0);
+        Matrix tempP = Matrix(3,1,0.0);
         for (int i=0;i<m_N;i++)
         {
 
