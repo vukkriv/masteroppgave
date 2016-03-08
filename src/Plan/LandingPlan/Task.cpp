@@ -201,7 +201,7 @@ namespace Plan
         double theta1 = std::atan2(Pchi[1]-Ycs,Pchi[0]-Xcs);
         if (RightS)
         {
-          if (Angles::normalizeRadian(theta1-PI)>=theta0 || (theta0>theta1 && sign(theta1)==sign(theta0)))
+          if (Angles::normalizeRadian(theta1-theta0)<=0)
           {
             calculateTurningArcAngle(-std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
           }
@@ -212,7 +212,7 @@ namespace Plan
         }
         else
         {
-          if (((Angles::normalizeRadian(theta1-PI)<=theta0) && sign(Angles::normalizeRadian(theta1-PI))==sign(theta0)) || (theta0<theta1 && (sign(theta0)==sign(theta1) || theta0==0)))
+          if (Angles::normalizeRadian(theta1-theta0)>=0)
           {
             calculateTurningArcAngle(std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
           }
@@ -228,7 +228,7 @@ namespace Plan
         theta1 = std::atan2(Xf[1]-Ycf,Xf[0]-Xcf);
         if (RightF)
         {
-          if((Angles::normalizeRadian(theta1-PI)<=theta0) || (theta0>theta1 && (sign(theta1)==sign(theta0))))
+          if(Angles::normalizeRadian(theta1-theta0)<=0)
           {
             calculateTurningArcAngle(-std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
           }
@@ -239,7 +239,7 @@ namespace Plan
         }
         else
         {
-          if ((Angles::normalizeRadian(theta1-PI)<=theta0 && sign(Angles::normalizeRadian(theta1-PI))==sign(theta0)) || (theta0<theta1 && sign(theta0)==sign(theta1)))
+          if (Angles::normalizeRadian(theta1-theta0)>=0)
           {
             calculateTurningArcAngle(std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
           }
@@ -399,7 +399,7 @@ namespace Plan
         std::vector<Matrix> arc;
         if (RightF)
         {
-          if ((Angles::normalizeRadian(thetaH1-PI)>=thetaH0 && sign(Angles::normalizeRadian(thetaH1-PI))==sign(thetaH0)) || (thetaH0>thetaH1 && sign(thetaH1)==sign(thetaH0)))
+          if (Angles::normalizeRadian(thetaH1-thetaH0)<=0)
           {
             calculateTurningArcAngle(-std::abs(Angles::normalizeRadian(thetaH1-thetaH0)),theta);
           }
@@ -410,7 +410,7 @@ namespace Plan
         }
         else
         {
-          if ((Angles::normalizeRadian(thetaH1-PI)<=thetaH0 && sign(Angles::normalizeRadian(thetaH1-PI))==sign(thetaH0)) || (thetaH0<thetaH1 && sign(thetaH1)==sign(thetaH0)))
+          if (Angles::normalizeRadian(thetaH1-thetaH0)>=0)
           {
             calculateTurningArcAngle(std::abs(Angles::normalizeRadian(thetaH1-thetaH0)),theta);
           }
