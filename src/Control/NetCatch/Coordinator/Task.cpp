@@ -153,6 +153,11 @@ namespace Control
         //! Desired net heading
         IMC::DesiredHeading m_heading;
 
+        //!position Controller parameters (3x3)
+        Matrix Kp;
+        Matrix Ki;
+        Matrix Kd;
+
         IMC::ControlParcel m_parcels[NUM_PARCELS];
 
         VirtualRunway m_runway;
@@ -374,6 +379,21 @@ namespace Control
           debug("Current frequency: %f", getFrequency());
           setFrequency(m_args.m_freq);
           debug("Frequency changed to : %f", getFrequency());
+
+          Kp = Matrix(3);
+          Ki = Matrix(3);
+          Kd = Matrix(3);
+          Kp(0,0) = m_args.Kp(0);
+          Kp(1,1) = m_args.Kp(1);
+          Kp(2,2) = m_args.Kp(2);
+
+          Ki(0,0) = m_args.Ki(0);
+          Ki(1,1) = m_args.Ki(1);
+          Ki(2,2) = m_args.Ki(2);
+
+          Kd(0,0) = m_args.Kd(0);
+          Kd(1,1) = m_args.Kd(1);
+          Kd(2,2) = m_args.Kd(2);
         }
 
         void
@@ -1102,9 +1122,9 @@ namespace Control
               || m_curr_state == IMC::NetRecoveryState::NR_APPROACH
               || m_curr_state == IMC::NetRecoveryState::NR_END)
           {
-            p = m_args.Kp*e_p_path;
-            d = m_args.Kd*e_v_path;
-            i = m_args.Ki*m_p_int_value;
+            p = Kp*e_p_path;
+            d = Kd*e_v_path;
+            i = Ki*m_p_int_value;
 
             v_path = p + i + d;
 
@@ -1121,9 +1141,9 @@ namespace Control
 
             Matrix v_temp = Matrix(3,1,0.0);
             Matrix v_path_yz = Matrix(2, 1, 0.0);
-            p = m_args.Kp*e_p_path;
-            d = m_args.Kd*e_v_path;
-            i = m_args.Ki*m_p_int_value;
+            p = Kp*e_p_path;
+            d = Kd*e_v_path;
+            i = Ki*m_p_int_value;
             p(0) = 0;
             d(0) = 0;
             i(0) = 0;
