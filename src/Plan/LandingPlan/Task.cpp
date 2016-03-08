@@ -64,6 +64,8 @@ namespace Plan
       double netHeading;
       //! Landing waypoints
       Matrix WP;
+      //! Auxiliary waypoint
+      Matrix WPa;
       //! Net lat
       double net_lat;
       //! Net lon
@@ -184,11 +186,26 @@ namespace Plan
         //! Center of end turning circle
         Matrix OCF = Matrix(2,1,0.0);
         //! End pose in dubins paht
-        Matrix Xf = Matrix(3,1,0.0);
+        Matrix Xf = Matrix(4,1,0.0);
+        Xf = m_landArg.WP.column(4);
         if (!dubinsPath(m_Xs,Xf,m_path,RightF,OCF))
         {
           //! Need an extra WP
+          Xf = m_landArg.WPa;
+          if (!dubinsPath(m_Xs,Xf,m_path,RightF,OCF))
+          {
+            war("Could not generate a landing path: Abort");
+          }
+          Xf = m_landArg.WP.column(4);
+          if (!dubinsPath(m_landArg.WPa,Xf,m_path,RightF,OCF))
+          {
+            war("Could not generate a landing path: Abort");
+          }
         }
+        //! Is correct height
+        bool correctHeight;
+        glideSlope(m_Xs,m_landArg.WP.column(4),m_landArg.gamma_d,correctHeight,m_path);
+        glideSpiral(OCF,RightF,m_landArg.WP(2,3),correctHeight,m_landArg.gamma_d,m_path);
       }
       //! Construct Dubins Path between two waypoints with given heading
       bool
@@ -230,14 +247,14 @@ namespace Plan
         if (std::atan2(Xs(1,0)-Xf(1,0),Xs(0,0)-Xf(0,0))<0)
         {
           RightF = false;
-          Xcf = Xf(0,0)-m_Rf*std::cos(Xf(2,0)-PI/2);
-          Ycf = Xf(1,0)-m_Rf*std::sin(Xf(2,0)-PI/2);
+          Xcf = Xf(0,0)-m_Rf*std::cos(Xf(3,0)-PI/2);
+          Ycf = Xf(1,0)-m_Rf*std::sin(Xf(3,0)-PI/2);
         }
         else
         {
           RightF = true;
-          Xcf = Xf(0,0)-m_Rf*std::cos(Xf(2,0)+PI/2);
-          Ycf = Xf(1,0)-m_Rf*std::sin(Xf(2,0)+PI/2);
+          Xcf = Xf(0,0)-m_Rf*std::cos(Xf(3,0)+PI/2);
+          Ycf = Xf(1,0)-m_Rf*std::sin(Xf(3,0)+PI/2);
         }
         OCF(0,0) = Xcf;
         OCF(1,0) = Ycf;
