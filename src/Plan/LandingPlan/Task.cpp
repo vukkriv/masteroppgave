@@ -192,7 +192,7 @@ namespace Plan
       }
       //! Construct Dubins Path between two waypoints with given heading
       bool
-      dubinsPath(const double Xs[3],const double Xf[3], std::vector<Matrix> Path,bool &EndTurn,Matrix &OCF)
+      dubinsPath(const Matrix Xs,const Matrix Xf, std::vector<Matrix> Path,bool &EndTurn,Matrix &OCF)
       {
         //! Define turning directions
         bool RightS;
@@ -210,34 +210,34 @@ namespace Plan
 
         //! Define start turning circle center (Ocs)
 
-        if (std::atan2(Xs[1]-Xf[1],Xs[0]-Xf[0])<0)
+        if (std::atan2(Xs(1,0)-Xf(1,0),Xs(0,0)-Xf(0,0))<0)
         {
           RightS = false;
-          Xcs = Xs[0]-m_Rs*std::cos(Xs[2]-PI/2);
-          Ycs = Xs[1]-m_Rs*std::sin(Xs[2]-PI/2);
+          Xcs = Xs(0,0)-m_Rs*std::cos(Xs(3,0)-PI/2);
+          Ycs = Xs(1,0)-m_Rs*std::sin(Xs(3,0)-PI/2);
         }
         else
         {
           RightS = true;
-          Xcs = Xs[0]-m_Rs*std::cos(Xs[2]+PI/2);
-          Ycs = Xs[1]-m_Rs*std::sin(Xs[2]+PI/2);
+          Xcs = Xs(0,0)-m_Rs*std::cos(Xs(3,0)+PI/2);
+          Ycs = Xs(1,0)-m_Rs*std::sin(Xs(3,0)+PI/2);
         }
         OCS(0,0) = Xcs;
         OCS(1,0) = Ycs;
 
         //! Define end turning circle center (Ofs)
 
-        if (std::atan2(Xs[1]-Xf[1],Xs[0]-Xf[0])<0)
+        if (std::atan2(Xs(1,0)-Xf(1,0),Xs(0,0)-Xf(0,0))<0)
         {
           RightF = false;
-          Xcf = Xf[0]-m_Rf*std::cos(Xf[2]-PI/2);
-          Ycf = Xf[1]-m_Rf*std::sin(Xf[2]-PI/2);
+          Xcf = Xf(0,0)-m_Rf*std::cos(Xf(2,0)-PI/2);
+          Ycf = Xf(1,0)-m_Rf*std::sin(Xf(2,0)-PI/2);
         }
         else
         {
           RightF = true;
-          Xcf = Xf[0]-m_Rf*std::cos(Xf[2]+PI/2);
-          Ycf = Xf[1]-m_Rf*std::sin(Xf[2]+PI/2);
+          Xcf = Xf(0,0)-m_Rf*std::cos(Xf(2,0)+PI/2);
+          Ycf = Xf(1,0)-m_Rf*std::sin(Xf(2,0)+PI/2);
         }
         OCF(0,0) = Xcf;
         OCF(1,0) = Ycf;
@@ -259,7 +259,7 @@ namespace Plan
           return false;
         }
         //! Calculate distance from start pose to end pose
-        double dXsXf = sqrt(std::pow(Xs[0]-Xf[0],2)+std::pow(Xs[1]-Xf[1],2));
+        double dXsXf = sqrt(std::pow(Xs(0,0)-Xf(0,0),2)+std::pow(Xs(1,0)-Xf(1,0),2));
 
         //! Check if the start pose and end pose is to close
         if (dXsXf<2*m_Rf)
@@ -280,20 +280,20 @@ namespace Plan
         //! Second
         double thetaF = turn(RightF,alpha,beta);
         //! Exit tangent point for first circle
-        double Pchi[2];
-        Pchi[0] = Xcs+m_Rs*cos(thetaS);
-        Pchi[1] = Ycs+m_Rs*sin(thetaS);
+        Matrix Pchi = Matrix(2,1,0.0);
+        Pchi(0,0) = Xcs+m_Rs*cos(thetaS);
+        Pchi(1,0) = Ycs+m_Rs*sin(thetaS);
         //! Entry tangent point
-        double PN[2];
-        PN[0] = Xcf+m_Rf*cos(thetaF);
-        PN[1] = Ycf+m_Rf*sin(thetaF);
+        Matrix PN = Matrix(2,1,0.0);
+        PN(0,0) = Xcf+m_Rf*cos(thetaF);
+        PN(1,0) = Ycf+m_Rf*sin(thetaF);
         //! Define turning arc
         std::vector<Matrix> arc;
         //! Declare angle array
         Matrix theta =Matrix(1,m_N,0.0);
         //! First arc
-        double theta0 = std::atan2(Xs[1]-Ycs,Xs[0]-Xcs);
-        double theta1 = std::atan2(Pchi[1]-Ycs,Pchi[0]-Xcs);
+        double theta0 = std::atan2(Xs(1,0)-Ycs,Xs(0,0)-Xcs);
+        double theta1 = std::atan2(Pchi(1,0)-Ycs,Pchi(0,0)-Xcs);
         if (RightS)
         {
           if (Angles::normalizeRadian(theta1-theta0)<=0)
@@ -319,8 +319,8 @@ namespace Plan
         ConstructArc(theta,theta0,m_Rs,OCS,arc);
         AddToPath(arc,Path);
         //! Second arc
-        theta0 = std::atan2(PN[1]-Ycf,PN[0]-Xcf);
-        theta1 = std::atan2(Xf[1]-Ycf,Xf[0]-Xcf);
+        theta0 = std::atan2(PN(1,0)-Ycf,PN(0,0)-Xcf);
+        theta1 = std::atan2(Xf(1,0)-Ycf,Xf(0,0)-Xcf);
         if (RightF)
         {
           if(Angles::normalizeRadian(theta1-theta0)<=0)
