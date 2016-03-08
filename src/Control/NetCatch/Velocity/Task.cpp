@@ -61,6 +61,7 @@ namespace Control
         Matrix Ki;
         Matrix Kd;
 
+        double max_integral;
         double max_norm_F;
 
         //! Frequency of controller
@@ -160,6 +161,11 @@ namespace Control
           .defaultValue("0.0,0.0,0.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Velocity Controller tuning parameter Kd");
+
+          param("Max Integral", m_args.max_integral)
+          .defaultValue("1.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Max integral value");
 
           param("Maximum Normalized Force", m_args.max_norm_F)
           .defaultValue("5.0")
@@ -285,6 +291,8 @@ namespace Control
           Matrix e_a_est = -a_est;
 
           m_v_int_value = m_v_int_value + e_v_est*m_time_diff;
+          if (m_v_int_value.norm_2() > m_args.max_integral)
+            m_v_int_value = m_args.max_integral * m_v_int_value / m_v_int_value.norm_2();
 
           Matrix F_des = Matrix(3,1,0.0);
           Matrix p = Matrix(3,1,0.0);
