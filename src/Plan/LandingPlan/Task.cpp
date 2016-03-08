@@ -55,13 +55,22 @@ namespace Plan
       //! Length of waypoint behind the nett
       double b1;
       //! Angle of attack
-      double m_gamma_a;
+      double gamma_a;
+      //! Angle of descent
+      double gamma_d;
       //! Net position
       Matrix Net;
       //! Net orientation
       double netHeading;
       //! Landing waypoints
       Matrix WP;
+      //! Net lat
+      double net_lat;
+      //! Net lon
+      double net_lon;
+      //! Net height
+      double net_height;
+
     };
 
     struct Task: public DUNE::Tasks::Task
@@ -76,8 +85,6 @@ namespace Plan
       double m_Rs;
       //! Finish turning circle
       double m_Rf;
-      //! Angle of descent
-      double m_gamma_d;
       //! Calculated path
       std::vector<double [3]> m_path;
       //! Start pose
@@ -117,13 +124,16 @@ namespace Plan
         {
           return;
         }
-        if (!extractPlan(*msg))
+        if (!extractPlan(msg))
         {
           return;
         }
         if (msg->plan_id=='land')
         {
-          generateLandingPath();
+          if(!generateLandingPath())
+          {
+            war("Unable to generate a landing path");
+          }
         }
         else
         {
@@ -132,8 +142,33 @@ namespace Plan
 
       }
 
+      //! Extract information from a PlanGeneration message
+      bool
+      extractPlan(const IMC::PlanGeneration *msg)
+      {
+        //! Check if landing path container should be filled. It's assumed that input data is in NED
+        if (msg->plan_id=='land')
+        {
+          TupleList tList(msg->params,'=',';',true);
+          m_landArg.net_lat = Angles::radians(tList.get("land_lat",0.0));
+          m_landArg.net_lon = Angles::radians(tList.get("land_lon",0.0));
+          m_landArg.netHeading = Angles::radians(tList.get("land_heading",0.0));
+          m_landArg.net_height = tList.get("net_height");
+          m_landArg.gamma_a = Angles::radians(tList.get("attack_angle",0.0));
+          m_landArg.gamma_d = Angles::radians(tList.get("descend_angle", 0.0));
+          m_landArg.a1 = tList.get("final_approach",0.0);
+          m_landArg.a2 = tList.get("glideslope",0.0);
+          m_landArg.a3 = tList.get("approach",0.0);
+          m_Rs = tList.get("min_turn_radius", 0.0);
+          m_Rf = tList.get("loiter_radius",0.0);
+
+          return true;
+        }
+        return false;
+      }
       //! Construct Dubins Path between two waypoints with given heading
-      bool dubinsPath(const double Xs[3],const double Xf[3], std::vector<Matrix> Path,bool &EndTurn,Matrix &OCF)
+      bool
+      dubinsPath(const double Xs[3],const double Xf[3], std::vector<Matrix> Path,bool &EndTurn,Matrix &OCF)
       {
         //! Define turning directions
         bool RightS;
