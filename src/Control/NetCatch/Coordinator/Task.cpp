@@ -230,10 +230,11 @@ namespace Control
               Tasks::Parameter::SCOPE_MANEUVER).defaultValue("false").description(
               "Enable Path Controller");
 
-          param("Offset cross-track", m_args.m_crosstrack_offset).visibility(
-              Tasks::Parameter::VISIBILITY_USER)
-  //	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .defaultValue("0.0").description("Cross-track offset, subtract the offset from the y-position of the airplane in the path frame");
+          param("Offset cross-track", m_args.m_crosstrack_offset)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+   	      .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .defaultValue("0.0")
+          .description("Cross-track offset, subtracts the offset from the y-position of the airplane in the path frame");
 
           param("Stop at end-of-runway", m_args.enable_stop_endRunway).visibility(
               Tasks::Parameter::VISIBILITY_USER)
@@ -288,10 +289,11 @@ namespace Control
           param("Max pos x approach", m_args.max_px_app).visibility(
               Tasks::Parameter::VISIBILITY_USER).defaultValue("1");
 
-          param("Desired collision radius", m_args.m_coll_r).visibility(
-              Tasks::Parameter::VISIBILITY_USER)
-  //      .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .defaultValue("100.0").units(Units::Meter);
+          param("Collision point", m_args.m_coll_r)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .defaultValue("100.0").units(Units::Meter)
+          .description("Desired collision point measured along-track from the start point");
 
           param("Radius at recovery", m_args.m_coll_eps).visibility(
               Tasks::Parameter::VISIBILITY_USER)
