@@ -118,9 +118,10 @@ namespace Navigation
 
           param("Antenna Height", m_args.antenna_height)
           .defaultValue("0.0")
-          .minimumValue("0.0")
+          .minimumValue("-1.0")
           .maximumValue("1.0")
           .units(Units::Meter)
+          .visibility(Parameter::VISIBILITY_USER)
           .description("If > 0, apply correction from attitude");
 
           // Default, we use full external state
@@ -277,7 +278,7 @@ namespace Navigation
             m_estate.z = m_rtk.d;
 
             // Apply antenna offset
-            if( m_args.antenna_height > 0 )
+            if( m_args.antenna_height > 0.03 || m_args.antenna_height < -0.03 )
             {
               float ox, oy, oz;
               BodyFixedFrame::toInertialFrame(m_estate.phi, m_estate.theta, m_estate.psi,
