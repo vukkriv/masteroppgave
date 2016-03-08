@@ -98,7 +98,11 @@ namespace Plan
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Task(name, ctx)
+        DUNE::Tasks::Task(name, ctx),
+        m_Xs(4,1,0.0),
+        m_Rs(0.0),
+        m_Rf(0.0),
+        m_N(0.0)
       {
         bind<IMC::EstimatedState>(this);
         bind<IMC::PlanGeneration>(this);
@@ -115,10 +119,6 @@ namespace Plan
       consume(const IMC::EstimatedState *msg)
       {
         m_estate = *msg;
-        m_Xs(0,0) = m_estate.x;
-        m_Xs(1,0) = m_estate.y;
-        m_Xs(2,0) = m_estate.z;
-        m_Xs(3,0) = m_estate.psi;
       }
       //! Receive nett pose and landing spesifications
       void
@@ -174,7 +174,11 @@ namespace Plan
       bool
       generateLandingPath()
       {
-
+        //! Initialize the start pose
+        m_Xs(0,0) = m_estate.x;
+        m_Xs(1,0) = m_estate.y;
+        m_Xs(2,0) = m_estate.z;
+        m_Xs(3,0) = m_estate.psi;
       }
       //! Construct Dubins Path between two waypoints with given heading
       bool
