@@ -41,6 +41,8 @@ namespace Plan
 
     struct Arguments
     {
+      //! Wait at loiter
+      bool waitLoiter;
 
     };
 
@@ -216,7 +218,7 @@ namespace Plan
         //! Create a maneuver
         m_maneuvers.clear();
 
-        IMC::FollowPath* fPath = new fPath;
+        IMC::FollowPath* fPath = new IMC::FollowPath();
         double cur_lat;
         double cur_lon;
         Coordinates::WGS84::displace(m_estate.x,m_estate.y,&cur_lat,&cur_lon);
@@ -227,7 +229,22 @@ namespace Plan
         addPathPoint(fPath);
         m_maneuvers.push_back(*fPath);
         delete fPath;
+        if (m_arg.waitLoiter)
+        {
+
+        }
+        addNetApproach();
+
+
         return true;
+
+      }
+      //! Add the landing approach toward the net
+      void
+      addNetApproach()
+      {
+        //3
+        IMC::Goto* gotoWP = new IMC::Goto();
 
       }
       //! Add path point to follow path
