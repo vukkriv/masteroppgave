@@ -86,9 +86,9 @@ namespace Plan
       //! Finish turning circle
       double m_Rf;
       //! Calculated path
-      std::vector<double [3]> m_path;
+      std::vector<Matrix> m_path;
       //! Start pose
-      std::vector<double [4]> m_Xs;
+      Matrix m_Xs;
       //! Finish pose
       std::vector<double [4]> m_Xf;
       //! Number of points in arc
@@ -115,6 +115,10 @@ namespace Plan
       consume(const IMC::EstimatedState *msg)
       {
         m_estate = *msg;
+        m_Xs(0,0) = m_estate.x;
+        m_Xs(1,0) = m_estate.y;
+        m_Xs(2,0) = m_estate.z;
+        m_Xs(3,0) = m_estate.psi;
       }
       //! Receive nett pose and landing spesifications
       void
@@ -165,6 +169,12 @@ namespace Plan
           return true;
         }
         return false;
+      }
+      //! Generates a landing path
+      bool
+      generateLandingPath()
+      {
+
       }
       //! Construct Dubins Path between two waypoints with given heading
       bool
