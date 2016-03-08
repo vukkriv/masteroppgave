@@ -83,6 +83,8 @@ namespace Plan
       LandingPathArguments m_landArg;
       //! Accumulated EstimatedState message
       IMC::EstimatedState m_estate;
+      //! Plan specification
+      IMC::PlanSpecification m_spec;
       //! Start turning circle
       double m_Rs;
       //! Finish turning circle
@@ -95,6 +97,8 @@ namespace Plan
       std::vector<double [4]> m_Xf;
       //! Number of points in arc
       int m_N;
+      //! Maneuver list
+      IMC::MessageList<IMC::Maneuver> m_maneuvers;
 
       //! Constructor.
       //! @param[in] name task name.
@@ -134,7 +138,8 @@ namespace Plan
         {
           return;
         }
-        if (msg->plan_id=='land')
+        m_spec.plan_id = msg->plan_id;
+        if (m_spec.plan_id=='land')
         {
           if(!generateLandingPath())
           {
@@ -206,6 +211,34 @@ namespace Plan
         bool correctHeight;
         glideSlope(m_Xs,m_landArg.WP.column(4),m_landArg.gamma_d,correctHeight,m_path);
         glideSpiral(OCF,RightF,m_landArg.WP(2,3),correctHeight,m_landArg.gamma_d,m_path);
+        //! Create a maneuver
+        m_maneuvers.clear();
+
+        IMC::FollowPath fPath;
+        double cur_lat;
+        double cur_lon;
+        Coordinates::WGS84::displace(m_estate.x,m_estate.y,&cur_lat,&cur_lon);
+        fPath.lat = cur_lat;
+        fPath.lon = cur_lon;
+        fPath.z_units = IMC::Z_HEIGHT;
+        fPath.z = m_estate.height - m_estate.z;
+        addPathPoint(fPath);
+
+      }
+      //! Add path point to follow path
+      void
+      addPathPoint(IMC::FollowPath& fPath)
+      {
+        std::vector<Matrix>::iterator it;
+        for (it=m_path.begin();it!=m_path.end();it++)
+        {
+          IMC::PathPoint* pPoint = new IMC::PathPoint;
+          pPoint->x = it(0,0);
+          pPoint->y = it(1,0);
+          pPoint->z = it(2,0);
+          fPath.points.push_back(*pPoint);
+          delete pPoint;
+        }
       }
       //! Construct Dubins Path between two waypoints with given heading
       bool
