@@ -76,6 +76,17 @@ namespace Plan
       double net_lon;
       //! Net height
       double net_height;
+      //! Net WGS84 height
+      double net_WGS84_height;
+      //! Speed WP4
+      double speed_WP4;
+      //! Speed WP3
+      double speed_WP3;
+      //! Speed WP3
+      double speed_WP2;
+      //! Speed WP2
+      double speed_WP1;
+      //! Speed WP1
 
     };
 
@@ -167,6 +178,7 @@ namespace Plan
           TupleList tList(msg->params,"=",";",true);
           m_landArg.net_lat = Angles::radians(tList.get("land_lat",0.0));
           m_landArg.net_lon = Angles::radians(tList.get("land_lon",0.0));
+          m_landArg.net_WGS84_height = tList("net_WGS84_height",0.0);
           m_landArg.netHeading = Angles::radians(tList.get("land_heading",0.0));
           m_landArg.net_height = tList.get("net_height",0.0);
           m_landArg.gamma_a = Angles::radians(tList.get("attack_angle",0.0));
@@ -175,10 +187,16 @@ namespace Plan
           m_landArg.a1 = tList.get("final_approach",0.0);
           m_landArg.a2 = tList.get("glideslope",0.0);
           m_landArg.a3 = tList.get("approach",0.0);
+          m_landArg.speed_WP4 = tList.get("speed_wp4",0.0);
+          m_landArg.speed_WP3 = tList.get("speed_wp3",0.0);
+          m_landArg.speed_WP2 = tList.get("speed_wp2",0.0);
+          m_landArg.speed_WP1 = tList.get("speed_wp1",0.0);
           m_Rs = tList.get("min_turn_radius", 0.0);
           m_Rf = tList.get("loiter_radius",0.0);
 
+
           //! Fill WP matrix
+          m_landArg.WP = Matrix(3,4,0.0);
           m_landArg.WP(0,0) = -m_landArg.a0;
           m_landArg.WP(2,0) = m_landArg.net_height+m_landArg.a0*std::tan(m_landArg.gamma_a);
 
@@ -191,6 +209,7 @@ namespace Plan
           m_landArg.WP(0,3) = m_landArg.WP(0,2)+m_landArg.a3;
           m_landArg.WP(2,3) = m_landArg.WP(2,2);
 
+          m_landArg.WPa = Matrix(3,1,0.0);
           m_landArg.WPa(0,0) = m_landArg.WP(0,1) + (m_landArg.a2)/2;
           m_landArg.WPa(1,0) = m_Rf;
           m_landArg.WPa(2,0) = m_landArg.WP(2,1)-m_landArg.a2*std::tan(m_landArg.gamma_a);
@@ -262,7 +281,7 @@ namespace Plan
 
         }
         addNetApproach();
-
+        m_spec.maneuvers.push_back(m_maneuvers);
 
         return true;
 
@@ -273,6 +292,49 @@ namespace Plan
       {
         //3
         IMC::Goto* gotoWP = new IMC::Goto();
+        double w3_lat;
+        double w3_lon;
+        double w3_h = m_landArg.net_WGS84_height - m_landArg.WP(2,2);
+        Coordinates::WGS84::displace(m_landArg.WP(0,2),m_landArg.WP(1,2),&w3_lat,&w3_lon);
+        gotoWP->lat = w3_lat;
+        gotoWP->lon = w3_lon;
+        gotoWP->z = w3_h;
+        gotoWP->z_units = IMC::Z_HEIGHT;
+        gotoWP->speed = m_landArg.speed_WP3;
+        gotoWP->speed_units = IMC::SUNITS_METERS_PS;
+        m_maneuvers.push_back(*gotoWP);
+        delete gotoWP;
+
+        //2
+        IMC::Goto* gotoWP = new IMC::Goto();
+        double w2_lat;
+        double w2_lon;
+        double w2_h = m_landArg.net_WGS84_height - m_landArg.WP(2,1);
+        Coordinates::WGS84::displace(m_landArg.WP(0,1),m_landArg.WP(1,1),&w2_lat,&w2_lon);
+        gotoWP->lat = w2_lat;
+        gotoWP->lon = w2_lon;
+        gotoWP->z = w2_h;
+        gotoWP->z_units = IMC::Z_HEIGHT;
+        gotoWP->speed = m_landArg.speed_WP2;
+        gotoWP->speed_units = IMC::SUNITS_METERS_PS;
+        m_maneuvers.push_back(*gotoWP);
+        delete gotoWP;
+
+        //1
+        IMC::Goto* gotoWP = new IMC::Goto();
+        double w1_lat;
+        double w1_lon;
+        double w1_h = m_landArg.net_WGS84_height - m_landArg.WP(2,0);
+        Coordinates::WGS84::displace(m_landArg.WP(0,0),m_landArg.WP(1,0),&w1_lat,&w1_lon);
+        gotoWP->lat = w1_lat;
+        gotoWP->lon = w1_lon;
+        gotoWP->z = w1_h;
+        gotoWP->z_units = IMC::Z_HEIGHT;
+        gotoWP->speed = m_landArg.speed_WP1;
+        gotoWP->speed_units = IMC::SUNITS_METERS_PS;
+        m_maneuvers.push_back(*gotoWP);
+        delete gotoWP;
+
 
       }
       //! Add path point to follow path
@@ -291,11 +353,10 @@ namespace Plan
       }
       //! Construct Dubins Path between two waypoints with given heading
       bool
-      dubinsPath(const Matrix Xs,const Matrix Xf, std::vector<Matrix> Path,bool &EndTurn,Matrix &OCF)
+      dubinsPath(const Matrix Xs,const Matrix Xf, std::vector<Matrix> Path,bool &RightF,Matrix &OCF)
       {
-        //! Define turning directions
+        //! Define start turning direction
         bool RightS;
-        bool RightF;
         //! Declare parameters
         //! Start circle center
         double Xcs;
@@ -304,7 +365,7 @@ namespace Plan
         //! Finish circle center
         double Xcf;
         double Ycf;
-        //! Radius of secound end turning circle
+        //! Radius of second end turning circle
         double Rsec;
 
         //! Define start turning circle center (Ocs)
