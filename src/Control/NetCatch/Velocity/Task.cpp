@@ -91,6 +91,14 @@ namespace Control
         //! Task arguments.
         Arguments m_args;
 
+        Matrix Kp;
+        Matrix Ki;
+        Matrix Kd;
+
+        Matrix Kp_path;
+        Matrix Ki_path;
+        Matrix Kd_path;
+
         //! Last messages received
         IMC::DesiredVelocity m_v_des;
         IMC::DesiredHeading m_desired_heading;
@@ -189,6 +197,36 @@ namespace Control
           inf("Current frequency: %f",getFrequency());
           setFrequency(m_args.m_freq);
           inf("Frequency changed to : %f",getFrequency());
+          Kp = Matrix(3);
+          Ki = Matrix(3);
+          Kd = Matrix(3);
+          Kp(0,0) = m_args.Kp(0);
+          Kp(1,1) = m_args.Kp(1);
+          Kp(2,2) = m_args.Kp(2);
+
+          Ki(0,0) = m_args.Ki(0);
+          Ki(1,1) = m_args.Ki(1);
+          Ki(2,2) = m_args.Ki(2);
+
+          Kd(0,0) = m_args.Kd(0);
+          Kd(1,1) = m_args.Kd(1);
+          Kd(2,2) = m_args.Kd(2);
+
+          Kp_path = Matrix(3);
+          Ki_path = Matrix(3);
+          Kd_path = Matrix(3);
+
+          Kp_path(0,0) = m_args.Kp_path(0);
+          Kp_path(1,1) = m_args.Kp_path(1);
+          Kp_path(2,2) = m_args.Kp_path(2);
+
+          Ki_path(0,0) = m_args.Ki_path(0);
+          Ki_path(1,1) = m_args.Ki_path(1);
+          Ki_path(2,2) = m_args.Ki_path(2);
+
+          Kd_path(0,0) = m_args.Kd_path(0);
+          Kd_path(1,1) = m_args.Kd_path(1);
+          Kd_path(2,2) = m_args.Kd_path(2);
         }
 
 
@@ -252,11 +290,12 @@ namespace Control
           Matrix p = Matrix(3,1,0.0);
           Matrix i = Matrix(3,1,0.0);
           Matrix d = Matrix(3,1,0.0);
+
           if (m_args.disable_path_control)
           {
-            p = m_args.Kp*e_v_est;
-            i = m_args.Ki*m_v_int_value;
-            d = m_args.Kd*e_a_est;
+            p = Kp*e_v_est;
+            i = Ki*m_v_int_value;
+            d = Kd*e_a_est;
             F_des = p + i + d;
           }
           else
@@ -267,9 +306,9 @@ namespace Control
             e_a_est = Rpn*e_a_est;
             m_v_int_value = Rpn*m_v_int_value;
 
-            p = m_args.Kp_path*e_v_est;
-            i = m_args.Ki_path*m_v_int_value;
-            d = m_args.Kd_path*e_a_est;
+            p = Kp_path*e_v_est;
+            i = Ki_path*m_v_int_value;
+            d = Kd_path*e_a_est;
             F_des_path = p + i + d;
 
             F_des = transpose(Rpn)*F_des_path;
