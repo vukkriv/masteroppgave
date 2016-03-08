@@ -627,6 +627,19 @@ namespace Plan
           waitForMessages(1.0);
         }
       }
+      //! @return  Rotation matrix.
+      Matrix
+      Rzyx(double phi, double theta, double psi) const
+      {
+        double R_en_elements[] =
+          { cos(psi) * cos(theta), (-sin(psi) * cos(phi))
+              + (cos(psi) * sin(theta) * sin(phi)), (sin(psi) * sin(phi))
+              + (cos(psi) * cos(phi) * sin(theta)), sin(psi) * cos(theta), (cos(
+              psi) * cos(phi)) + (sin(phi) * sin(theta) * sin(psi)), (-cos(psi)
+              * sin(phi)) + (sin(theta) * sin(psi) * cos(phi)), -sin(theta),
+              cos(theta) * sin(phi), cos(theta) * cos(phi) };
+        return Matrix(R_en_elements, 3, 3);
+      }
     };
   }
 }
