@@ -48,6 +48,8 @@ namespace Plan
 
     struct LandingPathArguments
     {
+      //! Length of point behind the net
+      double a0;
       //! Length of final approach
       double a1;
       //! Length of glideslope
@@ -169,11 +171,37 @@ namespace Plan
           m_landArg.net_height = tList.get("net_height",0.0);
           m_landArg.gamma_a = Angles::radians(tList.get("attack_angle",0.0));
           m_landArg.gamma_d = Angles::radians(tList.get("descend_angle", 0.0));
+          m_landArg.a0 = tList.get("behind_net",0.0);
           m_landArg.a1 = tList.get("final_approach",0.0);
           m_landArg.a2 = tList.get("glideslope",0.0);
           m_landArg.a3 = tList.get("approach",0.0);
           m_Rs = tList.get("min_turn_radius", 0.0);
           m_Rf = tList.get("loiter_radius",0.0);
+
+          //! Fill WP matrix
+          m_landArg.WP(0,0) = -m_landArg.a0;
+          m_landArg.WP(2,0) = m_landArg.net_height+m_landArg.a0*std::tan(m_landArg.gamma_a);
+
+          m_landArg.WP(0,1) = m_landArg.a1;
+          m_landArg.WP(2,1) = m_landArg.net_height-m_landArg.a1*std::tan(m_landArg.gamma_a);
+
+          m_landArg.WP(0,2) = m_landArg.WP(0,1)+m_landArg.a2;
+          m_landArg.WP(2,2) = m_landArg.WP(2,1)-m_landArg.a2*std::tan(m_landArg.gamma_a);
+
+          m_landArg.WP(0,3) = m_landArg.WP(0,2)+m_landArg.a3;
+          m_landArg.WP(2,3) = m_landArg.WP(2,2);
+
+          m_landArg.WPa(0,0) = m_landArg.WP(0,1) + (m_landArg.a2)/2;
+          m_landArg.WPa(1,0) = m_Rf;
+          m_landArg.WPa(2,0) = m_landArg.WP(2,1)-m_landArg.a2*std::tan(m_landArg.gamma_a);
+
+          //! Rotate all WP into NED
+          m_landArg.WP.column(1) = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WP.column(1);
+          m_landArg.WP.column(2) = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WP.column(2);
+          m_landArg.WP.column(3) = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WP.column(3);
+          m_landArg.WP.column(4) = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WP.column(4);
+
+          m_landArg.WPa = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WPa;
 
           return true;
         }
