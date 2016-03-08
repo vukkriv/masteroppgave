@@ -139,7 +139,7 @@ namespace Plan
           return;
         }
         m_spec.plan_id = msg->plan_id;
-        if (m_spec.plan_id=='land')
+        if (m_spec.plan_id=="land")
         {
           if(!generateLandingPath())
           {
@@ -158,13 +158,13 @@ namespace Plan
       extractPlan(const IMC::PlanGeneration *msg)
       {
         //! Check if landing path container should be filled. It's assumed that input data is in NED
-        if (msg->plan_id=='land')
+        if (msg->plan_id=="land")
         {
-          TupleList tList(msg->params,'=',';',true);
+          TupleList tList(msg->params,"=",";",true);
           m_landArg.net_lat = Angles::radians(tList.get("land_lat",0.0));
           m_landArg.net_lon = Angles::radians(tList.get("land_lon",0.0));
           m_landArg.netHeading = Angles::radians(tList.get("land_heading",0.0));
-          m_landArg.net_height = tList.get("net_height");
+          m_landArg.net_height = tList.get("net_height",0.0);
           m_landArg.gamma_a = Angles::radians(tList.get("attack_angle",0.0));
           m_landArg.gamma_d = Angles::radians(tList.get("descend_angle", 0.0));
           m_landArg.a1 = tList.get("final_approach",0.0);
@@ -200,11 +200,13 @@ namespace Plan
           if (!dubinsPath(m_Xs,Xf,m_path,RightF,OCF))
           {
             war("Could not generate a landing path: Abort");
+            return false;
           }
           Xf = m_landArg.WP.column(4);
           if (!dubinsPath(m_landArg.WPa,Xf,m_path,RightF,OCF))
           {
             war("Could not generate a landing path: Abort");
+            return false;
           }
         }
         //! Is correct height
@@ -223,19 +225,19 @@ namespace Plan
         fPath.z_units = IMC::Z_HEIGHT;
         fPath.z = m_estate.height - m_estate.z;
         addPathPoint(fPath);
+        return true;
 
       }
       //! Add path point to follow path
       void
       addPathPoint(IMC::FollowPath& fPath)
       {
-        std::vector<Matrix>::iterator it;
-        for (it=m_path.begin();it!=m_path.end();it++)
+        for (int i=0;i<m_path.size();i++)
         {
           IMC::PathPoint* pPoint = new IMC::PathPoint;
-          pPoint->x = it(0,0);
-          pPoint->y = it(1,0);
-          pPoint->z = it(2,0);
+          pPoint->x = m_path[i](0,0);
+          pPoint->y = m_path[i](1,0);
+          pPoint->z = m_path[i](2,0);
           fPath.points.push_back(*pPoint);
           delete pPoint;
         }
