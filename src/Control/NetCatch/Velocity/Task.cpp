@@ -67,6 +67,20 @@ namespace Control
         double m_freq;
       };
 
+      static const std::string c_parcel_names[] = { "PID-X",   "PID-Y",   "PID-Z",
+                                                    "ERROR-X", "ERROR-Y", "ERROR-Z",};
+      enum Parcel
+      {
+        PC_PID_X = 0,
+        PC_PID_Y = 1,
+        PC_PID_Z = 2,
+        PC_ERROR_X = 3,
+        PC_ERROR_Y = 4,
+        PC_ERROR_Z = 5
+      };
+
+      static const int NUM_PARCELS = 6;
+
       struct Task: public DUNE::Control::PeriodicUAVAutopilot
       {
         //! Controllable loops.
@@ -82,6 +96,8 @@ namespace Control
         IMC::DesiredHeading m_desired_heading;
         IMC::EstimatedLocalState m_est_l_state;
         IMC::Acceleration m_a_est;
+
+        IMC::ControlParcel m_parcels[NUM_PARCELS];
 
         Matrix m_v_int_value;
 
@@ -158,6 +174,14 @@ namespace Control
           bind<IMC::Acceleration>(this);
         }
 
+        //! Reserve entity identifiers.
+        void
+        onEntityReservation(void)
+        {
+          for (unsigned i = 0; i < NUM_PARCELS; ++i)
+            m_parcels[i].setSourceEntity(reserveEntity(c_parcel_names[i] + " Force Parcel"));
+        }
+
         //! Update internal state with new parameter values.
         void
         onUpdateParameters(void)
@@ -225,28 +249,71 @@ namespace Control
           m_v_int_value = m_v_int_value + e_v_est*m_time_diff;
 
           Matrix F_des = Matrix(3,1,0.0);
-
+          Matrix p = Matrix(3,1,0.0);
+          Matrix i = Matrix(3,1,0.0);
+          Matrix d = Matrix(3,1,0.0);
           if (m_args.disable_path_control)
           {
-            F_des(0) = m_args.Kp(0)*e_v_est(0) + m_args.Ki(0)*m_v_int_value(0) + m_args.Kd(0)*e_a_est(0);
-            F_des(1) = m_args.Kp(1)*e_v_est(1) + m_args.Ki(1)*m_v_int_value(1) + m_args.Kd(1)*e_a_est(1);
-            F_des(2) = m_args.Kp(2)*e_v_est(2) + m_args.Ki(2)*m_v_int_value(2) + m_args.Kd(2)*e_a_est(2);
+            p = m_args.Kp*e_v_est;
+            i = m_args.Ki*m_v_int_value;
+            d = m_args.Kd*e_a_est;
+            F_des = p + i + d;
           }
           else
           {
             Matrix F_des_path = Matrix(3, 1, 0.0);
             Matrix Rpn = Rzyx(0,0,m_desired_heading.value);
-            Matrix e_v_est_path = Rpn*e_v_est;
-            Matrix e_a_est_path = Rpn*e_a_est;
-            Matrix m_v_int_value_path = Rpn*m_v_int_value;
-            F_des_path(0) = m_args.Kp_path(0) * e_v_est_path(0) + m_args.Ki_path(0) * m_v_int_value_path(0)
-                + m_args.Kd_path(0) * e_a_est_path(0);
-            F_des_path(1) = m_args.Kp_path(1) * e_v_est_path(1) + m_args.Ki_path(1) * m_v_int_value_path(1)
-                + m_args.Kd_path(1) * e_a_est_path(1);
-            F_des_path(2) = m_args.Kp_path(2) * e_v_est_path(2) + m_args.Ki_path(2) * m_v_int_value_path(2)
-                + m_args.Kd_path(2) * e_a_est_path(2);
+            e_v_est = Rpn*e_v_est;
+            e_a_est = Rpn*e_a_est;
+            m_v_int_value = Rpn*m_v_int_value;
+
+            p = m_args.Kp_path*e_v_est;
+            i = m_args.Ki_path*m_v_int_value;
+            d = m_args.Kd_path*e_a_est;
+            F_des_path = p + i + d;
+
             F_des = transpose(Rpn)*F_des_path;
           }
+
+          IMC::ControlParcel parcel_pid_x = m_parcels[PC_PID_X];
+          IMC::ControlParcel parcel_pid_y = m_parcels[PC_PID_Y];
+          IMC::ControlParcel parcel_pid_z = m_parcels[PC_PID_Z];
+          parcel_pid_x.p = p(0);
+          parcel_pid_y.p = p(1);
+          parcel_pid_z.p = p(2);
+
+          parcel_pid_x.d = d(0);
+          parcel_pid_y.d = d(1);
+          parcel_pid_z.d = d(2);
+
+          parcel_pid_x.i = i(0);
+          parcel_pid_y.i = i(1);
+          parcel_pid_z.i = i(2);
+
+          dispatch(parcel_pid_x);
+          dispatch(parcel_pid_y);
+          dispatch(parcel_pid_z);
+
+          IMC::ControlParcel errors_x = m_parcels[PC_ERROR_X];
+          IMC::ControlParcel errors_y = m_parcels[PC_ERROR_Y];
+          IMC::ControlParcel errors_z = m_parcels[PC_ERROR_Z];
+
+          errors_x.p = e_v_est(0);
+          errors_y.p = e_v_est(1);
+          errors_z.p = e_v_est(2);
+
+          errors_x.d = e_a_est(0);
+          errors_y.d = e_a_est(1);
+          errors_z.d = e_a_est(2);
+
+          errors_x.i = m_v_int_value(0);
+          errors_y.i = m_v_int_value(1);
+          errors_z.i = m_v_int_value(2);
+
+          dispatch(errors_x);
+          dispatch(errors_y);
+          dispatch(errors_z);
+
 
           if (F_des.norm_2() > m_args.max_norm_F)
           {
