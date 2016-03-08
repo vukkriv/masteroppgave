@@ -129,6 +129,20 @@ namespace Control
         "ABORT",
         "STOP"};
 
+      static const std::string c_parcel_names[] = { "PID-ALONG-SURGE",   "PID-CROSS-Y",   "PID-CROSS-Z",
+                                                    "ERROR-ALONG-SURGE", "ERROR-CROSS-Y", "ERROR-CROSS-Z",};
+      enum Parcel
+      {
+        PC_PID_ALONG_SURGE = 0,
+        PC_PID_CROSS_Y = 1,
+        PC_PID_CROSS_Z = 2,
+        PC_ERROR_ALONG_SURGE = 3,
+        PC_ERROR_CROSS_Y = 4,
+        PC_ERROR_CROSS_Z = 5
+      };
+
+      static const int NUM_PARCELS = 6;
+
       struct Task : public DUNE::Control::PeriodicUAVAutopilot
       {
         //! Task arguments.
@@ -138,6 +152,8 @@ namespace Control
 
         //! Desired net heading
         IMC::DesiredHeading m_heading;
+
+        IMC::ControlParcel m_parcels[NUM_PARCELS];
 
         VirtualRunway m_runway;
         Vehicles m_vehicles;
@@ -208,6 +224,7 @@ namespace Control
         static const uint32_t c_controllable = IMC::CL_PATH;
         //! Required loops.
         static const uint32_t c_required = IMC::CL_SPEED;
+
 
         //! Constructor.
         //! @param[in] name task name.
@@ -340,6 +357,14 @@ namespace Control
           // Bind incoming IMC messages
           bind<IMC::EstimatedLocalState>(this);
           bind<IMC::DesiredNetRecoveryPath>(this);
+        }
+
+        //! Reserve entity identifiers.
+        void
+        onEntityReservation(void)
+        {
+          for (unsigned i = 0; i < NUM_PARCELS; ++i)
+            m_parcels[i].setSourceEntity(reserveEntity(c_parcel_names[i] + " NetCatch Parcel"));
         }
 
         //! Update internal state with new parameter values.
@@ -1069,16 +1094,19 @@ namespace Control
           Matrix e_v_path = m_v_ref_path - v_n_path;
           m_p_int_value = m_p_int_value + e_p_path * m_time_diff;
 
+          Matrix p = Matrix(3,1,0.0);
+          Matrix i = Matrix(3,1,0.0);
+          Matrix d = Matrix(3,1,0.0);
+
           if (   m_curr_state == IMC::NetRecoveryState::NR_STANDBY
               || m_curr_state == IMC::NetRecoveryState::NR_APPROACH
               || m_curr_state == IMC::NetRecoveryState::NR_END)
           {
-            v_path(0) = m_args.Kp(0) * e_p_path(0)
-                + m_args.Ki(0) * m_p_int_value(0) + m_args.Kd(0) * e_v_path(0);
-            v_path(1) = m_args.Kp(1) * e_p_path(1)
-                + m_args.Ki(1) * m_p_int_value(1) + m_args.Kd(1) * e_v_path(1);
-            v_path(2) = m_args.Kp(2) * e_p_path(2)
-                + m_args.Ki(2) * m_p_int_value(2) + m_args.Kd(2) * e_v_path(2);
+            p = m_args.Kp*e_p_path;
+            d = m_args.Kd*e_v_path;
+            i = m_args.Ki*m_p_int_value;
+
+            v_path = p + i + d;
 
             //limit velocity
             if (v_path.norm_2() > m_args.max_norm_v)
@@ -1090,22 +1118,25 @@ namespace Control
                 || m_curr_state == IMC::NetRecoveryState::NR_CATCH)
           {
             e_p_path(0) = 0;
-            v_path(0) = u_d_along_path;
 
+            Matrix v_temp = Matrix(3,1,0.0);
             Matrix v_path_yz = Matrix(2, 1, 0.0);
-            v_path_yz(0) = m_args.Kp(1) * e_p_path(1)
-                + m_args.Ki(1) * m_p_int_value(1) + m_args.Kd(1) * e_v_path(1);
-            v_path_yz(1) = m_args.Kp(2) * e_p_path(2)
-                + m_args.Ki(2) * m_p_int_value(2) + m_args.Kd(2) * e_v_path(2);
+            p = m_args.Kp*e_p_path;
+            d = m_args.Kd*e_v_path;
+            i = m_args.Ki*m_p_int_value;
+            p(0) = 0;
+            d(0) = 0;
+            i(0) = 0;
+            v_temp = p + i + d;
+            v_path_yz(0) = v_temp(1);
+            v_path_yz(1) = v_temp(2);
 
             //limit velocity
-            if (v_path_yz.norm_2()
-                > sqrt(pow(m_args.max_norm_v, 2) - pow(m_u_ref, 2)))
+            if (v_path_yz.norm_2() > sqrt(pow(m_args.max_norm_v, 2) - pow(m_u_ref, 2)))
             {
-              v_path_yz = sqrt(pow(m_args.max_norm_v, 2) - pow(m_u_ref, 2))
-                  * v_path_yz / v_path_yz.norm_2();
+              v_path_yz = sqrt(pow(m_args.max_norm_v, 2) - pow(m_u_ref, 2))* v_path_yz / v_path_yz.norm_2();
             }
-
+            v_path(0) = u_d_along_path;
             v_path(1) = v_path_yz(0);
             v_path(2) = v_path_yz(1);
           }
@@ -1114,13 +1145,10 @@ namespace Control
           if (Clock::get() - startPrint > 0.3)
           {
             spew("Kp: [%f,%f,%f]", m_args.Kp(0), m_args.Kp(1), m_args.Kp(2));
-            spew("m_time_diff: %lu", m_time_diff);
-            spew("m_p_int_value: [%f,%f,%f]", m_p_int_value(0), m_p_int_value(1),
-                 m_p_int_value(2));
-            spew("p_ref_path: [%f,%f,%f]", m_p_ref_path(0), m_p_ref_path(1),
-                 m_p_ref_path(2));
-            spew("v_ref_path: [%f,%f,%f]", m_v_ref_path(0), m_v_ref_path(1),
-                 m_v_ref_path(2));
+            spew("m_time_diff: %llu", m_time_diff);
+            spew("m_p_int_value: [%f,%f,%f]", m_p_int_value(0), m_p_int_value(1), m_p_int_value(2));
+            spew("p_ref_path: [%f,%f,%f]", m_p_ref_path(0), m_p_ref_path(1), m_p_ref_path(2));
+            spew("v_ref_path: [%f,%f,%f]", m_v_ref_path(0), m_v_ref_path(1), m_v_ref_path(2));
             spew("p_a_path: [%f,%f,%f]", p_a_path(0), p_a_path(1), p_a_path(2));
             spew("p_n_path: [%f,%f,%f]", p_n_path(0), p_n_path(1), p_n_path(2));
             //Matrix delta = p_a_path-p_n_path;
@@ -1129,6 +1157,47 @@ namespace Control
 
             startPrint = Clock::get();
           }
+
+          //Dispatch control parcel logs
+          IMC::ControlParcel parcel_pid_along   = m_parcels[PC_PID_ALONG_SURGE];
+          IMC::ControlParcel parcel_pid_cross_y = m_parcels[PC_PID_CROSS_Y];
+          IMC::ControlParcel parcel_pid_cross_z = m_parcels[PC_PID_CROSS_Z];
+
+          parcel_pid_along.p   = p(0);
+          parcel_pid_cross_y.p = p(1);
+          parcel_pid_cross_z.p = p(2);
+
+          parcel_pid_along.d   = d(0);
+          parcel_pid_cross_y.d = d(1);
+          parcel_pid_cross_z.d = d(2);
+
+          parcel_pid_along.i   = i(0);
+          parcel_pid_cross_y.i = i(1);
+          parcel_pid_cross_z.i = i(2);
+
+          dispatch(parcel_pid_along);
+          dispatch(parcel_pid_cross_y);
+          dispatch(parcel_pid_cross_z);
+
+          IMC::ControlParcel errors_along_x = m_parcels[PC_ERROR_ALONG_SURGE];
+          IMC::ControlParcel errors_cross_y = m_parcels[PC_ERROR_CROSS_Y];
+          IMC::ControlParcel errors_cross_z = m_parcels[PC_ERROR_CROSS_Z];
+
+          errors_along_x.p = e_p_path(0);
+          errors_cross_y.p = e_p_path(1);
+          errors_cross_z.p = e_p_path(2);
+
+          errors_along_x.d = e_v_path(0);
+          errors_cross_y.d = e_v_path(1);
+          errors_cross_z.d = e_v_path(2);
+
+          errors_along_x.i = m_p_int_value(0);
+          errors_cross_y.i = m_p_int_value(1);
+          errors_cross_z.i = m_p_int_value(2);
+
+          dispatch(errors_along_x);
+          dispatch(errors_cross_y);
+          dispatch(errors_cross_z);
 
           return v_path;
         }
@@ -1221,11 +1290,9 @@ namespace Control
             p_n_path = getNetPosition(m_p_path);
             v_n_path = getNetVelocity(m_v_path);
 
-            Matrix v_path = getDesiredPathVelocity(m_ud, p_a_path, v_a_path,
-                                                   p_n_path, v_n_path);
+            Matrix v_path = getDesiredPathVelocity(m_ud, p_a_path, v_a_path, p_n_path, v_n_path);
 
-            Matrix v_d_local = getDesiredLocalVelocity(v_path, m_runway.alpha,
-                                                       m_runway.theta);
+            Matrix v_d_local = getDesiredLocalVelocity(v_path, m_runway.alpha, m_runway.theta);
 
             sendDesiredLocalVelocity(v_d_local);
           }
