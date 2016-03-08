@@ -125,6 +125,7 @@ namespace Control
         Arguments m_args;
         //! Current state
         IMC::NetRecoveryState::NetRecoveryLevelEnum m_curr_state;
+
         //! Desired net heading
         IMC::DesiredHeading m_heading;
 
@@ -496,12 +497,12 @@ namespace Control
                   updateStartRadius();
                   if (!startNetRecovery()) //aircraft should not be too close when starting approach
                   {
-                    debug("Aircraft approaching");
+                    inf("Aircraft approaching");
                     m_curr_state = IMC::NetRecoveryState::NR_APPROACH; //requires that the net is standby at the start of the runway
                   }
                   else
                   {
-                    debug("Not able to recover, plane to close");
+                    war("Not able to recover, plane to close");
                     m_curr_state = IMC::NetRecoveryState::NR_STOP;
                   }
                 }
@@ -513,7 +514,7 @@ namespace Control
                 updateStartRadius();
                 if (startNetRecovery())
                 {
-                  debug("Start NetRecovery");
+                  inf("Start NetRecovery");
                   m_curr_state = IMC::NetRecoveryState::NR_START;
                 }
                 break;
@@ -525,17 +526,17 @@ namespace Control
 
                 if (catched())
                 {
-                  debug("Fixed-wing catched");
+                  inf("Fixed-wing catched");
                   m_curr_state = IMC::NetRecoveryState::NR_CATCH;
                 }
                 else if (aircraftPassed())
                 {
-                  debug("Fixed-wing passed");
+                  war("Fixed-wing passed");
                   m_curr_state = IMC::NetRecoveryState::NR_STOP;
                 }
                 if (endAtRunway())
                 {
-                  debug("End at runway");
+                  inf("End at runway");
                   m_curr_state = IMC::NetRecoveryState::NR_END;
                 }
                 break;
@@ -544,7 +545,7 @@ namespace Control
               {
                 if (endAtRunway())
                 {
-                  debug("End at runway");
+                  inf("End at runway");
                   m_curr_state = IMC::NetRecoveryState::NR_END;
                 }
                 break;
