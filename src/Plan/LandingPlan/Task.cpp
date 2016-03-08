@@ -44,10 +44,32 @@ namespace Plan
 
     };
 
+    struct LandingPathArguments
+    {
+      //! Length of final approach
+      double a1;
+      //! Length of glideslope
+      double a2;
+      //! Length of approach
+      double a3;
+      //! Length of waypoint behind the nett
+      double b1;
+      //! Angle of attack
+      double m_gamma_a;
+      //! Net position
+      Matrix Net;
+      //! Net orientation
+      double netHeading;
+      //! Landing waypoints
+      Matrix WP;
+    };
+
     struct Task: public DUNE::Tasks::Task
     {
       //! Task arguments
       Arguments m_arg;
+      //! Landing path arguments
+      LandingPathArguments m_landArg;
       //! Accumulated EstimatedState message
       IMC::EstimatedState m_estate;
       //! Start turning circle
@@ -56,8 +78,6 @@ namespace Plan
       double m_Rf;
       //! Angle of descent
       double m_gamma_d;
-      //! Angle of attack
-      double m_gamma_a;
       //! Calculated path
       std::vector<double [3]> m_path;
       //! Start pose
@@ -93,6 +113,22 @@ namespace Plan
       void
       consume(const IMC::PlanGeneration *msg)
       {
+        if (msg->op != IMC::PlanGeneration::OP_REQUEST)
+        {
+          return;
+        }
+        if (!extractPlan(*msg))
+        {
+          return;
+        }
+        if (msg->plan_id=='land')
+        {
+          generateLandingPath();
+        }
+        else
+        {
+          //! Other Paths
+        }
 
       }
 
