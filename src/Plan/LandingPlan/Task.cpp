@@ -216,21 +216,23 @@ namespace Plan
         //! Create a maneuver
         m_maneuvers.clear();
 
-        IMC::FollowPath fPath;
+        IMC::FollowPath* fPath = new fPath;
         double cur_lat;
         double cur_lon;
         Coordinates::WGS84::displace(m_estate.x,m_estate.y,&cur_lat,&cur_lon);
-        fPath.lat = cur_lat;
-        fPath.lon = cur_lon;
-        fPath.z_units = IMC::Z_HEIGHT;
-        fPath.z = m_estate.height - m_estate.z;
+        fPath->lat = cur_lat;
+        fPath->lon = cur_lon;
+        fPath->z_units = IMC::Z_HEIGHT;
+        fPath->z = m_estate.height - m_estate.z;
         addPathPoint(fPath);
+        m_maneuvers.push_back(*fPath);
+        delete fPath;
         return true;
 
       }
       //! Add path point to follow path
       void
-      addPathPoint(IMC::FollowPath& fPath)
+      addPathPoint(IMC::FollowPath* fPath)
       {
         for (int i=0;i<m_path.size();i++)
         {
@@ -238,7 +240,7 @@ namespace Plan
           pPoint->x = m_path[i](0,0);
           pPoint->y = m_path[i](1,0);
           pPoint->z = m_path[i](2,0);
-          fPath.points.push_back(*pPoint);
+          fPath->points.push_back(*pPoint);
           delete pPoint;
         }
       }
