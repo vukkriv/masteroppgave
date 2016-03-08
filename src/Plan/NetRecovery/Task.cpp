@@ -40,6 +40,7 @@ namespace Plan
       fp32_t speed;
       fp32_t radius;
       uint16_t duration;
+      double distance_runway;
     };
 
     struct Arguments
@@ -76,6 +77,11 @@ namespace Plan
         .visibility(Parameter::VISIBILITY_USER)
         .defaultValue("0");
 
+        param("Loiter along-track distance", m_args.fw_loiter.distance_runway)
+        .visibility(Parameter::VISIBILITY_USER)
+        .units(Units::Meter)
+        .defaultValue("100.0")
+        .description("Distance from loiter to start of runway");
 
         bind<IMC::PlanDB>(this);
         bind<IMC::PlanControl>(this);
@@ -300,6 +306,13 @@ namespace Plan
         //Should calculate based on a desired along-track position behind the virtual runway
         man_loit.lat = maneuver->start_lat;
         man_loit.lon = maneuver->start_lon;
+
+        double bearing;
+        double range;
+        WGS84::getNEBearingAndRange(maneuver->start_lat,maneuver->start_lon,
+                                    maneuver->end_lat,maneuver->end_lon,
+                                    &bearing,&range);
+
 
 
         IMC::PlanManeuver* pman1 = new IMC::PlanManeuver();
