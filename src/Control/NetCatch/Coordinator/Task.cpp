@@ -119,6 +119,15 @@ namespace Control
         AIRCRAFT = 0, COPTER_LEAD, COPTER_FOLLOW, INVALID = -1
       };
 
+      static const char * NetRecoveryLevelEnumStrings[] =
+      { "INITIALIZE",
+        "STANDBY",
+        "APPROACH",
+        "START",
+        "CATCH",
+        "END",
+        "STOP"};
+
       struct Task : public DUNE::Control::PeriodicUAVAutopilot
       {
         //! Task arguments.
@@ -287,13 +296,18 @@ namespace Control
           param("Max pos y approach", m_args.max_py_app).visibility(
               Tasks::Parameter::VISIBILITY_USER).defaultValue("1");
 
-          param("Max pos x approach", m_args.max_px_app).visibility(
-              Tasks::Parameter::VISIBILITY_USER).defaultValue("1");
-
-          param("Collision point", m_args.m_coll_r)
+          param("Approach along-track", m_args.max_px_app)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .defaultValue("100.0").units(Units::Meter)
+          .defaultValue("100.0")
+          .units(Units::Meter)
+          .description("Desired fixed-wing point to start approach measured along-track from the start point");
+
+          param("Collision along-track", m_args.m_coll_r)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .defaultValue("100.0")
+          .units(Units::Meter)
           .description("Desired collision point measured along-track from the start point");
 
           param("Radius at recovery", m_args.m_coll_eps).visibility(
@@ -566,9 +580,10 @@ namespace Control
               }
           }
           sendCurrentState();
+
           if (last_state != m_curr_state)
-            inf("Current state: %d",
-                static_cast<NetRecoveryState::NetRecoveryLevelEnum>(m_curr_state));
+            inf("Current state: %s",
+                NetRecoveryLevelEnumStrings[static_cast<NetRecoveryState::NetRecoveryLevelEnum>(m_curr_state)]);
         }
 
         void
