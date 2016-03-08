@@ -179,6 +179,16 @@ namespace Plan
         m_Xs(1,0) = m_estate.y;
         m_Xs(2,0) = m_estate.z;
         m_Xs(3,0) = m_estate.psi;
+        //! Direction of end turn
+        bool RightF;
+        //! Center of end turning circle
+        Matrix OCF = Matrix(2,1,0.0);
+        //! End pose in dubins paht
+        Matrix Xf = Matrix(3,1,0.0);
+        if (!dubinsPath(m_Xs,Xf,m_path,RightF,OCF))
+        {
+          //! Need an extra WP
+        }
       }
       //! Construct Dubins Path between two waypoints with given heading
       bool
