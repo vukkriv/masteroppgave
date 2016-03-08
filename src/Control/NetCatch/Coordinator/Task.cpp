@@ -126,6 +126,7 @@ namespace Control
         "START",
         "CATCH",
         "END",
+        "ABORT",
         "STOP"};
 
       struct Task : public DUNE::Control::PeriodicUAVAutopilot
