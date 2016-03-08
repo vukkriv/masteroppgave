@@ -79,7 +79,7 @@ namespace Control
         Matrix Ki;
         Matrix Kd;
 
-
+        double max_integral;
         double max_norm_v;
 
         //! Frequency of controller
@@ -201,7 +201,6 @@ namespace Control
 
         Matrix m_p_ref_path;
         Matrix m_v_ref_path;
-
         Matrix m_p_int_value;
 
         //! Radius to start net-catch (calculate based on net-acceleration)
@@ -355,6 +354,11 @@ namespace Control
           param("Kd Position Control", m_args.Kd).visibility(
               Tasks::Parameter::VISIBILITY_USER).defaultValue("0.0,0.0,0.0").description(
               "Position Controller tuning parameter Kd");
+
+          param("Max Integral", m_args.max_integral)
+          .defaultValue("1.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Max integral value");
 
           param("Maximum Normalised Velocity", m_args.max_norm_v).defaultValue(
               "5.0").description("Maximum Normalised Velocity of the Copter");
@@ -1113,6 +1117,8 @@ namespace Control
           Matrix e_p_path = m_p_ref_path - p_n_path;
           Matrix e_v_path = m_v_ref_path - v_n_path;
           m_p_int_value = m_p_int_value + e_p_path * m_time_diff;
+          if (m_p_int_value.norm_2() > m_args.max_integral)
+            m_p_int_value = m_args.max_integral * m_p_int_value / m_p_int_value.norm_2();
 
           Matrix p = Matrix(3,1,0.0);
           Matrix i = Matrix(3,1,0.0);
