@@ -22,19 +22,18 @@
 # language governing permissions and limitations at                        #
 # https://www.lsts.pt/dune/licence.                                        #
 ############################################################################
-# Author: Jostein B. Moe
+# Author: Kristian Klausen                                                 #
 ############################################################################
-# Net-catch parameters.                                                    #
+# ntnu-hexa-003 configuration file                                         #
 ############################################################################
 
-[Transports.LocalStateTransport]
-Enabled									= Always
-Entity Label							= Local State
-Debug Level                             = None
-Use Static Reference					= True	# To be a part of global reference message
-Latitude                                = 63.628814 # Breivika
-Longitude                               = 9.727400  # Breivika
-Height					= 120
+[Require uav/arducopter.ini]
+[Require uav/piksi-rover.ini]
+[Require uav/rtklib-rover.ini]
+#[Require uav/control_acceleration.ini]
+[Require uav/netrecovery/single.ini]
 
-
-
+[General]
+Vehicle                                 = ntnu-hexa-003
+Time Of Arrival Factor                  = 3  
+						 

@@ -1,5 +1,5 @@
 ############################################################################
-# Copyright 2007-2014 Universidade do Porto - Faculdade de Engenharia      #
+# Copyright 2007-2015 Universidade do Porto - Faculdade de Engenharia      #
 # Laboratório de Sistemas e Tecnologia Subaquática (LSTS)                  #
 ############################################################################
 # This file is part of DUNE: Unified Navigation Environment.               #
@@ -20,21 +20,46 @@
 # distributed on an "AS IS" basis, WITHOUT WARRANTIES OR CONDITIONS OF     #
 # ANY KIND, either express or implied. See the Licence for the specific    #
 # language governing permissions and limitations at                        #
-# https://www.lsts.pt/dune/licence.                                        #
+# http://ec.europa.eu/idabc/eupl.html.                                     #
 ############################################################################
-# Author: Jostein B. Moe
+# Author: Kristian Klausen, Joao Fortuna                                   #
 ############################################################################
-# Net-catch parameters.                                                    #
+# NTNU-X8-002 configuration file                                           #
 ############################################################################
 
-[Transports.LocalStateTransport]
-Enabled									= Always
-Entity Label							= Local State
-Debug Level                             = None
-Use Static Reference					= True	# To be a part of global reference message
-Latitude                                = 63.628814 # Breivika
-Longitude                               = 9.727400  # Breivika
-Height					= 120
+[Require uav/arduplane.ini]
+[Require uav/piksi-rover.ini]
+[Require uav/rtklib-rover.ini]
+[Require uav/netrecovery/fixedwing.ini]
+
+
+[General]
+Vehicle                                 = ntnu-x8-002
+
+[Control.UAV.Ardupilot/AP-SIL]
+TCP - Port                              = 5772 # Instance 1
+Ardupilot Tracker                       = True
 
 
 
+[Transports.SerialOverTCP]
+Enabled                                    = Hardware
+Entity Label                               = Arduino Serial
+Serial Port - Device                       = /dev/uart/1
+Serial Port - Baud Rate                    = 115200
+
+[Control.UAV.Ardupilot/Hardware]
+#TCP - Address                           = 10.0.60.107
+#TCP - Port                              = 9801
+Default altitude                        = 100.0
+Default loiter radius                   = 75.0
+
+[Transports.UDP/PTU]
+Enabled                                 = Always
+Entity Label                            = UDP to PTU
+Local Port								= 6012
+Dynamic Nodes                           = False
+Local Messages Only                     = True
+Announce Service                        = False
+Transports                              = EstimatedState
+Static Destinations                     = 10.0.60.40:6002

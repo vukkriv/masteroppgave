@@ -34,7 +34,7 @@ Debug Level                             = None
 Use Static Reference					= True	# To be a part of global reference message
 Latitude                                = 63.628814 # Breivika
 Longitude                               = 9.727400  # Breivika
-Height					= 120
+Height					= 0
 
 
 
