@@ -369,7 +369,7 @@ namespace Control
           .description("Set to reset to state rather than previus ref_pos on change");
 
           param("Controller - Bandwidth", m_args.ctrl_omega_b)
-          .defaultValue("0.7")
+          .defaultValue("1.1")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Controller bandwidth");
 
@@ -435,7 +435,7 @@ namespace Control
           .description("Length of suspended rope. Used for various filters. ");
 
           param("Model - Wind Drag Coefficient", m_args.wind_drag_coefficient)
-          .defaultValue("0.15")
+          .defaultValue("0.05")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_PLAN)
           .description("Coefficient to use in wind ff");
@@ -505,7 +505,7 @@ namespace Control
           .description("Enable to feed-forward wind effects");
 
           param("CtrlMisc - Enable Square Wind Velocity", m_args.enable_wind_square_vel)
-          .defaultValue("true")
+          .defaultValue("false")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Use the square of the velocity to calculate wind ff");
 
