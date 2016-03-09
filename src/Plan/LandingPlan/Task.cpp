@@ -341,14 +341,13 @@ namespace Plan
       void
       addPathPoint(IMC::FollowPath* fPath)
       {
+        IMC::PathPoint pPoint;
         for (int i=0;i<m_path.size();i++)
         {
-          IMC::PathPoint* pPoint = new IMC::PathPoint;
-          pPoint->x = m_path[i](0,0);
-          pPoint->y = m_path[i](1,0);
-          pPoint->z = m_path[i](2,0);
-          fPath->points.push_back(*pPoint);
-          delete pPoint;
+          pPoint.x = m_path[i](0,0);
+          pPoint.y = m_path[i](1,0);
+          pPoint.z = m_path[i](2,0);
+          fPath->points.push_back(pPoint);
         }
       }
       //! Construct Dubins Path between two waypoints with given heading
