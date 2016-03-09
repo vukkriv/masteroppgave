@@ -637,13 +637,14 @@ namespace Control
         consume(const IMC::DesiredSpeed* dspeed)
         {
 
+          trace("Got airspeed message: %.3f", dspeed->value);
           // Sanity check, and set internal speed.
           if (dspeed->speed_units == IMC::SUNITS_METERS_PS &&
-              dspeed->value > 0 && dspeed->value < 10)
+              dspeed->value > 0 && dspeed->value < 30)
           {
             m_dspeed.value = dspeed->value;
+            trace("Set airspeed: %.3f", dspeed->value);
           }
-
           PathController::consume(dspeed);
         }
 
@@ -927,6 +928,8 @@ namespace Control
           {
             tau1 = m_dspeed.value * tau1 / tau1.norm_2();
           }
+
+          spew("Trying to reach speed: %.3f", m_dspeed.value);
 
           // Step 2: A-part
           Matrix tau2 = m_refmodel.k2 * (tau1 - m_refmodel.getVel());
