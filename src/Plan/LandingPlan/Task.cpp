@@ -102,8 +102,6 @@ namespace Plan
       double m_Rs;
       //! Finish turning circle
       double m_Rf;
-      //! Calculated path
-      std::vector<Matrix> m_path;
       //! Number of points in arc
       int m_N;
 
@@ -232,6 +230,8 @@ namespace Plan
         //! End pose in dubins paht
         Matrix Xf = Matrix(4,1,0.0);
         Xf = m_landArg.WP.column(4);
+        //! Calculated path
+        std::vector<Matrix> m_path;
         if (!dubinsPath(Xs,Xf,m_path,RightF,OCF))
         {
           //! Need an extra WP
@@ -278,7 +278,7 @@ namespace Plan
         fPath.lon = cur_lon;
         fPath.z_units = IMC::Z_HEIGHT;
         fPath.z = m_estate.height - m_estate.z;
-        addPathPoint(&fPath);
+        addPathPoint(m_path,&fPath);
         maneuverList.push_back(fPath);
 
         //! Add loiter maneuver if the waitLoiter flag is set to true
@@ -374,7 +374,7 @@ namespace Plan
       }
       //! Add path point to follow path
       void
-      addPathPoint(IMC::FollowPath* fPath)
+      addPathPoint(std::vector<Matrix> m_path,IMC::FollowPath* fPath)
       {
         IMC::PathPoint pPoint;
         for (int i=0;i<m_path.size();i++)
