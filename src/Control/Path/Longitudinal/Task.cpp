@@ -130,12 +130,28 @@ namespace Control
           (void)state;
           (void)ts;
 
-          if (!m_args.use_controller)
-            return;
-          // Activate controller
-          enableControlLoops(IMC::CL_SPEED); //Throttle considered as cl speed atm.
-          enableControlLoops(IMC::CL_PITCH);
+          if (!m_args.use_controller){
+            disableControlLoops(IMC::CL_SPEED);
+            disableControlLoops(IMC::CL_PITCH);
+
+          }
+          else{
+            // Activate controller
+            enableControlLoops(IMC::CL_SPEED); //Throttle considered as cl speed atm.
+            enableControlLoops(IMC::CL_PITCH);
+          }
         }
+
+        void
+        onPathDeactivation(void)
+        {
+          if (!m_args.use_controller){
+            // Deactivate controller.
+            disableControlLoops(IMC::CL_SPEED);
+            disableControlLoops(IMC::CL_PITCH);
+          }
+        }
+
 
         bool
         hasSpecificZControl(void) const
