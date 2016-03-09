@@ -98,8 +98,6 @@ namespace Plan
       LandingPathArguments m_landArg;
       //! Accumulated EstimatedState message
       IMC::EstimatedState m_estate;
-      //! Plan specification
-      IMC::PlanSpecification m_spec;
       //! Start turning circle
       double m_Rs;
       //! Finish turning circle
@@ -112,8 +110,6 @@ namespace Plan
       std::vector<double [4]> m_Xf;
       //! Number of points in arc
       int m_N;
-      //! Maneuver list
-      IMC::MessageList<IMC::Maneuver> m_maneuvers;
 
       //! Constructor.
       //! @param[in] name task name.
@@ -153,8 +149,7 @@ namespace Plan
         {
           return;
         }
-        m_spec.plan_id = msg->plan_id;
-        if (m_spec.plan_id=="land")
+        if (msg->plan_id=="land")
         {
           if(!generateLandingPath())
           {
@@ -262,24 +257,6 @@ namespace Plan
         bool correctHeight;
         glideSlope(m_Xs,m_landArg.WP.column(4),m_landArg.gamma_d,correctHeight,m_path);
         glideSpiral(OCF,RightF,m_landArg.WP(2,3),correctHeight,m_landArg.gamma_d,m_path);
-        //! Create a maneuver
-        m_maneuvers.clear();
-
-        IMC::FollowPath fPath;
-        double cur_lat;
-        double cur_lon;
-        Coordinates::WGS84::displace(m_estate.x,m_estate.y,&cur_lat,&cur_lon);
-        fPath.lat = cur_lat;
-        fPath.lon = cur_lon;
-        fPath.z_units = IMC::Z_HEIGHT;
-        fPath.z = m_estate.height - m_estate.z;
-        addPathPoint(&fPath);
-        //m_maneuvers.push_back(*fPath);
-        if (m_arg.waitLoiter)
-        {
-
-        }
-        //addNetApproach();
 
         //! Create plan set request
         IMC::PlanDB plan_db;
@@ -294,9 +271,40 @@ namespace Plan
         plan_spec.start_man_id = 1;
         plan_spec.description = "Plan activating LandingPath";
 
+        //! Create a list of maneuvers
+        IMC::MessageList<IMC::Maneuver> maneuverList;
+
+        //! Create a followPath maneuver
+        IMC::FollowPath fPath;
+        double cur_lat;
+        double cur_lon;
+        Coordinates::WGS84::displace(m_estate.x,m_estate.y,&cur_lat,&cur_lon);
+        fPath.lat = cur_lat;
+        fPath.lon = cur_lon;
+        fPath.z_units = IMC::Z_HEIGHT;
+        fPath.z = m_estate.height - m_estate.z;
+        addPathPoint(&fPath);
+        maneuverList.push_back(fPath);
+
+        //! Add loiter maneuver if the waitLoiter flag is set to true
+        if (m_arg.waitLoiter)
+        {
+          //addLoiter();
+        }
+        else
+        {
+          //addNetApproach();
+        }
+
+
+
         //! Create plan maneuver
         IMC::PlanManeuver man_spec;
         man_spec.maneuver_id = 1;
+
+        //! Add a maneuver list to a plan
+        // addMnaeuverToPlan(maneuverList,&man_spec);
+
         man_spec.data.set(fPath);
 
         plan_spec.maneuvers.push_back(man_spec);
