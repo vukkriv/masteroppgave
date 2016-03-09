@@ -96,11 +96,6 @@ namespace Transports
       void
       onUpdateParameters(void)
       {
-		if (paramChanged(m_args.ref_lat) || paramChanged(m_args.ref_lon) || paramChanged(m_args.ref_hae))
-		{
-		if (m_args.ref_lat == -999) // Reference not set; return
-		  return;
-
 		inf("New reference position.");
 
 		// Check validity
@@ -113,9 +108,8 @@ namespace Transports
 		m_ref_lon = Angles::radians(m_args.ref_lon);
 		m_ref_hae = m_args.ref_hae;
 		m_ref_valid = true;
-		inf("Ref. LLH set from ini: [Lat = %f, Lon = %f, Height = %.1f]",
-			Angles::degrees(m_ref_lat), Angles::degrees(m_ref_lon), m_ref_hae);
-		}
+        inf("Ref. LLH set from ini: [Lat = %f, Lon = %f, Height = %.1f]",
+            Angles::degrees(m_ref_lat), Angles::degrees(m_ref_lon), m_ref_hae);
       }
 
       //! Reserve entity identifiers.
@@ -159,8 +153,8 @@ namespace Transports
 		   resolveSystemId(msg->getSource()),
 		   resolveEntity(msg->getSourceEntity()).c_str());
 
-	   if (m_args.use_static_ref)
-	   {
+		if (m_args.use_static_ref)
+		{
 		 m_state.lat    = m_ref_lat;
 		 m_state.lon    = m_ref_lon;
 		 m_state.height = m_ref_hae;
@@ -173,9 +167,9 @@ namespace Transports
 		 m_state.z += msg->z;
 
 		 m_state.ref    = IMC::EstimatedLocalState::REF_FIXED;
-	   }
-	   else
-	   {
+		}
+		else
+		{
 		 m_state.lat    = msg->lat;
 		 m_state.lon    = msg->lon;
 		 m_state.height = msg->height;
@@ -183,7 +177,7 @@ namespace Transports
 		 m_state.y = msg->y;
 		 m_state.z = msg->z;
 		 m_state.ref = IMC::EstimatedLocalState::REF_MOVING;
-	   }
+		}
 
         m_state.u = msg->u;
         m_state.v = msg->v;
