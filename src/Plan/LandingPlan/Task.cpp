@@ -104,10 +104,6 @@ namespace Plan
       double m_Rf;
       //! Calculated path
       std::vector<Matrix> m_path;
-      //! Start pose
-      Matrix m_Xs;
-      //! Finish pose
-      std::vector<double [4]> m_Xf;
       //! Number of points in arc
       int m_N;
 
@@ -116,7 +112,6 @@ namespace Plan
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Task(name, ctx),
-        m_Xs(4,1,0.0),
         m_Rs(0.0),
         m_Rf(0.0),
         m_N(0.0)
@@ -226,10 +221,11 @@ namespace Plan
       generateLandingPath()
       {
         //! Initialize the start pose
-        m_Xs(0,0) = m_estate.x;
-        m_Xs(1,0) = m_estate.y;
-        m_Xs(2,0) = m_estate.z;
-        m_Xs(3,0) = m_estate.psi;
+        Matrix Xs = Matrix(4,1,0.0);
+        Xs(0,0) = m_estate.x;
+        Xs(1,0) = m_estate.y;
+        Xs(2,0) = m_estate.z;
+        Xs(3,0) = m_estate.psi;
         //! Direction of end turn
         bool RightF;
         //! Center of end turning circle
@@ -237,11 +233,11 @@ namespace Plan
         //! End pose in dubins paht
         Matrix Xf = Matrix(4,1,0.0);
         Xf = m_landArg.WP.column(4);
-        if (!dubinsPath(m_Xs,Xf,m_path,RightF,OCF))
+        if (!dubinsPath(Xs,Xf,m_path,RightF,OCF))
         {
           //! Need an extra WP
           Xf = m_landArg.WPa;
-          if (!dubinsPath(m_Xs,Xf,m_path,RightF,OCF))
+          if (!dubinsPath(Xs,Xf,m_path,RightF,OCF))
           {
             war("Could not generate a landing path: Abort");
             return false;
@@ -255,7 +251,7 @@ namespace Plan
         }
         //! Is correct height
         bool correctHeight;
-        glideSlope(m_Xs,m_landArg.WP.column(4),m_landArg.gamma_d,correctHeight,m_path);
+        glideSlope(Xs,m_landArg.WP.column(4),m_landArg.gamma_d,correctHeight,m_path);
         glideSpiral(OCF,RightF,m_landArg.WP(2,3),correctHeight,m_landArg.gamma_d,m_path);
 
         //! Create plan set request
