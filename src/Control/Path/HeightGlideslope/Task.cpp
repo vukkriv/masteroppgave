@@ -87,6 +87,7 @@ namespace Control
         double start_time;
         bool first_waypoint;
         double last_end_z;
+        double last_start_z;
         bool m_shifting_waypoint;
         double state_z_shifting;
         double last_glideslope_angle;
@@ -163,6 +164,7 @@ namespace Control
           .description("Use this controller for maneuver");
 
           bind<IMC::IndicatedSpeed>(this);
+
         }
 
         void
@@ -220,10 +222,18 @@ namespace Control
           if (!m_args.use_controller)
             return;
 
+          if(last_start_z != ts.start.z){
+            if(last_end_z==ts.start.z){
+              first_waypoint = false;
+            }
+            else{
+              first_waypoint = true;
+            }
+          }
+
           //Waypoint- handling
           double start_z = ts.start.z;
           double end_z = ts.end.z;
-
 
           //Handle tracking to first waypoint: Need height offset in start.z for the first waypoint, W.I.P
           if(start_z == last_end_z){
@@ -317,6 +327,7 @@ namespace Control
           dispatch(zref);
 
           last_end_z = end_z;
+          last_start_z = start_z;
           last_glideslope_angle = glideslope_angle;
 
         }
