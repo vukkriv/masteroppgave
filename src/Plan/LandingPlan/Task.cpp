@@ -231,18 +231,18 @@ namespace Plan
         Matrix Xf = Matrix(4,1,0.0);
         Xf = m_landArg.WP.column(4);
         //! Calculated path
-        std::vector<Matrix> m_path;
-        if (!dubinsPath(Xs,Xf,m_path,RightF,OCF))
+        std::vector<Matrix> path;
+        if (!dubinsPath(Xs,Xf,path,RightF,OCF))
         {
           //! Need an extra WP
           Xf = m_landArg.WPa;
-          if (!dubinsPath(Xs,Xf,m_path,RightF,OCF))
+          if (!dubinsPath(Xs,Xf,path,RightF,OCF))
           {
             war("Could not generate a landing path: Abort");
             return false;
           }
           Xf = m_landArg.WP.column(4);
-          if (!dubinsPath(m_landArg.WPa,Xf,m_path,RightF,OCF))
+          if (!dubinsPath(m_landArg.WPa,Xf,path,RightF,OCF))
           {
             war("Could not generate a landing path: Abort");
             return false;
@@ -250,8 +250,8 @@ namespace Plan
         }
         //! Is correct height
         bool correctHeight;
-        glideSlope(Xs,m_landArg.WP.column(4),m_landArg.gamma_d,correctHeight,m_path);
-        glideSpiral(OCF,RightF,m_landArg.WP(2,3),correctHeight,m_landArg.gamma_d,m_path);
+        glideSlope(Xs,m_landArg.WP.column(4),m_landArg.gamma_d,correctHeight,path);
+        glideSpiral(OCF,RightF,m_landArg.WP(2,3),correctHeight,m_landArg.gamma_d,path);
 
         //! Create plan set request
         IMC::PlanDB plan_db;
@@ -278,7 +278,7 @@ namespace Plan
         fPath.lon = cur_lon;
         fPath.z_units = IMC::Z_HEIGHT;
         fPath.z = m_estate.height - m_estate.z;
-        addPathPoint(m_path,&fPath);
+        addPathPoint(path,&fPath);
         maneuverList.push_back(fPath);
 
         //! Add loiter maneuver if the waitLoiter flag is set to true
@@ -374,14 +374,14 @@ namespace Plan
       }
       //! Add path point to follow path
       void
-      addPathPoint(std::vector<Matrix> m_path,IMC::FollowPath* fPath)
+      addPathPoint(std::vector<Matrix> path,IMC::FollowPath* fPath)
       {
         IMC::PathPoint pPoint;
-        for (int i=0;i<m_path.size();i++)
+        for (int i=0;i<path.size();i++)
         {
-          pPoint.x = m_path[i](0,0);
-          pPoint.y = m_path[i](1,0);
-          pPoint.z = m_path[i](2,0);
+          pPoint.x = path[i](0,0);
+          pPoint.y = path[i](1,0);
+          pPoint.z = path[i](2,0);
           fPath->points.push_back(pPoint);
         }
       }
