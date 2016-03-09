@@ -42,9 +42,11 @@ namespace Control
         {
           double max_speed_xy;
           double max_speed_z;
+          double max_acc;
           double lookahead_time;
           bool auto_enable;
           std::string ctrl_entity_name;
+          double stop_distance_multiplier;
         };
 
 
@@ -108,6 +110,9 @@ namespace Control
 
           //! Container for maximum acceleration
           MaxAccelerationContainer m_max_acc;
+
+          //! Last velocity input
+          Matrix m_last_vel;
           //!
           //! Constructor.
           //! @param[in] name task name.
@@ -116,7 +121,8 @@ namespace Control
             DUNE::Tasks::Task(name, ctx),
             m_fr_is_running(false),
             m_lat(0.0), m_lon(0.0), m_hae(0.0), m_dspeed(0.0),
-            m_vehicle_last_lat(0.0), m_vehicle_last_lon(0.0), m_vehicle_last_hae(0.0), m_vehicle_last_speed(0.0)
+            m_vehicle_last_lat(0.0), m_vehicle_last_lon(0.0), m_vehicle_last_hae(0.0), m_vehicle_last_speed(0.0),
+            m_last_vel(Matrix(3,1, 0.0))
           {
 
             param("Max Speed - XY", m_args.max_speed_xy)
@@ -128,6 +134,11 @@ namespace Control
             .defaultValue("2")
             .visibility(Parameter::VISIBILITY_USER)
             .units(Units::MeterPerSecond);
+
+            param("Max Acceleration", m_args.max_acc)
+            .defaultValue("6")
+            .visibility(Parameter::VISIBILITY_USER)
+            .units(Units::MeterPerSquareSecond);
 
             param("Lookahead Time", m_args.lookahead_time)
             .defaultValue("8")
@@ -141,6 +152,11 @@ namespace Control
 
             param("Ctrl entity name", m_args.ctrl_entity_name)
             .defaultValue("Simple Acceleration Path Controller");
+
+            param("Stop distance multiplier", m_args.stop_distance_multiplier)
+            .defaultValue("1.2")
+            .minimumValue("0.5")
+            .maximumValue("2.0");
 
 
             bind<IMC::PWM>(this);
@@ -343,7 +359,8 @@ namespace Control
             trace("z offset: %.2f, alt: %.2f, resulting alt: %.2f", pos_offset(2), m_estate.alt, m_estate.alt - pos_offset(2));
 
             // Also handle initialization.
-            if ((vel.norm_2() > 0.5) || WGS84::distance(m_lat, m_lon, (float)m_hae, m_estate.lat, m_estate.lon, m_estate.height) > 1000)
+            double min_speed = 0.5;
+            if ((vel.norm_2() > min_speed) || WGS84::distance(m_lat, m_lon, (float)m_hae, m_estate.lat, m_estate.lon, m_estate.height) > 1000)
             {
               // Calculate lat lons;
               double lat = m_estate.lat;
@@ -357,6 +374,7 @@ namespace Control
               m_dspeed = vel.norm_2();
 
 
+
               // Store this position
               m_vehicle_last_lat = m_estate.lat;
               m_vehicle_last_lon = m_estate.lon;
@@ -365,17 +383,27 @@ namespace Control
                                             &m_vehicle_last_lat, &m_vehicle_last_lon, &m_vehicle_last_hae);
 
               m_vehicle_last_speed = m_dspeed;
+              inf("Going!");
 
+            }
+            else if(vel.norm_2() < min_speed && m_last_vel.norm_2() > min_speed)
+            {
+              // Issue stop.
+
+              setClosestStopAsTarget();
+              inf("Stopping!");
             }
             else {
-              m_lat = m_vehicle_last_lat;
-              m_lon = m_vehicle_last_lon;
-              m_hae = m_vehicle_last_hae;
+
+              inf("Nothing to do.  ");
 
               // Allow a minimum speed to stop
-              double minSpeed = 2.0;
-              m_dspeed = m_vehicle_last_speed < minSpeed ? minSpeed : m_vehicle_last_speed;
+              //double minSpeed = 2.0;
+              //m_dspeed = m_vehicle_last_speed < minSpeed ? minSpeed : m_vehicle_last_speed;
             }
+
+            // Store vel input.
+            m_last_vel = vel;
 
             IMC::Reference ref;
             ref.flags = IMC::Reference::FLAG_LOCATION | IMC::Reference::FLAG_Z | IMC::Reference::FLAG_SPEED;
@@ -425,14 +453,6 @@ namespace Control
             // Create plan maneuver
             IMC::PlanManeuver man_spec;
             man_spec.maneuver_id = 1;
-            /*
-             // Create custom maneuver (not supported?!)
-             IMC::CustomManeuver c_man;
-             c_man.name = "formationManeuver";
-             */
-
-            // Create some maneuver
-            //IMC::Goto c_man;
 
             // Create a follow reference maneuver
             IMC::FollowReference c_man;
@@ -441,19 +461,24 @@ namespace Control
             c_man.control_src = getSystemId();
             c_man.timeout    = 2.0;
 
-
             man_spec.data.set(c_man);
 
             // Create start actions
             IMC::SetEntityParameters eparam_start;
             eparam_start.name = "Simple Acceleration Path Controller";
 
-
             IMC::EntityParameter param_t;
             param_t.name = "Acceleration Controller";
             param_t.value = "true";
             eparam_start.params.push_back(param_t);
 
+            IMC::EntityParameter param_acc;
+            std::ostringstream ss;
+            ss << m_args.max_acc;
+            param_acc.name = "Ref - Max Acceleration";
+            param_acc.value = ss.str();
+
+            eparam_start.params.push_back(param_acc);
 
             man_spec.start_actions.push_back(eparam_start);
 
@@ -475,6 +500,9 @@ namespace Control
             // Send set plan request
             dispatch(plan_db);
 
+            // Set current pos as target.
+            setCurrentPosAsTarget();
+
             // Create and send plan start request
             IMC::PlanControl plan_ctrl;
             plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
@@ -483,6 +511,72 @@ namespace Control
             plan_ctrl.request_id = 0;
             plan_ctrl.arg.set(plan_spec);
             dispatch(plan_ctrl);
+          }
+
+          void
+          setCurrentPosAsTarget(void)
+          {
+            // Store this position
+            m_vehicle_last_lat = m_estate.lat;
+            m_vehicle_last_lon = m_estate.lon;
+            m_vehicle_last_hae = m_estate.height;
+            WGS84::displace(m_estate.x, m_estate.y, m_estate.z,
+                                          &m_vehicle_last_lat, &m_vehicle_last_lon, &m_vehicle_last_hae);
+
+            // Stop speed
+            m_vehicle_last_speed = 2.0;
+
+            // Set this as target
+            m_lat = m_vehicle_last_lat;
+            m_lon = m_vehicle_last_lon;
+            m_hae = m_vehicle_last_hae;
+            m_dspeed = 2.0;
+          }
+
+          void
+          setClosestStopAsTarget(void)
+          {
+            // Calculate where we can stop, based on max achievable parameters
+
+            // Get current (desired) speed
+            double cur_des_speed = m_vehicle_last_speed;
+
+            // Time to stop
+            double time_to_stop = cur_des_speed/m_max_acc.max_acceleration;
+
+            // Distance away
+            double distance_to_stop = cur_des_speed * time_to_stop + 0.5 * m_max_acc.max_acceleration * std::pow(time_to_stop, 2.0);
+
+            // Apply some headroom here
+
+            // Use last vel to get direction
+            Matrix dir = m_last_vel/m_last_vel.norm_2();
+
+            // Get offset points
+            Matrix offset = dir*distance_to_stop;
+
+            // Calculate lat lons;
+            double lat = m_estate.lat;
+            double lon = m_estate.lon;
+            double hae = m_estate.height;
+            WGS84::displace(m_estate.x + offset(0), m_estate.y + offset(1), m_estate.z + offset(2),
+                            &lat, &lon, &hae);
+
+
+            m_lat = lat; m_lon = lon; m_hae = hae;
+            m_dspeed = cur_des_speed;
+
+
+
+            // Store this position
+            m_vehicle_last_lat = m_estate.lat;
+            m_vehicle_last_lon = m_estate.lon;
+            m_vehicle_last_hae = m_estate.height;
+            WGS84::displace(m_estate.x, m_estate.y, m_estate.z,
+                                          &m_vehicle_last_lat, &m_vehicle_last_lon, &m_vehicle_last_hae);
+
+            m_vehicle_last_speed = m_dspeed;
+
           }
 
           //! Update internal state with new parameter values.
