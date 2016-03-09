@@ -131,6 +131,10 @@ namespace Plan
       void
       onUpdateParameters(void)
       {
+        inf("Testing the plan");
+        IMC::PlanGeneration test;
+        test.plan_id = "land";
+        dispatch(test);
       }
 
       //! Update estimatedState
@@ -173,13 +177,13 @@ namespace Plan
         if (msg->plan_id=="land")
         {
           TupleList tList(msg->params,"=",";",true);
-          m_landArg.net_lat = Angles::radians(tList.get("land_lat",1.1105));
-          m_landArg.net_lon = Angles::radians(tList.get("land_lon",0.1698));
+          m_landArg.net_lat = Angles::radians(tList.get("land_lat",63.629409));
+          m_landArg.net_lon = Angles::radians(tList.get("land_lon",9.726401));
           m_landArg.net_WGS84_height = tList.get("net_WGS84_height",0.0);
-          m_landArg.netHeading = Angles::radians(tList.get("land_heading",1.1105));
+          m_landArg.netHeading = Angles::radians(tList.get("land_heading",60));
           m_landArg.net_height = tList.get("net_height",3.0);
-          m_landArg.gamma_a = Angles::radians(tList.get("attack_angle",0.0524));
-          m_landArg.gamma_d = Angles::radians(tList.get("descend_angle", 0.0524));
+          m_landArg.gamma_a = Angles::radians(tList.get("attack_angle",3.0));
+          m_landArg.gamma_d = Angles::radians(tList.get("descend_angle", 3.0));
           m_landArg.a0 = tList.get("behind_net",10.0);
           m_landArg.a1 = tList.get("final_approach",10.0);
           m_landArg.a2 = tList.get("glideslope",300.0);
