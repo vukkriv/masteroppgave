@@ -216,7 +216,12 @@ namespace Control
 
             if (pwm->id == 8 && m_fr_is_running)
             {
-              calculateReference();
+              double now = Clock::get();
+              if (now - m_time_last_dispatch > 1)
+              {
+                m_time_last_dispatch = now;
+                calculateReference();
+              }
             }
 
             //inf("Channel: %d, value: %f", pwm->id, pwmToValueDeadband(-4, 4, 900, 2100, 0.1, pwm->duty_cycle));
