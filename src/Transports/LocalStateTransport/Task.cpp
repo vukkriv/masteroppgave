@@ -89,7 +89,6 @@ namespace Transports
 
           // Bind to incoming IMC messages
           bind<IMC::EstimatedState>(this);
-          bind<IMC::Acceleration>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -167,6 +166,7 @@ namespace Transports
 		 m_state.z += msg->z;
 
 		 m_state.ref    = IMC::EstimatedLocalState::REF_FIXED;
+		 spew("Fixed reference on EstimatedState");
 		}
 		else
 		{
@@ -211,13 +211,6 @@ namespace Transports
         spew("Sent Estimated Local State");        
       }
 
-      void
-      consume(const IMC::Acceleration* msg)
-      {
-        m_state.ax = msg->x;
-        m_state.ay = msg->y;
-        m_state.az = msg->z;
-      }
       //! Main loop.
       void
       onMain(void)
