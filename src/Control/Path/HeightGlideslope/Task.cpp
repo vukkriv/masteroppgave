@@ -71,23 +71,21 @@ namespace Control
         Arguments m_args;
         IMC::DesiredVerticalRate m_vrate;
         IMC::DesiredZ  zref;
-
-        //! LOS m_integrator
-        double m_integrator;
         Delta m_last_step;
 
         double m_airspeed;
         double glideslope_range;
         double glideslope_bearing;
         double glideslope_angle;
+        double m_integrator;
         double glideslope_start_z;
         bool glideslope_up;
-        double los_angle;
         bool glideslope_down;
         double desired_z_last;
-        bool first_waypoint;
-        double start_time;
         bool m_first_run;
+        double los_angle;
+        double start_time;
+        bool first_waypoint;
         double last_end_z;
         bool m_shifting_waypoint;
         double state_z_shifting;
@@ -165,9 +163,6 @@ namespace Control
           .description("Use this controller for maneuver");
 
           bind<IMC::IndicatedSpeed>(this);
-          //bind<IMC::DesiredPath>(this);
-          //bind<IMC::DesiredZ>(this);
-
         }
 
         void
