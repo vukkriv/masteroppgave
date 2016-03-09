@@ -44,7 +44,13 @@ namespace Control
 
       struct Arguments
       {
-    	  bool use_controller; //Flag to enable controller
+        bool use_controller; //Flag to enable controller
+        double k_thr_p;
+        double k_thr_i;
+        double k_gamma_p;
+        double k_thr_ph;
+        double trim_pitch;
+        double trim_throttle;
 
       };
 
@@ -57,29 +63,73 @@ namespace Control
         double m_airspeed;
         double m_dspeed;
         double m_dvrate;
+        double m_thr_i;
+        double m_dz;
+
+        Delta m_last_step;
 
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
           m_airspeed(0.0),
           m_dspeed(18.0),
-          m_dvrate(0.0)
+          m_dvrate(0.0),
+          m_thr_i(0.0),
+          m_dz(0.0)
 
         {
-            param("Use controller", m_args.use_controller)
-			  .visibility(Tasks::Parameter::VISIBILITY_USER)
-			  .scope(Tasks::Parameter::SCOPE_MANEUVER)
-			  .defaultValue("false")
-			  .description("Use this controller for maneuver");
+          param("Use controller", m_args.use_controller)
+			              .visibility(Tasks::Parameter::VISIBILITY_USER)
+			              .scope(Tasks::Parameter::SCOPE_MANEUVER)
+			              .defaultValue("false")
+			              .description("Use this controller for maneuver");
+
+          param("Throttle Integrator gain", m_args.k_thr_i)
+          .defaultValue("1.0")
+          .description("Throttle Integrator gain");
+
+          param("Throttle Proportional gain", m_args.k_thr_p)
+          .defaultValue("10.0")
+          .description("Throttle Proportional gain");
+
+          param("Throttle Proportional height gain", m_args.k_thr_ph)
+          .defaultValue("2.0")
+          .description("Throttle Proportional height gain");
+
+          param("Gamma Proportional gain", m_args.k_gamma_p)
+          .defaultValue("5.0")
+          .description("Gamma Proportional gain");
+
+          param("Trim pitch", m_args.trim_pitch)
+          .defaultValue("2.6585")
+          .description("Trim Pitch for level flight");
+
+          param("Trim throttle", m_args.trim_throttle)
+          .defaultValue("44.0")
+          .description("Trim throttle for level flight");
 
           bind<IMC::IndicatedSpeed>(this);
           bind<IMC::DesiredVerticalRate>(this);
           bind<IMC::DesiredSpeed>(this);
+          bind<IMC::DesiredZ>(this);
 
-       }
+        }
 
         void
         onPathActivation(void)
         {
+          if (!m_args.use_controller)
+            return;
+          // Activate controller
+          enableControlLoops(IMC::CL_SPEED); //Throttle considered as cl speed atm.
+          enableControlLoops(IMC::CL_PITCH);
+        }
+
+        virtual void
+        onPathStartup(const IMC::EstimatedState& state, const TrackingState& ts)
+        {
+          (void)state;
+          (void)ts;
+
           if (!m_args.use_controller)
             return;
           // Activate controller
@@ -100,30 +150,56 @@ namespace Control
         }
 
         void
-		consume(const IMC::DesiredSpeed* d_speed)
-		{
-        	m_dspeed = d_speed->value;
-		}
+        consume(const IMC::DesiredSpeed* d_speed)
+        {
+          m_dspeed = d_speed->value;
+        }
+        void
+        consume(const IMC::DesiredZ* d_z)
+        {
+          m_dz = d_z->value;
+        }
 
         void
-		consume(const IMC::DesiredVerticalRate* d_vrate)
-		{
-        	m_dvrate = d_vrate->value;
-		}
+        consume(const IMC::DesiredVerticalRate* d_vrate)
+        {
+          m_dvrate = d_vrate->value;
+        }
 
         void
         step(const IMC::EstimatedState& state, const TrackingState& ts)
         {
-            if (!m_args.use_controller)
-              return;
+          if (!m_args.use_controller)
+            return;
 
-            //TO-DO: Implement Controller
-            inf("desired speed: %f, og dsired vrate: %f",m_dspeed,m_dvrate);
-            m_throttle.value = 89;
-            m_pitch.value = 4;
+          double Vg = sqrt( (state.vx*state.vx) + (state.vy*state.vy) + (state.vz*state.vz) ); // Ground speed
+          double h_dot = state.u*sin(state.theta) - state.v*sin(state.phi)*cos(state.theta) - state.w*cos(state.phi)*cos(state.theta);
+          double gamma_now = asin(h_dot/Vg);
 
-            dispatch(m_throttle);
-            dispatch(m_pitch);
+          double alpha_now = gamma_now - state.theta;
+
+          double gamma_desired = asin(m_dvrate/Vg);
+          double gamma_error = gamma_now - gamma_desired;
+          double V_error =  m_dspeed - m_airspeed;
+          double H_error = (m_dz - (state.height - state.z));
+
+          //Throttle integrator
+          double timestep = m_last_step.getDelta();
+          m_thr_i = m_thr_i + timestep*V_error;
+          m_thr_i = trimValue(m_thr_i,-20,20); //Anti wind-up at 20 % throttle
+
+          //Calculate desired throttle and pitch
+          double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i *m_thr_i+ H_error*m_args.k_thr_ph + m_args.trim_throttle;
+          //double pitch_desired = gamma_desired + alpha_now-gamma_error*m_args.k_gamma_p;
+          double pitch_desired = gamma_desired + Angles::radians(m_args.trim_pitch)-gamma_error*m_args.k_gamma_p; //Backstepping,pitch_desired = gamma_desired + alpha_0
+
+          m_throttle.value = throttle_desired;
+          m_pitch.value = pitch_desired;
+
+          spew("pitch desired er %f, og alpha_0 er: %f",m_pitch.value,Angles::degrees(alpha_now));
+
+          dispatch(m_throttle);
+          dispatch(m_pitch);
         }
       };
     }
