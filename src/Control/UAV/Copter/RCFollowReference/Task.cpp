@@ -45,7 +45,6 @@ namespace Control
           double max_acc;
           double lookahead_time;
           bool auto_enable;
-          std::string ctrl_entity_name;
           double stop_distance_multiplier;
         };
 
@@ -58,25 +57,6 @@ namespace Control
           CH_TUNE = 5
         };
 
-        struct MaxAccelerationContainer
-        {
-
-          public:
-            MaxAccelerationContainer()
-            {
-              time_last_check = Clock::get();
-              time_last_received = Clock::get();
-              last_check_reference = 0;
-              max_acceleration = 3.0;
-              entity_id = 0;
-            };
-
-            double time_last_check;
-            double time_last_received;
-            unsigned int last_check_reference;
-            double max_acceleration;
-            unsigned int entity_id;
-        };
 
         struct Task: public DUNE::Tasks::Task
         {
@@ -107,9 +87,6 @@ namespace Control
 
           //! Last sent reference
           IMC::Reference m_ref;
-
-          //! Container for maximum acceleration
-          MaxAccelerationContainer m_max_acc;
 
           //! Last velocity input
           Matrix m_last_vel;
@@ -150,9 +127,6 @@ namespace Control
             .visibility(Parameter::VISIBILITY_USER)
             .description("Automatically enable if entering guided and still in service mode. ");
 
-            param("Ctrl entity name", m_args.ctrl_entity_name)
-            .defaultValue("Simple Acceleration Path Controller");
-
             param("Stop distance multiplier", m_args.stop_distance_multiplier)
             .defaultValue("1.2")
             .minimumValue("0.5")
@@ -164,7 +138,6 @@ namespace Control
             bind<IMC::RemoteActions>(this);
             bind<IMC::EstimatedState>(this);
             bind<IMC::AutopilotMode>(this);
-            bind<IMC::EntityParameters>(this);
 
             m_time_last_dispatch = Clock::get();
 
@@ -291,36 +264,7 @@ namespace Control
             }
           }
 
-          void
-          consume(const IMC::EntityParameters* msg)
-          {
-            if (msg->getSource() != getSystemId())
-              return;
 
-            if (msg->getSourceEntity() != m_max_acc.entity_id)
-              return;
-
-            IMC::MessageList<IMC::EntityParameter>::const_iterator itr = msg->params.begin();
-            for ( ; itr != msg->params.end(); ++itr)
-            {
-              if( (*itr)->name == "Ref - Max Acceleration" && !(*itr)->value.empty())
-              {
-                // Parse the string
-                std::istringstream ss((*itr)->value);
-
-                double max_acc;
-                ss >> max_acc;
-
-                if (!ss.fail())
-                {
-                  m_max_acc.max_acceleration = max_acc;
-                  m_max_acc.time_last_received = Clock::get();
-                  debug("Set max acc to: %.3f", max_acc);
-                }
-              }
-
-            }
-          }
           void
           calculateReference(void)
           {
@@ -542,10 +486,10 @@ namespace Control
             double cur_des_speed = m_vehicle_last_speed;
 
             // Time to stop
-            double time_to_stop = cur_des_speed/m_max_acc.max_acceleration;
+            double time_to_stop = cur_des_speed/m_args.max_acc;
 
             // Distance away
-            double distance_to_stop = cur_des_speed * time_to_stop + 0.5 * m_max_acc.max_acceleration * std::pow(time_to_stop, 2.0);
+            double distance_to_stop = cur_des_speed * time_to_stop + 0.5 * m_args.max_acc * std::pow(time_to_stop, 2.0);
 
             // Apply some headroom here
 
@@ -595,15 +539,6 @@ namespace Control
           void
           onEntityResolution(void)
           {
-            try
-            {
-              m_max_acc.entity_id = resolveEntity(m_args.ctrl_entity_name);
-            }
-            catch (...)
-            {
-              err("Unable to get entity id. ");
-              m_max_acc.entity_id = 0;
-            }
           }
 
           //! Acquire resources.
@@ -624,18 +559,7 @@ namespace Control
           {
           }
 
-          void
-          queryMaxAcc(void)
-          {
-            IMC::QueryEntityParameters ereq;
 
-            ereq.name = m_args.ctrl_entity_name;
-            ereq.setDestinationEntity(m_max_acc.entity_id);
-
-
-
-            dispatch(ereq);
-          }
 
           //! Main loop.
           void
@@ -643,17 +567,6 @@ namespace Control
           {
             while (!stopping())
             {
-              // Check max acc every 5 second
-
-              double now = Clock::get();
-              if( now - m_max_acc.time_last_check > 5.0 )
-              {
-                queryMaxAcc();
-                m_max_acc.time_last_check = now;
-                trace("Query acc. ");
-              }
-
-
               waitForMessages(1.0);
             }
           }
