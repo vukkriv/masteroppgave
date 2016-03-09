@@ -280,7 +280,7 @@ namespace Plan
         {
 
         }
-        addNetApproach();
+        //addNetApproach();
         m_spec.maneuvers.push_back(m_maneuvers);
 
         return true;
