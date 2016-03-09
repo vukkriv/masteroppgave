@@ -140,7 +140,30 @@ namespace Control
           if (!m_args.use_controller)
             return;
           // Activate bank (roll) controller.
+            enableControlLoops(IMC::CL_ROLL);
+        }
+
+        void
+        onPathDeactivation(void)
+        {
+          if (!m_args.use_controller){
+            // Deactivate bank (roll) controller.
+            disableControlLoops(IMC::CL_ROLL);
+          }
+        }
+        virtual void
+        onPathStartup(const IMC::EstimatedState& state, const TrackingState& ts)
+        {
+          (void)state;
+          (void)ts;
+
+          if (!m_args.use_controller){
+            disableControlLoops(IMC::CL_ROLL);
+          }
+          else{
+          // Activate controller
           enableControlLoops(IMC::CL_ROLL);
+          }
         }
 
         void
