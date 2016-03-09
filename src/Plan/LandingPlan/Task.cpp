@@ -166,24 +166,23 @@ namespace Plan
         if (msg->plan_id=="land")
         {
           TupleList tList(msg->params,"=",";",true);
-          m_landArg.net_lat = Angles::radians(tList.get("land_lat",0.0));
-          m_landArg.net_lon = Angles::radians(tList.get("land_lon",0.0));
+          m_landArg.net_lat = Angles::radians(tList.get("land_lat",1.1105));
+          m_landArg.net_lon = Angles::radians(tList.get("land_lon",0.1698));
           m_landArg.net_WGS84_height = tList.get("net_WGS84_height",0.0);
-          m_landArg.netHeading = Angles::radians(tList.get("land_heading",0.0));
-          m_landArg.net_height = tList.get("net_height",0.0);
-          m_landArg.gamma_a = Angles::radians(tList.get("attack_angle",0.0));
-          m_landArg.gamma_d = Angles::radians(tList.get("descend_angle", 0.0));
-          m_landArg.a0 = tList.get("behind_net",0.0);
-          m_landArg.a1 = tList.get("final_approach",0.0);
-          m_landArg.a2 = tList.get("glideslope",0.0);
-          m_landArg.a3 = tList.get("approach",0.0);
-          m_landArg.speed_WP4 = tList.get("speed_wp4",0.0);
-          m_landArg.speed_WP3 = tList.get("speed_wp3",0.0);
-          m_landArg.speed_WP2 = tList.get("speed_wp2",0.0);
-          m_landArg.speed_WP1 = tList.get("speed_wp1",0.0);
-          m_Rs = tList.get("min_turn_radius", 0.0);
-          m_Rf = tList.get("loiter_radius",0.0);
-
+          m_landArg.netHeading = Angles::radians(tList.get("land_heading",1.1105));
+          m_landArg.net_height = tList.get("net_height",3.0);
+          m_landArg.gamma_a = Angles::radians(tList.get("attack_angle",0.0524));
+          m_landArg.gamma_d = Angles::radians(tList.get("descend_angle", 0.0524));
+          m_landArg.a0 = tList.get("behind_net",10.0);
+          m_landArg.a1 = tList.get("final_approach",10.0);
+          m_landArg.a2 = tList.get("glideslope",300.0);
+          m_landArg.a3 = tList.get("approach",100.0);
+          m_landArg.speed_WP4 = tList.get("speed_wp4",12.0);
+          m_landArg.speed_WP3 = tList.get("speed_wp3",12.0);
+          m_landArg.speed_WP2 = tList.get("speed_wp2",12.0);
+          m_landArg.speed_WP1 = tList.get("speed_wp1",12.0);
+          m_Rs = tList.get("min_turn_radius", 20.0);
+          m_Rf = tList.get("loiter_radius",40.0);
 
           //! Fill WP matrix
           m_landArg.WP = Matrix(3,4,0.0);
