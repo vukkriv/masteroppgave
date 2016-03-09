@@ -114,9 +114,9 @@ namespace Control
 
         {
           param("Height bandwidth", m_args.phi_h)
-        			        .units(Units::Meter)
-        			        .defaultValue("20")
-        			        .description("Limit distance above and bellow desired height from which maximum control is used");
+        			            .units(Units::Meter)
+        			            .defaultValue("20")
+        			            .description("Limit distance above and bellow desired height from which maximum control is used");
 
           param("Vertical Rate maximum gain", m_args.k_vr)
           .defaultValue("0.15")
@@ -181,6 +181,31 @@ namespace Control
           first_waypoint = true; // A new path arrived. Tracking to first waypoint.
         }
 
+        void
+        onPathDeactivation(void)
+        {
+          if (!m_args.use_controller){
+            // Deactivate controller.
+            disableControlLoops(IMC::CL_ALTITUDE);
+            disableControlLoops(IMC::CL_VERTICAL_RATE);
+          }
+        }
+        virtual void
+        onPathStartup(const IMC::EstimatedState& state, const TrackingState& ts)
+        {
+          (void)state;
+          (void)ts;
+
+          if (!m_args.use_controller){
+            disableControlLoops(IMC::CL_ALTITUDE);
+            disableControlLoops(IMC::CL_VERTICAL_RATE);
+          }
+          else{
+            // Activate controller
+            enableControlLoops(IMC::CL_ALTITUDE);
+            enableControlLoops(IMC::CL_VERTICAL_RATE);
+          }
+        }
 
         bool
         hasSpecificZControl(void) const
