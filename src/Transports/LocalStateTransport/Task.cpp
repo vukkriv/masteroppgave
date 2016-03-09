@@ -66,16 +66,19 @@ namespace Transports
       {
           param("Latitude", m_args.ref_lat)
           .defaultValue("-999.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .units(Units::Degree)
           .description("Reference Latitude");
 
           param("Longitude", m_args.ref_lon)
           .defaultValue("0.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .units(Units::Degree)
           .description("Reference Longitude");
 
           param("Height", m_args.ref_hae)
           .defaultValue("0.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .units(Units::Meter)
           .description("Reference Height (above elipsoid)");
 
