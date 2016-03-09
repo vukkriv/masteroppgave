@@ -36,13 +36,24 @@ namespace Transports
 
     struct Arguments
     {
+        double ref_lat;
+        //! Reference longitude
+        double ref_lon;
+        //! Reference height (above elipsoid)
+        double ref_hae;
 
+        bool use_static_ref;
     };
 
     struct Task: public DUNE::Tasks::Task
     {
       //! Task arguments.
       Arguments m_args;
+
+      //! Localization origin (WGS-84)
+      fp64_t m_ref_lat, m_ref_lon;
+      fp32_t m_ref_hae;
+      bool m_ref_valid;
       
       IMC::EstimatedLocalState m_state;    
 
@@ -53,6 +64,26 @@ namespace Transports
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Task(name, ctx)
       {
+          param("Latitude", m_args.ref_lat)
+          .defaultValue("-999.0")
+          .units(Units::Degree)
+          .description("Reference Latitude");
+
+          param("Longitude", m_args.ref_lon)
+          .defaultValue("0.0")
+          .units(Units::Degree)
+          .description("Reference Longitude");
+
+          param("Height", m_args.ref_hae)
+          .defaultValue("0.0")
+          .units(Units::Meter)
+          .description("Reference Height (above elipsoid)");
+
+          param("Use Static Reference", m_args.use_static_ref)
+          .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Static reference LLH is set from config file");
+
           // Bind to incoming IMC messages
           bind<IMC::EstimatedState>(this);
           bind<IMC::Acceleration>(this);
@@ -62,6 +93,26 @@ namespace Transports
       void
       onUpdateParameters(void)
       {
+		if (paramChanged(m_args.ref_lat) || paramChanged(m_args.ref_lon) || paramChanged(m_args.ref_hae))
+		{
+		if (m_args.ref_lat == -999) // Reference not set; return
+		  return;
+
+		inf("New reference position.");
+
+		// Check validity
+		if (std::abs(m_args.ref_lat) > 90)
+		  throw DUNE::Exception("Unvalid reference latitude!");
+		if (std::abs(m_args.ref_lon) > 180)
+		  throw DUNE::Exception("Unvalid reference longitude!");
+
+		m_ref_lat = Angles::radians(m_args.ref_lat);
+		m_ref_lon = Angles::radians(m_args.ref_lon);
+		m_ref_hae = m_args.ref_hae;
+		m_ref_valid = true;
+		inf("Ref. LLH set from ini: [Lat = %f, Lon = %f, Height = %.1f]",
+			Angles::degrees(m_ref_lat), Angles::degrees(m_ref_lon), m_ref_hae);
+		}
       }
 
       //! Reserve entity identifiers.
@@ -105,9 +156,31 @@ namespace Transports
 		   resolveSystemId(msg->getSource()),
 		   resolveEntity(msg->getSourceEntity()).c_str());
 
-	     m_state.lat    = msg->lat;
-       m_state.lon    = msg->lon;
-       m_state.height = msg->height;
+	   if (m_args.use_static_ref)
+	   {
+		 m_state.lat    = m_ref_lat;
+		 m_state.lon    = m_ref_lon;
+		 m_state.height = m_ref_hae;
+		 WGS84::displacement(m_ref_lat, m_ref_lon, m_ref_hae,
+							 msg->lat, msg->lon, msg->height,
+							 &m_state.x, &m_state.y, &m_state.z);
+		 // Add displacement from agent reference
+		 m_state.x += msg->x;
+		 m_state.y += msg->y;
+		 m_state.z += msg->z;
+
+		 m_state.ref    = IMC::EstimatedLocalState::REF_FIXED;
+	   }
+	   else
+	   {
+		 m_state.lat    = msg->lat;
+		 m_state.lon    = msg->lon;
+		 m_state.height = msg->height;
+		 m_state.x = msg->x;
+		 m_state.y = msg->y;
+		 m_state.z = msg->z;
+		 m_state.ref = IMC::EstimatedLocalState::REF_MOVING;
+	   }
 
         m_state.u = msg->u;
         m_state.v = msg->v;
