@@ -196,10 +196,7 @@ namespace Transports
 
         // Set time stamp
         m_state.ots = msg->getTimeStamp();
-        // Add displacement from agent reference
-        m_state.x = msg->x;
-        m_state.y = msg->y;
-        m_state.z = msg->z;
+
         // Set velocity
         m_state.vx = msg->vx;
         m_state.vy = msg->vy;
