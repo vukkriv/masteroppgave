@@ -404,35 +404,7 @@ namespace Control
 
           }
 
-          void
-          sendReference(void)
-          {
-            IMC::Reference ref;
 
-            ref.flags = IMC::Reference::FLAG_LOCATION | IMC::Reference::FLAG_Z;
-
-            // Calculate current position.
-            double lat = m_estate.lat;
-            double lon = m_estate.lon;
-            double hae = m_estate.height;
-            WGS84::displace(m_estate.x, m_estate.y, m_estate.z,
-                            &lat, &lon, &hae);
-
-            ref.lat = lat;
-            ref.lon = lon;
-
-            IMC::DesiredZ dz;
-            dz.z_units = IMC::Z_HEIGHT;
-            dz.value = hae;
-
-            ref.z.set(dz);
-
-            ref.radius = 0.0;
-
-
-            dispatch(ref);
-
-          }
 
           void
           generatePlan(void)
