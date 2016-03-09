@@ -178,7 +178,7 @@ namespace Plan
           TupleList tList(msg->params,"=",";",true);
           m_landArg.net_lat = Angles::radians(tList.get("land_lat",0.0));
           m_landArg.net_lon = Angles::radians(tList.get("land_lon",0.0));
-          m_landArg.net_WGS84_height = tList("net_WGS84_height",0.0);
+          m_landArg.net_WGS84_height = tList.get("net_WGS84_height",0.0);
           m_landArg.netHeading = Angles::radians(tList.get("land_heading",0.0));
           m_landArg.net_height = tList.get("net_height",0.0);
           m_landArg.gamma_a = Angles::radians(tList.get("attack_angle",0.0));
@@ -265,23 +265,55 @@ namespace Plan
         //! Create a maneuver
         m_maneuvers.clear();
 
-        IMC::FollowPath* fPath = new IMC::FollowPath();
+        IMC::FollowPath fPath;
         double cur_lat;
         double cur_lon;
         Coordinates::WGS84::displace(m_estate.x,m_estate.y,&cur_lat,&cur_lon);
-        fPath->lat = cur_lat;
-        fPath->lon = cur_lon;
-        fPath->z_units = IMC::Z_HEIGHT;
-        fPath->z = m_estate.height - m_estate.z;
-        addPathPoint(fPath);
-        m_maneuvers.push_back(*fPath);
-        delete fPath;
+        fPath.lat = cur_lat;
+        fPath.lon = cur_lon;
+        fPath.z_units = IMC::Z_HEIGHT;
+        fPath.z = m_estate.height - m_estate.z;
+        addPathPoint(&fPath);
+        //m_maneuvers.push_back(*fPath);
         if (m_arg.waitLoiter)
         {
 
         }
         //addNetApproach();
-        m_spec.maneuvers.push_back(m_maneuvers);
+
+        //! Create plan set request
+        IMC::PlanDB plan_db;
+        plan_db.type = IMC::PlanDB::DBT_REQUEST;
+        plan_db.op = IMC::PlanDB::DBOP_SET;
+        plan_db.plan_id = "LandingPath";
+        plan_db.request_id = 0;
+
+        //! Create plan specification
+        IMC::PlanSpecification plan_spec;
+        plan_spec.plan_id = plan_db.plan_id;
+        plan_spec.start_man_id = 1;
+        plan_spec.description = "Plan activating LandingPath";
+
+        //! Create plan maneuver
+        IMC::PlanManeuver man_spec;
+        man_spec.maneuver_id = 1;
+        man_spec.data.set(fPath);
+
+        plan_spec.maneuvers.push_back(man_spec);
+
+        plan_db.arg.set(plan_spec);
+
+        //! Send set plan request
+        dispatch(plan_db);
+
+        //! Create and send plan start request
+        IMC::PlanControl plan_ctrl;
+        plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
+        plan_ctrl.op = IMC::PlanControl::PC_START;
+        plan_ctrl.plan_id = plan_spec.plan_id;
+        plan_ctrl.request_id = 0;
+        plan_ctrl.arg.set(plan_spec);
+        dispatch(plan_ctrl);
 
         return true;
 
@@ -291,11 +323,11 @@ namespace Plan
       addNetApproach()
       {
         //3
-        IMC::Goto* gotoWP = new IMC::Goto();
+        /*IMC::Goto* gotoWP = new IMC::Goto();
         double w3_lat;
         double w3_lon;
         double w3_h = m_landArg.net_WGS84_height - m_landArg.WP(2,2);
-        Coordinates::WGS84::displace(m_landArg.WP(0,2),m_landArg.WP(1,2),&w3_lat,&w3_lon);
+        Coordinates::WGS84::displace(m_landArgman_spec.WP(0,2),m_landArg.WP(1,2),&w3_lat,&w3_lon);
         gotoWP->lat = w3_lat;
         gotoWP->lon = w3_lon;
         gotoWP->z = w3_h;
@@ -333,7 +365,7 @@ namespace Plan
         gotoWP->speed = m_landArg.speed_WP1;
         gotoWP->speed_units = IMC::SUNITS_METERS_PS;
         m_maneuvers.push_back(*gotoWP);
-        delete gotoWP;
+        delete gotoWP;*/
 
 
       }
