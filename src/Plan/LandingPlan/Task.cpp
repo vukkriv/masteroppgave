@@ -424,6 +424,7 @@ namespace Plan
 
 
       }
+      //!
       //! Add path point to follow path
       void
       addPathPoint(std::vector<Matrix> path,IMC::FollowPath* fPath)
@@ -662,13 +663,16 @@ namespace Plan
         Path[0](2,0) = x0(2,0);
         correctHeigth = false;
         double D;
+        inf("Start height %f desired height %f",x0(2,0),WP(2,0));
         int interationLength = Path.size()-1;
         for (int i=0;i<interationLength;i++)
         {
           D = sqrt(std::pow(Path[i+1](0,0)-Path[i](0,0),2)+std::pow(Path[i+1](1,0)-Path[i](1,0),2));
-          if (std::abs(std::atan2(WP(2,0)-Path[i](2,0),D))<abs(descentAngle))
+          inf("New angle %f descent angel %f",std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),D),2)),std::sqrt(std::pow(descentAngle,2)));
+          if (std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),D),2))<std::sqrt(std::pow(descentAngle,2)))
           {
             correctHeigth = true;
+            inf("Reached correct height");
             descentAngle = std::atan2(WP(2,0)-Path[i](2,0),D);
             Path[i+1](2,0) = Path[i](2,0)+D*tan(descentAngle);
           }
@@ -681,6 +685,7 @@ namespace Plan
             Path[i+1](2,0) = Path[i](2,0);
           }
         }
+        inf("Desired height %f path height %f",WP(2,0),Path[Path.size()-1](2,0));
       }
       //! Create a spiral path towards the desired height dHeight
       void
@@ -721,7 +726,7 @@ namespace Plan
         inf("Is its D fault %f",D);
         while(!correctHeigth)
         {
-          if (std::abs(std::atan2(dHeight-WPS1(2,0),D))<abs(descentAngle))
+          if (std::sqrt(std::pow(std::atan2(dHeight-WPS1(2,0),D),2))<std::sqrt(std::pow(descentAngle,2)))
           {
             descentAngle = std::atan2(dHeight-WPS1(2,0),D);
             correctHeigth = true;
@@ -741,7 +746,6 @@ namespace Plan
           if (n>=m_args.N)
           {
             n = 1;
-            correctHeigth = true;
           }
         }
         double thetaH0 = std::atan2(WPS1(1,0)-OF(1,0),WPS1(0,0)-OF(0,0));
