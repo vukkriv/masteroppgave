@@ -260,6 +260,13 @@ namespace Plan
         Xf(1,0) = m_landArg.WP4(1,0);
         Xf(2,0) = m_landArg.WP4(2,0);
         Xf(3,0) = Angles::normalizeRadian(m_landArg.netHeading-PI);
+
+        double w4_lat = m_landArg.net_lat;
+        double w4_lon = m_landArg.net_lon;
+        double w4_h = m_landArg.net_WGS84_height - m_landArg.WP4(2,0);
+        Coordinates::WGS84::displace(m_landArg.WP4(0,2),m_landArg.WP4(1,0),&w4_lat,&w4_lon);
+        //! Find WP4 coordinates relative to the m_estate
+        Coordinates::WGS84::displacement(m_estate.lat,m_estate.lon,m_estate.height,w4_lat,w4_lon,w4_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
         //! Calculated path
         std::vector<Matrix> path;
         if (!dubinsPath(Xs,Xf,path,RightF,OCF))
@@ -584,6 +591,7 @@ namespace Plan
         return true;
 
       }
+
       //! Return turn direction
       double
       turn(const bool Right,const double alpha,const double beta)
