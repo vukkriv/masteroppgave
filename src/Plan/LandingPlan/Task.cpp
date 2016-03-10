@@ -395,10 +395,10 @@ namespace Plan
         for (it = maneuverList->begin();it!=maneuverList->end();it++,i++)
         {
           inf("Happening");
-          inf("A cat in a tower with number %d");
+          inf("A cat in a tower with number %d",i);
 
           man_spec.data.set(*it);
-          man_spec.maneuver_id = String::str(i + 1);
+          //man_spec.maneuver_id = String::str(i + 1);
 
           if (it!=maneuverList->begin())
           {
