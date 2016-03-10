@@ -340,7 +340,7 @@ namespace Plan
         }
         else
         {
-          //addNetApproach();
+          //addNetApproach(maneuverList);
         }
 
 
@@ -375,56 +375,35 @@ namespace Plan
       }
       //! Add the landing approach toward the net
       void
-      addNetApproach()
+      addNetApproach(IMC::MessageList<IMC::Maneuver>& maneuverList)
       {
         //3
-        /*IMC::Goto* gotoWP = new IMC::Goto();
-        double w3_lat;
-        double w3_lon;
-        double w3_h = m_landArg.net_WGS84_height - m_landArg.WP(2,2);
-        Coordinates::WGS84::displace(m_landArgman_spec.WP(0,2),m_landArg.WP(1,2),&w3_lat,&w3_lon);
-        gotoWP->lat = w3_lat;
-        gotoWP->lon = w3_lon;
-        gotoWP->z = w3_h;
-        gotoWP->z_units = IMC::Z_HEIGHT;
-        gotoWP->speed = m_landArg.speed_WP3;
-        gotoWP->speed_units = IMC::SUNITS_METERS_PS;
-        m_maneuvers.push_back(*gotoWP);
-        delete gotoWP;
+        addGotoPoint(m_landArg.WP3,m_landArg.speed_WP3,maneuverList);
 
         //2
-        IMC::Goto* gotoWP = new IMC::Goto();
-        double w2_lat;
-        double w2_lon;
-        double w2_h = m_landArg.net_WGS84_height - m_landArg.WP(2,1);
-        Coordinates::WGS84::displace(m_landArg.WP(0,1),m_landArg.WP(1,1),&w2_lat,&w2_lon);
-        gotoWP->lat = w2_lat;
-        gotoWP->lon = w2_lon;
-        gotoWP->z = w2_h;
-        gotoWP->z_units = IMC::Z_HEIGHT;
-        gotoWP->speed = m_landArg.speed_WP2;
-        gotoWP->speed_units = IMC::SUNITS_METERS_PS;
-        m_maneuvers.push_back(*gotoWP);
-        delete gotoWP;
+        addGotoPoint(m_landArg.WP3,m_landArg.speed_WP3,maneuverList);
 
         //1
-        IMC::Goto* gotoWP = new IMC::Goto();
-        double w1_lat;
-        double w1_lon;
-        double w1_h = m_landArg.net_WGS84_height - m_landArg.WP(2,0);
-        Coordinates::WGS84::displace(m_landArg.WP(0,0),m_landArg.WP(1,0),&w1_lat,&w1_lon);
-        gotoWP->lat = w1_lat;
-        gotoWP->lon = w1_lon;
-        gotoWP->z = w1_h;
-        gotoWP->z_units = IMC::Z_HEIGHT;
-        gotoWP->speed = m_landArg.speed_WP1;
-        gotoWP->speed_units = IMC::SUNITS_METERS_PS;
-        m_maneuvers.push_back(*gotoWP);
-        delete gotoWP;*/
-
+        addGotoPoint(m_landArg.WP3,m_landArg.speed_WP3,maneuverList);
 
       }
       //!
+      void
+      addGotoPoint(const Matrix WP,const double speed,IMC::MessageList<IMC::Maneuver>& maneuverList)
+      {
+        IMC::Goto gotoWP;
+        double w1_lat;
+        double w1_lon;
+        double w1_h = m_landArg.net_WGS84_height - WP(2,0);
+        Coordinates::WGS84::displace(WP(0,0),WP(1,0),&w1_lat,&w1_lon);
+        gotoWP.lat = w1_lat;
+        gotoWP.lon = w1_lon;
+        gotoWP.z = w1_h;
+        gotoWP.z_units = IMC::Z_HEIGHT;
+        gotoWP.speed = m_landArg.speed_WP1;
+        gotoWP.speed_units = IMC::SUNITS_METERS_PS;
+        maneuverList.push_back(gotoWP);
+      }
       //! Add path point to follow path
       void
       addPathPoint(std::vector<Matrix> path,IMC::FollowPath* fPath)
