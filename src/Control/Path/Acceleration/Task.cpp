@@ -76,6 +76,11 @@ namespace Control
         bool enable_wind_square_vel;
         float wind_drag_coefficient;
         double prefilter_time_constant;
+        bool enable_sigmmoid_smoothing;
+        double sigmoid_acc_thresh;
+        double sigmoid_history_time;
+        double sigmoid_gain;
+        double sigmoid_shift;
       };
 
       static const std::string c_parcel_names[] = {DTR_RT("PID"), DTR_RT("Beta-X"),
@@ -261,6 +266,18 @@ namespace Control
         Matrix filteredRef;
       };
 
+      class SigmoidSmoothingState
+      {
+      public:
+        SigmoidSmoothingState():
+          percent_below_threshold(0.0)
+        {
+          /* Intentionally Empty */
+        };
+
+        double percent_below_threshold;
+      };
+
       struct Task: public DUNE::Control::PathController
       {
         IMC::DesiredControl m_desired_control;
@@ -309,6 +326,10 @@ namespace Control
         IMC::DesiredSpeed m_dspeed;
         //! Current desired Z
         IMC::DesiredZ m_dz;
+        //! State of the sigmoid smoother
+        SigmoidSmoothingState m_sigmoid_state;
+        //! Reference history to use by sigmoid smoother
+        std::vector<ReferenceHistoryContainer> m_sigmoid_refhistory;
 
 
 
@@ -492,6 +513,27 @@ namespace Control
             .visibility(Tasks::Parameter::VISIBILITY_USER)
             .description("Gain for suspended controller. 3 is overall beta-changer. ");
           }
+
+          param("Sigmoid - Enable", m_args.enable_sigmmoid_smoothing)
+          .defaultValue("false")
+          .visibility(Parameter::VISIBILITY_USER);
+
+          param("Sigmoid - Acceleration Threshold", m_args.sigmoid_acc_thresh)
+          .defaultValue("0.05")
+          .visibility(Parameter::VISIBILITY_USER);
+
+
+          param("Sigmoid - Backwards History Time",m_args.sigmoid_history_time)
+          .defaultValue("2.0")
+          .visibility(Parameter::VISIBILITY_USER);
+
+          param("Sigmoid - Gain", m_args.sigmoid_gain)
+          .defaultValue("15")
+          .visibility(Parameter::VISIBILITY_USER);
+
+          param("Sigmoid - Shift", m_args.sigmoid_shift)
+          .defaultValue("-0.5")
+          .visibility(Parameter::VISIBILITY_USER);
 
           param("CtrlMisc - Enable Output Division By Mass", m_args.enable_mass_division)
           .defaultValue("true")
@@ -835,10 +877,14 @@ namespace Control
           }
 
           // check  the latest timestamp.
-          if (!m_refhistory.empty() && Clock::get() - m_refhistory.back().timestamp > 4.0)
+          if (!m_refhistory.empty() && Clock::get() - m_refhistory.front().timestamp > 4.0)
           {
             // Stack Overflow suggests swapping with empty, but doing this for now.
             while(!m_refhistory.empty()) m_refhistory.pop();
+          }
+          if (!m_sigmoid_refhistory.empty() && Clock::get() - m_sigmoid_refhistory.front().timestamp > 4.0)
+          {
+            while(!m_sigmoid_refhistory.empty()) m_sigmoid_refhistory.erase(m_sigmoid_refhistory.begin());
           }
 
           // If more than 2 seconds since last step, restart suspended integrator
@@ -1082,6 +1128,19 @@ namespace Control
 
           trace("Angle history size: %lu", m_anglehistory.size());
 
+          // Check sigmoid smoothing
+          if (m_args.enable_sigmmoid_smoothing)
+          {
+
+            // Update and check the sigmoid
+            updateSigmoidSmoothingState(now);
+
+            double gain = gainedSigmoid(m_sigmoid_state.percent_below_threshold);
+
+
+            trace("Sigmoid percent, gain: %.3f, %.3f", m_sigmoid_state.percent_below_threshold, gain);
+            Gd = gain * Gd;
+          }
 
 
 
@@ -1137,6 +1196,18 @@ namespace Control
 
         }
 
+        double
+        gainedSigmoid(double t)
+        {
+          return sigmoid(m_args.sigmoid_gain * (m_args.sigmoid_shift + t));
+        }
+
+        double
+        sigmoid(double t)
+        {
+          return 1.0 / (1.0 + std::exp(-t));
+        }
+
         void
         clearDelayedFeedbackState()
         {
@@ -1166,6 +1237,36 @@ namespace Control
           }
 
           m_input_shaping_state.filteredRef = new_ref;
+        }
+
+        void
+        updateSigmoidSmoothingState(double now)
+        {
+          m_sigmoid_refhistory.push_back(ReferenceHistoryContainer(m_reference.x, now));
+
+          // This queue should only hold values newer than x seconds old.
+          while ( m_sigmoid_refhistory.size() >= 1
+              && now - m_sigmoid_refhistory.front().timestamp > m_args.sigmoid_history_time)
+          {
+            // Old, remove.
+            m_sigmoid_refhistory.erase(m_sigmoid_refhistory.begin());
+          }
+
+          // Calculate percent
+          std::vector<ReferenceHistoryContainer>::iterator it = m_sigmoid_refhistory.begin();
+
+          int accumulated_sum = 0.0;
+          for ( ;it != m_sigmoid_refhistory.end(); ++it)
+          {
+
+            if ( (*it).state.get(6,8,0,0).norm_2() < m_args.sigmoid_acc_thresh )
+            {
+              accumulated_sum++;
+            }
+          }
+
+          // Set percent
+          m_sigmoid_state.percent_below_threshold = (double) accumulated_sum / (double) m_sigmoid_refhistory.size();
         }
 
         void
@@ -1201,6 +1302,8 @@ namespace Control
 
           if (m_args.enable_delayed_feedback)
           {
+
+
             // Update delayed feedback state
             updateDelayedFeedbackState(now);
 
