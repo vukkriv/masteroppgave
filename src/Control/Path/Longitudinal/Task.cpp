@@ -208,7 +208,7 @@ namespace Control
           double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i *m_thr_i+ H_error*m_args.k_thr_ph + m_args.trim_throttle;
           //double pitch_desired = gamma_desired + alpha_now-gamma_error*m_args.k_gamma_p;
           double pitch_desired = gamma_desired + Angles::radians(m_args.trim_pitch)-gamma_error*m_args.k_gamma_p; //Backstepping,pitch_desired = gamma_desired + alpha_0
-
+          pitch_desired = trimValue(pitch_desired,-0.1745,0.2618); //Trim pitch -10 / 15 degree
           m_throttle.value = throttle_desired;
           m_pitch.value = pitch_desired;
 
