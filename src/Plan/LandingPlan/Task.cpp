@@ -287,19 +287,19 @@ namespace Plan
         }
         else
         {
-          //addNetApproach(maneuverList);
+          addNetApproach(maneuverList);
         }
 
         //! Create plan maneuver
-        IMC::PlanManeuver man_spec;
-        man_spec.maneuver_id = 1;
+        /*IMC::PlanManeuver man_spec;
+        man_spec.maneuver_id = 1;*/
 
         //! Add a maneuver list to a plan
-        addManeuverListToPlan(&maneuverList,man_spec,plan_spec);
+        addManeuverListToPlan(&maneuverList,plan_spec);
 
         //man_spec.data.set(fPath);
 
-        plan_spec.maneuvers.push_back(man_spec);
+
 
         plan_db.arg.set(plan_spec);
 
@@ -386,19 +386,20 @@ namespace Plan
 
       //! Extract maneuvers from a list and add them to plan maneuver
       void
-      addManeuverListToPlan(IMC::MessageList<IMC::Maneuver>* maneuverList,IMC::PlanManeuver& man_spec,IMC::PlanSpecification &plan_spec)
+      addManeuverListToPlan(IMC::MessageList<IMC::Maneuver>* maneuverList,IMC::PlanSpecification &plan_spec)
       {
         IMC::MessageList<IMC::Maneuver>::const_iterator it;
         IMC::PlanManeuver last_man;
-        unsigned i = 0;
+        unsigned i = 1;
         inf("Something should happen");
         for (it = maneuverList->begin();it!=maneuverList->end();it++,i++)
         {
+          IMC::PlanManeuver man_spec;
           inf("Happening");
           inf("A cat in a tower with number %d",i);
 
           man_spec.data.set(*it);
-          //man_spec.maneuver_id = String::str(i + 1);
+          man_spec.maneuver_id = i;
 
           if (it!=maneuverList->begin())
           {
@@ -409,7 +410,7 @@ namespace Plan
             plan_spec.transitions.push_back(trans);
           }
           last_man = man_spec;
-
+          plan_spec.maneuvers.push_back(man_spec);
         }
 
       }
