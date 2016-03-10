@@ -68,7 +68,14 @@ namespace Plan
       //! Net orientation
       double netHeading;
       //! Landing waypoints
-      Matrix WP;
+      //! WP1
+      Matrix WP1;
+      //! WP1
+      Matrix WP2;
+      //! WP1
+      Matrix WP3;
+      //! WP1
+      Matrix WP4;
       //! Auxiliary waypoint
       Matrix WPa;
       //! Net lat
@@ -131,10 +138,7 @@ namespace Plan
       void
       onUpdateParameters(void)
       {
-        inf("Testing the plan");
-        IMC::PlanGeneration test;
-        test.plan_id = "land";
-        dispatch(test);
+
       }
 
       //! Update estimatedState
@@ -151,12 +155,14 @@ namespace Plan
         {
           return;
         }
+        inf("Something happens");
         if (!extractPlan(msg))
         {
           return;
         }
         if (msg->plan_id=="land")
         {
+          inf("Starting to generate");
           if(!generateLandingPath())
           {
             war("Unable to generate a landing path");
@@ -177,50 +183,57 @@ namespace Plan
         if (msg->plan_id=="land")
         {
           TupleList tList(msg->params,"=",";",true);
-          m_landArg.net_lat = Angles::radians(tList.get("land_lat",63.629409));
-          m_landArg.net_lon = Angles::radians(tList.get("land_lon",9.726401));
-          m_landArg.net_WGS84_height = tList.get("net_WGS84_height",0.0);
-          m_landArg.netHeading = Angles::radians(tList.get("land_heading",60));
-          m_landArg.net_height = tList.get("net_height",3.0);
-          m_landArg.gamma_a = Angles::radians(tList.get("attack_angle",3.0));
-          m_landArg.gamma_d = Angles::radians(tList.get("descend_angle", 3.0));
-          m_landArg.a0 = tList.get("behind_net",10.0);
-          m_landArg.a1 = tList.get("final_approach",10.0);
-          m_landArg.a2 = tList.get("glideslope",300.0);
-          m_landArg.a3 = tList.get("approach",100.0);
-          m_landArg.speed_WP4 = tList.get("speed_wp4",12.0);
-          m_landArg.speed_WP3 = tList.get("speed_wp3",12.0);
-          m_landArg.speed_WP2 = tList.get("speed_wp2",12.0);
-          m_landArg.speed_WP1 = tList.get("speed_wp1",12.0);
-          m_landArg.Rs = tList.get("min_turn_radius", 20.0);
+          m_landArg.net_lat = Angles::radians(tList.get("land_lat1",63.629409));
+          m_landArg.net_lon = Angles::radians(tList.get("land_lon1",9.726401));
+          m_landArg.net_WGS84_height = tList.get("net_WGS84_height1",0.0);
+          m_landArg.netHeading = Angles::radians(tList.get("land_heading1",60));
+          m_landArg.net_height = tList.get("net_height1",-3.0);
+          m_landArg.gamma_a = Angles::radians(tList.get("attack_angle1",3.0));
+          m_landArg.gamma_d = Angles::radians(tList.get("descend_angle1", 3.0));
+          m_landArg.a0 = tList.get("behind_net1",10.0);
+          m_landArg.a1 = tList.get("final_approach1",10.0);
+          m_landArg.a2 = tList.get("glideslope1",300.0);
+          m_landArg.a3 = tList.get("approach1",100.0);
+          m_landArg.speed_WP4 = tList.get("speed_wp41",12.0);
+          m_landArg.speed_WP3 = tList.get("speed_wp31",12.0);
+          m_landArg.speed_WP2 = tList.get("speed_wp21",12.0);
+          m_landArg.speed_WP1 = tList.get("speed_wp11",12.0);
+          m_landArg.Rs = tList.get("min_turn_radius1", 20.0);
           m_landArg.Rf = tList.get("loiter_radius",40.0);
 
           //! Fill WP matrix
-          m_landArg.WP = Matrix(3,4,0.0);
-          m_landArg.WP(0,0) = -m_landArg.a0;
-          m_landArg.WP(2,0) = m_landArg.net_height+m_landArg.a0*std::tan(m_landArg.gamma_a);
+          m_landArg.WP1 = Matrix(3,1,0.0);
+          m_landArg.WP1(0,0) = -m_landArg.a0;
+          m_landArg.WP1(2,0) = m_landArg.net_height+m_landArg.a0*std::tan(m_landArg.gamma_a);
 
-          m_landArg.WP(0,1) = m_landArg.a1;
-          m_landArg.WP(2,1) = m_landArg.net_height-m_landArg.a1*std::tan(m_landArg.gamma_a);
+          m_landArg.WP2 = Matrix(3,1,0.0);
+          m_landArg.WP2(0,0) = m_landArg.a1;
+          m_landArg.WP2(2,0) = m_landArg.net_height-m_landArg.a1*std::tan(m_landArg.gamma_a);
 
-          m_landArg.WP(0,2) = m_landArg.WP(0,1)+m_landArg.a2;
-          m_landArg.WP(2,2) = m_landArg.WP(2,1)-m_landArg.a2*std::tan(m_landArg.gamma_a);
+          m_landArg.WP3 = Matrix(3,1,0.0);
+          m_landArg.WP3(0,0) = m_landArg.WP2(0,0)+m_landArg.a2;
+          m_landArg.WP3(2,0) = m_landArg.WP2(2,0)-m_landArg.a2*std::tan(m_landArg.gamma_a);
 
-          m_landArg.WP(0,3) = m_landArg.WP(0,2)+m_landArg.a3;
-          m_landArg.WP(2,3) = m_landArg.WP(2,2);
+          m_landArg.WP4 = Matrix(3,1,0.0);
+          m_landArg.WP4(0,0) = m_landArg.WP3(0,0)+m_landArg.a3;
+          m_landArg.WP4(2,0) = m_landArg.WP3(2,0);
 
           m_landArg.WPa = Matrix(3,1,0.0);
-          m_landArg.WPa(0,0) = m_landArg.WP(0,1) + (m_landArg.a2)/2;
+          m_landArg.WPa(0,0) = m_landArg.WP2(0,0) + (m_landArg.a2)/2;
           m_landArg.WPa(1,0) = m_landArg.Rf;
-          m_landArg.WPa(2,0) = m_landArg.WP(2,1)-m_landArg.a2*std::tan(m_landArg.gamma_a);
+          m_landArg.WPa(2,0) = m_landArg.WP2(2,0)-m_landArg.a2*std::tan(m_landArg.gamma_a);
 
           //! Rotate all WP into NED
-          m_landArg.WP.column(1) = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WP.column(1);
-          m_landArg.WP.column(2) = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WP.column(2);
-          m_landArg.WP.column(3) = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WP.column(3);
-          m_landArg.WP.column(4) = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WP.column(4);
-
+          m_landArg.WP1 = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WP1;
+          m_landArg.WP2 = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WP2;
+          m_landArg.WP3 = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WP3;
+          m_landArg.WP4 = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WP4;
           m_landArg.WPa = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WPa;
+
+          inf("WP1 x=%f y=%f z=%f",m_landArg.WP1(0,0),m_landArg.WP1(1,0),m_landArg.WP1(2,0));
+          inf("WP2 x=%f y=%f z=%f",m_landArg.WP2(0,0),m_landArg.WP2(1,0),m_landArg.WP2(2,0));
+          inf("WP3 x=%f y=%f z=%f",m_landArg.WP3(0,0),m_landArg.WP3(1,0),m_landArg.WP3(2,0));
+          inf("WP4 x=%f y=%f z=%f",m_landArg.WP4(0,0),m_landArg.WP4(1,0),m_landArg.WP4(2,0));
 
           return true;
         }
@@ -242,7 +255,11 @@ namespace Plan
         Matrix OCF = Matrix(2,1,0.0);
         //! End pose in dubins paht
         Matrix Xf = Matrix(4,1,0.0);
-        Xf = m_landArg.WP.column(4);
+        //Xf = m_landArg.WP.column(3);
+        Xf(0,0) = m_landArg.WP4(0,0);
+        Xf(1,0) = m_landArg.WP4(1,0);
+        Xf(2,0) = m_landArg.WP4(2,0);
+        Xf(3,0) = Angles::normalizeRadian(m_landArg.netHeading-PI);
         //! Calculated path
         std::vector<Matrix> path;
         if (!dubinsPath(Xs,Xf,path,RightF,OCF))
@@ -254,7 +271,10 @@ namespace Plan
             war("Could not generate a landing path: Abort");
             return false;
           }
-          Xf = m_landArg.WP.column(4);
+          Xf(0,0) = m_landArg.WP4(0,0);
+          Xf(1,0) = m_landArg.WP4(1,0);
+          Xf(2,0) = m_landArg.WP4(2,0);
+          Xf(3,0) = Angles::normalizeRadian(m_landArg.netHeading-PI);
           if (!dubinsPath(m_landArg.WPa,Xf,path,RightF,OCF))
           {
             war("Could not generate a landing path: Abort");
@@ -263,8 +283,16 @@ namespace Plan
         }
         //! Is correct height
         bool correctHeight;
-        glideSlope(Xs,m_landArg.WP.column(4),m_landArg.gamma_d,correctHeight,path);
-        glideSpiral(OCF,RightF,m_landArg.WP(2,3),correctHeight,m_landArg.gamma_d,path);
+        if (m_landArg.net_WGS84_height-m_landArg.WP4(2,0)<m_estate.height-Xs(2,0))
+        {
+          m_landArg.gamma_d = -m_landArg.gamma_d;
+        }
+        glideSlope(Xs,m_landArg.WP4,m_landArg.gamma_d,correctHeight,path);
+        glideSpiral(OCF,RightF,m_landArg.WP4(2,0),correctHeight,m_landArg.gamma_d,path);
+        inf("Reach correct height %f from the height %f",path[path.size()-1](2,0),Xs(2,0));
+        inf("WP4 = h-z %f",m_landArg.net_WGS84_height-m_landArg.WP4(2,0));
+        inf("Lat %f lon %f ref height %f",m_landArg.net_lat,m_landArg.net_lon,m_landArg.net_WGS84_height);
+
 
         //! Create plan set request
         IMC::PlanDB plan_db;
@@ -284,11 +312,12 @@ namespace Plan
 
         //! Create a followPath maneuver
         IMC::FollowPath fPath;
-        double cur_lat;
-        double cur_lon;
+        double cur_lat = m_estate.lat;
+        double cur_lon =  m_estate.lon;
         Coordinates::WGS84::displace(m_estate.x,m_estate.y,&cur_lat,&cur_lon);
         fPath.lat = cur_lat;
         fPath.lon = cur_lon;
+        inf("Current lat: %f current lon: %f",cur_lat,cur_lon);
         fPath.z_units = IMC::Z_HEIGHT;
         fPath.z = m_estate.height - m_estate.z;
         addPathPoint(path,&fPath);
@@ -400,7 +429,7 @@ namespace Plan
       }
       //! Construct Dubins Path between two waypoints with given heading
       bool
-      dubinsPath(const Matrix Xs,const Matrix Xf, std::vector<Matrix> Path,bool &RightF,Matrix &OCF)
+      dubinsPath(const Matrix Xs,const Matrix Xf, std::vector<Matrix>& Path,bool &RightF,Matrix &OCF)
       {
         //! Define start turning direction
         bool RightS;
@@ -416,7 +445,6 @@ namespace Plan
         double Rsec;
 
         //! Define start turning circle center (Ocs)
-
         if (std::atan2(Xs(1,0)-Xf(1,0),Xs(0,0)-Xf(0,0))<0)
         {
           RightS = false;
@@ -446,6 +474,7 @@ namespace Plan
           Xcf = Xf(0,0)-m_landArg.Rf*std::cos(Xf(3,0)+PI/2);
           Ycf = Xf(1,0)-m_landArg.Rf*std::sin(Xf(3,0)+PI/2);
         }
+
         OCF(0,0) = Xcf;
         OCF(1,0) = Ycf;
         //! Calculate radius of second end turning circle
@@ -589,7 +618,7 @@ namespace Plan
       }
       //! Constructs an arc from theta[0] to theta[m_N] with R radius
       void
-      ConstructArc(const Matrix theta,const double theta0,const double R,const Matrix center,std::vector<Matrix> arc)
+      ConstructArc(const Matrix theta,const double theta0,const double R,const Matrix center,std::vector<Matrix>& arc)
       {
         Matrix tempP = Matrix(3,1,0.0);
         for (int i=0;i<m_args.N;i++)
@@ -603,33 +632,39 @@ namespace Plan
       }
       //! Add an arc to the path.
       void
-      AddToPath(std::vector<Matrix> arc,std::vector<Matrix> &path)
+      AddToPath(std::vector<Matrix> &arc,std::vector<Matrix> &path)
       {
         std::vector<Matrix>::iterator it;
-        for (it=arc.begin();it!=arc.end();it++)
+        for (int i=0;i<m_args.N;i++)
         {
-          path.push_back(*it);
+          path.push_back(arc[i]);
         }
         //! Empty arc
-        arc.erase(arc.begin(),arc.end());
 
+        arc.erase(arc.begin(),arc.end());
       }
       //! Constructs a glideslope from x0 towards height of loiter point along dubins path
       void
       glideSlope(const Matrix x0,const Matrix WP,double descentAngle,bool &correctHeigth,std::vector<Matrix> &Path)
       {
         //! The path starts at the same height as x0
-        Path[1](2,0) = x0(2,0);
+        inf("Mistakes were made");
+
+        Path[0](2,0) = x0(2,0);
+        inf("It worked path 20: %f,",Path[0](2,0));
         correctHeigth = false;
         double D;
         int interationLength = Path.size()-1;
+        inf("Lenght of path %d",Path.size());
+        inf("Evalved WP: x=%f y=%f z=%f",WP(0,0),WP(1,0),WP(2,0));
         for (int i=0;i<interationLength;i++)
         {
+          inf("i:%d",i);
           D = sqrt(std::pow(Path[i+1](0,0)-Path[i](0,0),2)+std::pow(Path[i+1](1,0)-Path[i](1,0),2));
-          if (std::abs(std::atan2(WP(2,3)-Path[i](2,0),D))<abs(descentAngle))
+          if (std::abs(std::atan2(m_landArg.net_WGS84_height-WP(2,0)-(m_estate.height-Path[i](2,0)),D))<abs(descentAngle))
           {
             correctHeigth = true;
-            descentAngle = std::atan2(WP(2,3)-Path[i](2,0),D);
+            descentAngle = std::atan2(m_landArg.net_WGS84_height-WP(2,0)-(m_estate.height-Path[i](2,0)),D);
             Path[i+1](2,0) = Path[i](2,0)+D*tan(descentAngle);
           }
           else if (!correctHeigth)
@@ -670,14 +705,20 @@ namespace Plan
         WPS1(0,0) = xnn;
         WPS1(1,0) = ynn;
         WPS1(2,0) = znn;
+        inf("Next height %f",m_estate.height-znn);
+        inf("Desired height %f",m_landArg.netHeading-dHeight);
         int n = 3;
         Path.push_back(WPS0);
         Path.push_back(WPS1);
+        inf("theta has %d elements",theta.size());
+        inf("The angle is %f",std::abs(std::atan2(dHeight-WPS1(2,0),D)));
+        inf("Glide angle is %f",descentAngle);
+        inf("Is its D fault %f",D);
         while(!correctHeigth)
         {
-          if (std::abs(std::atan2(dHeight-WPS1(2,0),D))<abs(descentAngle))
+          if (std::abs(std::atan2(m_landArg.net_WGS84_height-dHeight-(m_estate.height-WPS1(2,0)),D))<abs(descentAngle))
           {
-            descentAngle = std::atan2(dHeight-WPS1(2,0),D);
+            descentAngle = std::atan2(m_landArg.net_WGS84_height-dHeight-(m_estate.height-WPS1(2,0)),D);
             correctHeigth = true;
           }
           WPS0 = WPS1;
@@ -685,15 +726,17 @@ namespace Plan
           ynn = OF(1,0) + m_landArg.Rf*sin(theta0+theta(0,n));
           D = std::sqrt(std::pow(xnn-WPS0(0,0),2)+std::pow(ynn-WPS0(1,0),2));
           znn = WPS0(2,0)+D*std::tan(descentAngle);
+          inf("Next height %f",znn);
           WPS1(0,0) = xnn;
           WPS1(1,0) = ynn;
           WPS1(2,0) = znn;
           Path.push_back(WPS1);
           n = n+1;
           //! Check if n has reached m_N. Then set to 1, such that the 0 value is only used once
-          if (n>m_args.N)
+          if (n>=m_args.N)
           {
             n = 1;
+            correctHeigth = true;
           }
         }
         double thetaH0 = std::atan2(WPS1(1,0)-OF(1,0),WPS1(0,0)-OF(0,0));
