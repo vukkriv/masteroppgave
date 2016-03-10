@@ -153,6 +153,9 @@ namespace Control
         //! Desired net heading
         IMC::DesiredHeading m_heading;
 
+        //! Current desired Z
+        IMC::DesiredZ m_dz;
+
         //!position Controller parameters (3x3)
         Matrix Kp;
         Matrix Ki;
@@ -409,7 +412,6 @@ namespace Control
             err(DTR("not active"));
             return;
           }
-
           trace("Got DesiredNetRecovery \nfrom '%s' at '%s'",
                 resolveEntity(msg->getSourceEntity()).c_str(),
                 resolveSystemId(msg->getSource()));
@@ -423,6 +425,9 @@ namespace Control
           debug("Speed: %f", msg->speed);
           debug("Max acceleration: %f", msg->max_acc);
           debug("\n\n");
+
+          m_dz.value = msg->z;
+          m_dz.z_units = msg->z_units;
 
           m_vehicles.aircraft = msg->aircraft;
           m_vehicles.no_vehicles = 1;
@@ -456,19 +461,6 @@ namespace Control
           m_runway.lon_end = msg->end_lon;
           m_runway.lat_end = msg->end_lat;
 
-          switch(msg->z_units)
-          {
-            case IMC::Z_ALTITUDE:
-              m_runway.altitude_start = msg->z;
-              m_runway.altitude_end = msg->z;
-              break;
-            default:
-              war("z_unit not supported, using altitude");
-              m_runway.altitude_start = msg->z;
-              m_runway.altitude_end = msg->z;
-              break;
-          };
-
           m_runway.box_height = msg->lbox_height;
           m_runway.box_width = msg->lbox_width;
 
@@ -484,17 +476,10 @@ namespace Control
         {
           if (!m_coordinatorEnabled)
             return;
-          bool change_ref = false;
-          if (estate->lat    != m_ref_lat ||
-              estate->lon    != m_ref_lon ||
-              estate->height != m_ref_hae)
-          {
-            m_ref_lat = estate->lat;
-            m_ref_lon = estate->lon;
-            m_ref_hae = estate->height;
-            m_ref_valid = true;
-            change_ref = true;
-          }
+          m_ref_lat = estate->lat;
+          m_ref_lon = estate->lon;
+          m_ref_hae = estate->height;
+
           if (!m_initializedCoord)
           {
             debug("Initializing coordinator after EstimatedLocalState");
@@ -502,8 +487,7 @@ namespace Control
             //return;
             debug("Initialized coordinator after EstimatedLocalState");
           }
-          if (change_ref)
-            initRunwayPath();
+          initRunwayPath();
 
           //spew("Got EstimatedState \nfrom '%s' at '%s'",
           //     resolveEntity(estate->getSourceEntity()).c_str(),
@@ -697,12 +681,29 @@ namespace Control
           WGS84::displacement(m_ref_lat, m_ref_lon, 0, m_runway.lat_start,
                               m_runway.lon_start, 0, &m_runway.start_NED(0),
                               &m_runway.start_NED(1));
-          m_runway.start_NED(2) = -m_runway.altitude_start;
-
           WGS84::displacement(m_ref_lat, m_ref_lon, 0, m_runway.lat_end,
                               m_runway.lon_end, 0, &m_runway.end_NED(0),
                               &m_runway.end_NED(1));
-          m_runway.end_NED(2) = -m_runway.altitude_end;
+
+
+          m_runway.end_NED(2)   = m_estate[COPTER_LEAD].height;
+          m_runway.start_NED(2) = m_estate[COPTER_LEAD].height;
+          // Z ref handling
+          if (m_dz.z_units == IMC::Z_HEIGHT)
+          {
+            m_runway.end_NED(2)   = m_estate[COPTER_LEAD].height - m_dz.value;
+            m_runway.start_NED(2) = m_estate[COPTER_LEAD].height - m_dz.value;
+          }
+          else if(m_dz.z_units == IMC::Z_ALTITUDE)
+          {
+            err("Altitude not supported");
+          }
+          else
+          {
+            war("Unit not supported, assuming HEIGHT");
+            m_runway.end_NED(2)   = m_estate[COPTER_LEAD].height - m_dz.value;
+            m_runway.start_NED(2) = m_estate[COPTER_LEAD].height - m_dz.value;
+          }
 
           Matrix deltaWP = m_runway.end_NED - m_runway.start_NED;
 
