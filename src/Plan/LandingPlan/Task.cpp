@@ -271,14 +271,14 @@ namespace Plan
         Coordinates::WGS84::displace(m_estate.x,m_estate.y,&cur_lat,&cur_lon);
         fPath.lat = cur_lat;
         fPath.lon = cur_lon;
-        inf("Current lat: %f current lon: %f",cur_lat,cur_lon);
+        inf("Current lat: %f current lon: %f",fPath.lat,fPath.lon);
         fPath.z_units = IMC::Z_HEIGHT;
         fPath.z = m_estate.height - m_estate.z;
         //fPath.timeout = 10000;
         fPath.speed = 16;
         fPath.speed_units = IMC::SUNITS_METERS_PS;
         addPathPoint(path,&fPath);
-        //maneuverList.push_back(fPath);
+        maneuverList.push_back(fPath);
 
         //! Add loiter maneuver if the waitLoiter flag is set to true
         if (m_args.waitLoiter)
@@ -287,10 +287,8 @@ namespace Plan
         }
         else
         {
-          addNetApproach(maneuverList);
+          //addNetApproach(maneuverList);
         }
-
-
 
         //! Create plan maneuver
         IMC::PlanManeuver man_spec;
@@ -397,7 +395,8 @@ namespace Plan
         for (it = maneuverList->begin();it!=maneuverList->end();it++,i++)
         {
           inf("Happening");
-          inf("A cat in a tower");
+          inf("A cat in a tower with number %d");
+
           man_spec.data.set(*it);
           man_spec.maneuver_id = String::str(i + 1);
 
@@ -409,6 +408,7 @@ namespace Plan
             trans.source_man = last_man.maneuver_id;
             plan_spec.transitions.push_back(trans);
           }
+          last_man = man_spec;
 
         }
 
@@ -432,8 +432,8 @@ namespace Plan
       addGotoPoint(const Matrix WP,const double speed,IMC::MessageList<IMC::Maneuver>& maneuverList)
       {
         IMC::Goto gotoWP;
-        double w1_lat;
-        double w1_lon;
+        double w1_lat = m_landArg.net_lat;
+        double w1_lon = m_landArg.net_lon;
         double w1_h = m_landArg.net_WGS84_height - WP(2,0);
         Coordinates::WGS84::displace(WP(0,0),WP(1,0),&w1_lat,&w1_lon);
         gotoWP.lat = w1_lat;
@@ -454,6 +454,7 @@ namespace Plan
           pPoint.x = path[i](0,0);
           pPoint.y = path[i](1,0);
           pPoint.z = path[i](2,0);
+          inf("x = %f y = %f z = %f",pPoint.x,pPoint.y,pPoint.z);
           fPath->points.push_back(pPoint);
         }
       }
@@ -688,7 +689,7 @@ namespace Plan
         {
           D = sqrt(std::pow(Path[i+1](0,0)-Path[i](0,0),2)+std::pow(Path[i+1](1,0)-Path[i](1,0),2));
           inf("New angle %f descent angel %f",std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),D),2)),std::sqrt(std::pow(descentAngle,2)));
-          if (std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),D),2))<std::sqrt(std::pow(descentAngle,2)))
+          if (!correctHeigth && std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),D),2))<std::sqrt(std::pow(descentAngle,2)))
           {
             correctHeigth = true;
             inf("Reached correct height");
