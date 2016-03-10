@@ -269,6 +269,8 @@ namespace Plan
         inf("Xf x=%f y=%f z=%f",Xf(0,0),Xf(1,0),Xf(2,0));
         Coordinates::WGS84::displacement(m_estate.lat,m_estate.lon,m_estate.height,w4_lat,w4_lon,w4_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
         inf("Xf x=%f y=%f z=%f",Xf(0,0),Xf(1,0),Xf(2,0));
+        inf("Xs x=%f y=%f z=%f",Xs(0,0),Xs(1,0),Xs(2,0));
+        inf("m_estate height: %f net height: %f",m_estate.height,m_landArg.net_WGS84_height);
         //! Calculated path
         std::vector<Matrix> path;
         if (!dubinsPath(Xs,Xf,path,RightF,OCF))
@@ -291,7 +293,7 @@ namespace Plan
         }
         //! Is correct height
         bool correctHeight;
-        if (m_landArg.net_WGS84_height-m_landArg.WP4(2,0)<m_estate.height-Xs(2,0))
+        if (Xf(2,0)<Xs(2,0))
         {
           m_landArg.gamma_d = -m_landArg.gamma_d;
         }
