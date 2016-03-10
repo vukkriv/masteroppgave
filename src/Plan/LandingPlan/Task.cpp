@@ -350,7 +350,7 @@ namespace Plan
         man_spec.maneuver_id = 1;
 
         //! Add a maneuver list to a plan
-        // addMnaeuverToPlan(maneuverList,&man_spec);
+        addManeuverListToPlan(maneuverList,man_spec);
 
         man_spec.data.set(fPath);
 
@@ -371,6 +371,18 @@ namespace Plan
         dispatch(plan_ctrl);
 
         return true;
+
+      }
+
+      //! Extract maneuvers from a list and add them to plan maneuver
+      void
+      addManeuverListToPlan(IMC::MessageList<IMC::Maneuver>& maneuverList,IMC::PlanManeuver man_spec)
+      {
+        IMC::MessageList<IMC::Maneuver>::const_iterator it;
+        for (it = maneuverList.begin();it!=maneuverList.end();it++)
+        {
+          man_spec.data.set(*it);
+        }
 
       }
       //! Add the landing approach toward the net
