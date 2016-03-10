@@ -56,6 +56,8 @@ namespace Control
       {
         IMC::DesiredVelocity m_velocity;
         IMC::DesiredHeading m_heading;
+        //! Current desired Z
+        IMC::DesiredZ m_dz;
         //! Task arguments.
         Arguments m_args;
         //! Reference model state
@@ -233,11 +235,32 @@ namespace Control
         }
 
         void
+        consume(const IMC::DesiredZ* zref)
+        {
+          trace("Got Desired Z. ");
+          if (zref->z_units == IMC::Z_ALTITUDE || zref->z_units == IMC::Z_HEIGHT)
+          {
+            m_dz = *zref;
+          }
+        }
+
+        void
         step(const IMC::EstimatedState& state, const TrackingState& ts)
         {
 
           if (!m_args.use_controller)
             return;
+
+          float desiredZ = state.z;
+          // Z ref handling
+          if (m_dz.z_units == IMC::Z_HEIGHT)
+          {
+            desiredZ = state.height - ts.end.z;
+          }
+          else if(m_dz.z_units == IMC::Z_ALTITUDE)
+          {
+            desiredZ = state.z + state.alt - ts.end.z;
+          }
 
           // Get current position
           Matrix x = Matrix(3, 1, 0.0);
@@ -251,7 +274,7 @@ namespace Control
           Matrix x_d = Matrix(3, 1, 0.0);
           x_d(0) = ts.end.x;
           x_d(1) = ts.end.y;
-          x_d(2) = -ts.end.z; // NEU?!
+          x_d(2) = desiredZ;
           trace("x_d:\t [%1.2f, %1.2f, %1.2f]",
               x_d(0), x_d(1), x_d(2));
 
