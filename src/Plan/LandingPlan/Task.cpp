@@ -794,6 +794,10 @@ namespace Plan
           }
         }
         ConstructArc(theta,thetaH0,m_landArg.Rf,OF,arc);
+        for (int i=0;i<arc.size();i++)
+        {
+          arc[i](2,0) = Path[Path.size()-1](2,0);
+        }
         AddToPath(arc,Path);
       }
       //! Reserve entity identifiers.
