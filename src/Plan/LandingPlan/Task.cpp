@@ -278,9 +278,8 @@ namespace Plan
             war("Could not generate a landing path: Abort");
             return false;
           }
-          Xf(0,0) = m_landArg.WP4(0,0);
-          Xf(1,0) = m_landArg.WP4(1,0);
-          Xf(2,0) = m_landArg.WP4(2,0);
+          Coordinates::WGS84::displacement(m_estate.lat,m_estate.lon,m_estate.height,w4_lat,w4_lon,w4_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
+
           Xf(3,0) = Angles::normalizeRadian(m_landArg.netHeading-PI);
           if (!dubinsPath(m_landArg.WPa,Xf,path,RightF,OCF))
           {
