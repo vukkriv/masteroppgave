@@ -209,7 +209,7 @@ namespace Simulators
         Matrix M = m_model.getMassMatrix(m_eta);
         Matrix C = m_model.getCoreolisMatrix(m_eta, m_nu);
         Matrix G = m_model.getGravityMatrix(m_eta);
-        double d[5] = {m_args.air_drag_coeff, m_args.air_drag_coeff, m_args.air_drag_coeff, 0.01, 0.01};
+        double d[5] = {m_args.air_drag_coeff, m_args.air_drag_coeff, m_args.air_drag_coeff, 0.001, 0.001};
         Matrix D = Matrix(d, 5);
 
         Matrix next_eta = m_eta;
