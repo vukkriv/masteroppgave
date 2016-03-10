@@ -243,6 +243,87 @@ namespace Plan
       bool
       generateLandingPath()
       {
+
+        std::vector<Matrix> path;
+        if (!createPath(path))
+          return false;
+
+        //! Create plan set request
+        IMC::PlanDB plan_db;
+        plan_db.type = IMC::PlanDB::DBT_REQUEST;
+        plan_db.op = IMC::PlanDB::DBOP_SET;
+        plan_db.plan_id = "land";
+        plan_db.request_id = 0;
+
+        //! Create plan specification
+        IMC::PlanSpecification plan_spec;
+        plan_spec.plan_id = plan_db.plan_id;
+        plan_spec.start_man_id = 1;
+        plan_spec.description = "Plan activating land";
+
+        //! Create a list of maneuvers
+        IMC::MessageList<IMC::Maneuver> maneuverList;
+
+        //! Create a followPath maneuver
+        IMC::FollowPath fPath;
+        double cur_lat = m_estate.lat;
+        double cur_lon =  m_estate.lon;
+        Coordinates::WGS84::displace(m_estate.x,m_estate.y,&cur_lat,&cur_lon);
+        fPath.lat = cur_lat;
+        fPath.lon = cur_lon;
+        inf("Current lat: %f current lon: %f",cur_lat,cur_lon);
+        fPath.z_units = IMC::Z_HEIGHT;
+        fPath.z = m_estate.height - m_estate.z;
+        //fPath.timeout = 10000;
+        fPath.speed = 16;
+        fPath.speed_units = IMC::SUNITS_METERS_PS;
+        addPathPoint(path,&fPath);
+        //maneuverList.push_back(fPath);
+
+        //! Add loiter maneuver if the waitLoiter flag is set to true
+        if (m_args.waitLoiter)
+        {
+          //addLoiter();
+        }
+        else
+        {
+          addNetApproach(maneuverList);
+        }
+
+
+
+        //! Create plan maneuver
+        IMC::PlanManeuver man_spec;
+        man_spec.maneuver_id = 1;
+
+        //! Add a maneuver list to a plan
+        addManeuverListToPlan(&maneuverList,man_spec,plan_spec);
+
+        //man_spec.data.set(fPath);
+
+        plan_spec.maneuvers.push_back(man_spec);
+
+        plan_db.arg.set(plan_spec);
+
+        //! Send set plan request
+        dispatch(plan_db);
+
+        //! Create and send plan start request
+        IMC::PlanControl plan_ctrl;
+        plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
+        plan_ctrl.op = IMC::PlanControl::PC_START;
+        plan_ctrl.plan_id = plan_spec.plan_id;
+        plan_ctrl.request_id = 0;
+        plan_ctrl.arg.set(plan_spec);
+        dispatch(plan_ctrl);
+
+        return true;
+
+      }
+      //! Create path towards the start approach
+      bool
+      createPath(std::vector<Matrix>& path)
+      {
         //! Initialize the start pose
         Matrix Xs = Matrix(4,1,0.0);
         Xs(0,0) = m_estate.x;
@@ -272,7 +353,7 @@ namespace Plan
         inf("Xs x=%f y=%f z=%f",Xs(0,0),Xs(1,0),Xs(2,0));
         inf("m_estate height: %f net height: %f",m_estate.height,m_landArg.net_WGS84_height);
         //! Calculated path
-        std::vector<Matrix> path;
+
         if (!dubinsPath(Xs,Xf,path,RightF,OCF))
         {
           //! Need an extra WP
@@ -302,86 +383,33 @@ namespace Plan
         inf("Reach correct height %f from the height %f",path[path.size()-1](2,0),Xs(2,0));
         inf("WP4 = h-z %f",m_landArg.net_WGS84_height-m_landArg.WP4(2,0));
         inf("Lat %f lon %f ref height %f",m_landArg.net_lat,m_landArg.net_lon,m_landArg.net_WGS84_height);
-
-
-        //! Create plan set request
-        IMC::PlanDB plan_db;
-        plan_db.type = IMC::PlanDB::DBT_REQUEST;
-        plan_db.op = IMC::PlanDB::DBOP_SET;
-        plan_db.plan_id = "LandingPath";
-        plan_db.request_id = 0;
-
-        //! Create plan specification
-        IMC::PlanSpecification plan_spec;
-        plan_spec.plan_id = plan_db.plan_id;
-        plan_spec.start_man_id = 1;
-        plan_spec.description = "Plan activating LandingPath";
-
-        //! Create a list of maneuvers
-        IMC::MessageList<IMC::Maneuver> maneuverList;
-
-        //! Create a followPath maneuver
-        IMC::FollowPath fPath;
-        double cur_lat = m_estate.lat;
-        double cur_lon =  m_estate.lon;
-        Coordinates::WGS84::displace(m_estate.x,m_estate.y,&cur_lat,&cur_lon);
-        fPath.lat = cur_lat;
-        fPath.lon = cur_lon;
-        inf("Current lat: %f current lon: %f",cur_lat,cur_lon);
-        fPath.z_units = IMC::Z_HEIGHT;
-        fPath.z = m_estate.height - m_estate.z;
-        addPathPoint(path,&fPath);
-        maneuverList.push_back(fPath);
-
-        //! Add loiter maneuver if the waitLoiter flag is set to true
-        if (m_args.waitLoiter)
-        {
-          //addLoiter();
-        }
-        else
-        {
-          //addNetApproach(maneuverList);
-        }
-
-
-
-        //! Create plan maneuver
-        IMC::PlanManeuver man_spec;
-        man_spec.maneuver_id = 1;
-
-        //! Add a maneuver list to a plan
-        addManeuverListToPlan(maneuverList,man_spec);
-
-        man_spec.data.set(fPath);
-
-        plan_spec.maneuvers.push_back(man_spec);
-
-        plan_db.arg.set(plan_spec);
-
-        //! Send set plan request
-        dispatch(plan_db);
-
-        //! Create and send plan start request
-        IMC::PlanControl plan_ctrl;
-        plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
-        plan_ctrl.op = IMC::PlanControl::PC_START;
-        plan_ctrl.plan_id = plan_spec.plan_id;
-        plan_ctrl.request_id = 0;
-        plan_ctrl.arg.set(plan_spec);
-        dispatch(plan_ctrl);
-
         return true;
-
       }
 
       //! Extract maneuvers from a list and add them to plan maneuver
       void
-      addManeuverListToPlan(IMC::MessageList<IMC::Maneuver>& maneuverList,IMC::PlanManeuver man_spec)
+      addManeuverListToPlan(IMC::MessageList<IMC::Maneuver>* maneuverList,IMC::PlanManeuver& man_spec,IMC::PlanSpecification &plan_spec)
       {
         IMC::MessageList<IMC::Maneuver>::const_iterator it;
-        for (it = maneuverList.begin();it!=maneuverList.end();it++)
+        IMC::PlanManeuver last_man;
+        unsigned i = 0;
+        inf("Something should happen");
+        for (it = maneuverList->begin();it!=maneuverList->end();it++,i++)
         {
+          inf("Happening");
+          inf("A cat in a tower");
           man_spec.data.set(*it);
+          man_spec.maneuver_id = String::str(i + 1);
+
+          if (it!=maneuverList->begin())
+          {
+            IMC::PlanTransition trans;
+            trans.conditions = "maneuverIsDone";
+            trans.dest_man = man_spec.maneuver_id;
+            trans.source_man = last_man.maneuver_id;
+            plan_spec.transitions.push_back(trans);
+          }
+
         }
 
       }
