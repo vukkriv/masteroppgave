@@ -293,8 +293,8 @@ namespace Plan
         {
           m_landArg.gamma_d = -m_landArg.gamma_d;
         }
-        glideSlope(Xs,m_landArg.WP4,m_landArg.gamma_d,correctHeight,path);
-        glideSpiral(OCF,RightF,m_landArg.WP4(2,0),correctHeight,m_landArg.gamma_d,path);
+        glideSlope(Xs,Xf,m_landArg.gamma_d,correctHeight,path);
+        glideSpiral(OCF,RightF,Xf(2,0),correctHeight,m_landArg.gamma_d,path);
         inf("Reach correct height %f from the height %f",path[path.size()-1](2,0),Xs(2,0));
         inf("WP4 = h-z %f",m_landArg.net_WGS84_height-m_landArg.WP4(2,0));
         inf("Lat %f lon %f ref height %f",m_landArg.net_lat,m_landArg.net_lon,m_landArg.net_WGS84_height);
@@ -655,23 +655,17 @@ namespace Plan
       glideSlope(const Matrix x0,const Matrix WP,double descentAngle,bool &correctHeigth,std::vector<Matrix> &Path)
       {
         //! The path starts at the same height as x0
-        inf("Mistakes were made");
-
         Path[0](2,0) = x0(2,0);
-        inf("It worked path 20: %f,",Path[0](2,0));
         correctHeigth = false;
         double D;
         int interationLength = Path.size()-1;
-        inf("Lenght of path %d",Path.size());
-        inf("Evalved WP: x=%f y=%f z=%f",WP(0,0),WP(1,0),WP(2,0));
         for (int i=0;i<interationLength;i++)
         {
-          inf("i:%d",i);
           D = sqrt(std::pow(Path[i+1](0,0)-Path[i](0,0),2)+std::pow(Path[i+1](1,0)-Path[i](1,0),2));
-          if (std::abs(std::atan2(m_landArg.net_WGS84_height-WP(2,0)-(m_estate.height-Path[i](2,0)),D))<abs(descentAngle))
+          if (std::abs(std::atan2(WP(2,0)-Path[i](2,0),D))<abs(descentAngle))
           {
             correctHeigth = true;
-            descentAngle = std::atan2(m_landArg.net_WGS84_height-WP(2,0)-(m_estate.height-Path[i](2,0)),D);
+            descentAngle = std::atan2(WP(2,0)-Path[i](2,0),D);
             Path[i+1](2,0) = Path[i](2,0)+D*tan(descentAngle);
           }
           else if (!correctHeigth)
@@ -723,9 +717,9 @@ namespace Plan
         inf("Is its D fault %f",D);
         while(!correctHeigth)
         {
-          if (std::abs(std::atan2(m_landArg.net_WGS84_height-dHeight-(m_estate.height-WPS1(2,0)),D))<abs(descentAngle))
+          if (std::abs(std::atan2(dHeight-WPS1(2,0),D))<abs(descentAngle))
           {
-            descentAngle = std::atan2(m_landArg.net_WGS84_height-dHeight-(m_estate.height-WPS1(2,0)),D);
+            descentAngle = std::atan2(dHeight-WPS1(2,0),D);
             correctHeigth = true;
           }
           WPS0 = WPS1;
