@@ -138,7 +138,9 @@ namespace Plan
         .defaultValue("20")
         .description("Distance Between Arc Segment");
 
-
+        //! Initialize the default values
+        TupleList tList("","=",";",true);
+        readTupleList(tList);
         bind<IMC::EstimatedState>(this);
         bind<IMC::PlanGeneration>(this);
       }
@@ -192,24 +194,8 @@ namespace Plan
         if (msg->plan_id=="land")
         {
           TupleList tList(msg->params,"=",";",true);
-          m_landArg.net_lat = Angles::radians(tList.get("land_lat",63.629409));
-          m_landArg.net_lon = Angles::radians(tList.get("land_lon",9.726401));
-          m_landArg.net_WGS84_height = tList.get("net_WGS84_height1",0.0);
-          m_landArg.netHeading = Angles::radians(tList.get("land_heading",60));
-          m_landArg.net_height = tList.get("net_height1",-3.0);
-          m_landArg.gamma_a = Angles::radians(tList.get("attack_angle1",3.0));
-          m_landArg.gamma_d = Angles::radians(tList.get("descend_angle1", 3.0));
-          m_landArg.a0 = tList.get("behind_net1",10.0);
-          m_landArg.a1 = tList.get("final_approach1",10.0);
-          m_landArg.a2 = tList.get("glideslope1",300.0);
-          m_landArg.a3 = tList.get("approach1",100.0);
-          m_landArg.speed_WP4 = tList.get("speed_wp41",12.0);
-          m_landArg.speed_WP3 = tList.get("speed_wp31",12.0);
-          m_landArg.speed_WP2 = tList.get("speed_wp21",12.0);
-          m_landArg.speed_WP1 = tList.get("speed_wp11",12.0);
-          m_landArg.Rs = tList.get("min_turn_radius1", 150.0);
-          m_landArg.Rf = tList.get("loiter_radius",150.0);
 
+          readTupleList(tList);
           m_Ns = std::floor((2*m_landArg.Rs*PI)/m_args.arc_segment_distance);
           m_Nf = std::floor((2*m_landArg.Rf*PI)/m_args.arc_segment_distance);
 
@@ -265,6 +251,26 @@ namespace Plan
       }
       //! Read tuplelist
       void
+      readTupleList(TupleList tList)
+      {
+        m_landArg.net_lat = Angles::radians(tList.get("land_lat",63.629409));
+        m_landArg.net_lon = Angles::radians(tList.get("land_lon",9.726401));
+        m_landArg.net_WGS84_height = tList.get("net_WGS84_height1",0.0);
+        m_landArg.netHeading = Angles::radians(tList.get("land_heading",60));
+        m_landArg.net_height = tList.get("net_height1",-3.0);
+        m_landArg.gamma_a = Angles::radians(tList.get("attack_angle1",3.0));
+        m_landArg.gamma_d = Angles::radians(tList.get("descend_angle1", 3.0));
+        m_landArg.a0 = tList.get("behind_net1",10.0);
+        m_landArg.a1 = tList.get("final_approach1",10.0);
+        m_landArg.a2 = tList.get("glideslope1",300.0);
+        m_landArg.a3 = tList.get("approach1",100.0);
+        m_landArg.speed_WP4 = tList.get("speed_wp41",12.0);
+        m_landArg.speed_WP3 = tList.get("speed_wp31",12.0);
+        m_landArg.speed_WP2 = tList.get("speed_wp21",12.0);
+        m_landArg.speed_WP1 = tList.get("speed_wp11",12.0);
+        m_landArg.Rs = tList.get("min_turn_radius1", 150.0);
+        m_landArg.Rf = tList.get("loiter_radius",150.0);
+      }
       //! Generates a landing path
       bool
       generateLandingPath()
