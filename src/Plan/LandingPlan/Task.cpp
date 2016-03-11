@@ -92,15 +92,22 @@ namespace Plan
       double speed_WP4;
       //! Speed WP3
       double speed_WP3;
-      //! Speed WP3
-      double speed_WP2;
       //! Speed WP2
-      double speed_WP1;
+      double speed_WP2;
       //! Speed WP1
-            //! Start turning circle
+      double speed_WP1;
+      //! Start turning circle radius
       double Rs;
-      //! Finish turning circle
+      //! Finish turning circle radius
       double Rf;
+      //! Finish turning circle rotation
+      bool clockwise;
+      //! Finish turning circle center
+      Matrix OCF;
+      //! Finish turning circle offset height
+      double OCFz;
+      //! Waiting at loiter
+      bool wait_at_loiter = false;
 
     };
 
@@ -156,6 +163,44 @@ namespace Plan
         {
           m_Nf = 4;
         }
+        if (!m_args.waitLoiter && m_landArg.wait_at_loiter)
+        {
+
+          //! Create plan set request
+          IMC::PlanDB plan_db;
+          plan_db.type = IMC::PlanDB::DBT_REQUEST;
+          plan_db.op = IMC::PlanDB::DBOP_SET;
+          plan_db.plan_id = "land";
+          plan_db.request_id = 0;
+
+          //! Create plan specification
+          IMC::PlanSpecification plan_spec;
+          plan_spec.plan_id = plan_db.plan_id;
+          plan_spec.start_man_id = 1;
+          plan_spec.description = "Plan activating land";
+          //! Create a list of maneuvers
+          IMC::MessageList<IMC::Maneuver> maneuverList;
+
+          addNetApproach(maneuverList);
+
+          //! Add a maneuver list to a plan
+          addManeuverListToPlan(&maneuverList,plan_spec);
+
+          plan_db.arg.set(plan_spec);
+
+          //! Send set plan request
+          dispatch(plan_db);
+
+          //! Create and send plan start request
+          IMC::PlanControl plan_ctrl;
+          plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
+          plan_ctrl.op = IMC::PlanControl::PC_LOAD;
+          plan_ctrl.plan_id = plan_spec.plan_id;
+          plan_ctrl.request_id = 0;
+          plan_ctrl.arg.set(plan_spec);
+          dispatch(plan_ctrl);
+          m_landArg.wait_at_loiter = false;
+        }
       }
 
       //! Update estimatedState
@@ -202,6 +247,7 @@ namespace Plan
           TupleList tList(msg->params,"=",";",true);
 
           readTupleList(tList);
+
           m_Ns = std::floor((2*m_landArg.Rs*PI)/m_args.arc_segment_distance);
           m_Nf = std::floor((2*m_landArg.Rf*PI)/m_args.arc_segment_distance);
 
@@ -322,7 +368,8 @@ namespace Plan
         //! Add loiter maneuver if the waitLoiter flag is set to true
         if (m_args.waitLoiter)
         {
-          //addLoiter();
+          addLoiter(maneuverList);
+          m_landArg.wait_at_loiter = true;
         }
         else
         {
@@ -415,6 +462,9 @@ namespace Plan
         }
         glideSlope(Xs,Xf,m_landArg.gamma_d,correctHeight,path);
         glideSpiral(OCF,RightF,Xf(2,0),correctHeight,m_landArg.gamma_d,path);
+        m_landArg.OCF = OCF;
+        m_landArg.clockwise = !RightF;
+        m_landArg.OCFz = Xf(2,0);
         inf("Reach correct height %f from the height %f",path[path.size()-1](2,0),Xs(2,0));
         inf("WP4 = h-z %f",m_landArg.net_WGS84_height-m_landArg.WP4(2,0));
         inf("Lat %f lon %f ref height %f",m_landArg.net_lat,m_landArg.net_lon,m_landArg.net_WGS84_height);
@@ -447,6 +497,35 @@ namespace Plan
           plan_spec.maneuvers.push_back(man_spec);
         }
 
+      }
+      //! Add a loiter point after dubins
+      void
+      addLoiter(IMC::MessageList<IMC::Maneuver>& maneuverList)
+      {
+        IMC::Loiter loiter;
+        double loiter_lat = m_estate.lat;
+        double loiter_lon = m_estate.lon;
+        double loiter_h = m_estate.height;
+        Coordinates::WGS84::displace(m_landArg.OCF(0,0),m_landArg.OCF(1,0),m_landArg.OCFz,&loiter_lat,&loiter_lon,&loiter_h);
+        loiter.lat = loiter_lat;
+        loiter.lon = loiter_lon;
+        loiter.z = loiter_h;
+        loiter.z_units = IMC::Z_HEIGHT;
+        loiter.speed = m_landArg.speed_WP4;
+        loiter.speed_units = IMC::SUNITS_METERS_PS;
+        loiter.type = IMC::Loiter::LT_CIRCULAR;
+        if (m_landArg.clockwise)
+        {
+          loiter.direction = IMC::Loiter::LD_CLOCKW;
+        }
+        else
+        {
+          loiter.direction = IMC::Loiter::LD_CCLOCKW;
+        }
+        loiter.radius = m_landArg.Rf;
+        loiter.duration = 0;
+        loiter.setSubId(10);
+        maneuverList.push_back(loiter);
       }
       //! Add the landing approach toward the net
       void
