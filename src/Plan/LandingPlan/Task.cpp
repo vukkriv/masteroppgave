@@ -128,11 +128,6 @@ namespace Plan
         .defaultValue("false")
         .description("Enable Wait At Loiter");
 
-        /*param("Number Of Points In Arc", m_args.N)
-        .visibility(Tasks::Parameter::VISIBILITY_USER)
-        .defaultValue("16")
-        .description("Number of points in arc");*/
-
         param("Distance Between Arc Segment",m_args.arc_segment_distance)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
         .defaultValue("20")
@@ -149,7 +144,18 @@ namespace Plan
       void
       onUpdateParameters(void)
       {
+        m_Ns = std::floor((2*m_landArg.Rs*PI)/m_args.arc_segment_distance);
+        m_Nf = std::floor((2*m_landArg.Rf*PI)/m_args.arc_segment_distance);
 
+        //! Check if m_Ns and m_Nf is bellow 4
+        if (m_Ns<4)
+        {
+          m_Ns = 4;
+        }
+        if (m_Nf<4)
+        {
+          m_Nf = 4;
+        }
       }
 
       //! Update estimatedState
