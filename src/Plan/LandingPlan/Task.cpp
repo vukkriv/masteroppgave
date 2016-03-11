@@ -43,8 +43,6 @@ namespace Plan
     {
       //! Wait at loiter
       bool waitLoiter;
-      //! Number of points in arc
-      //int N;
       //! Arc segment distance
       double arc_segment_distance;
     };
@@ -217,14 +215,13 @@ namespace Plan
         {
           return;
         }
-        inf("Something happens");
         if (!extractPlan(msg))
         {
           return;
         }
         if (msg->plan_id=="land")
         {
-          inf("Starting to generate");
+          inf("Generate a landing path");
           if(!generateLandingPath())
           {
             war("Unable to generate a landing path");
@@ -359,7 +356,6 @@ namespace Plan
         fPath.z = m_estate.height;
         inf("Current lat: %f current lon: %f current height: %f",fPath.lat,fPath.lon,fPath.z);
         fPath.z_units = IMC::Z_HEIGHT;
-        //fPath.timeout = 10000;
         fPath.speed = 16;
         fPath.speed_units = IMC::SUNITS_METERS_PS;
         addPathPoint(path,&fPath);
@@ -411,9 +407,8 @@ namespace Plan
         bool RightF;
         //! Center of end turning circle
         Matrix OCF = Matrix(2,1,0.0);
-        //! End pose in dubins paht
+        //! End pose in dubins path
         Matrix Xf = Matrix(4,1,0.0);
-        //Xf = m_landArg.WP.column(3);
         Xf(0,0) = m_landArg.WP4(0,0);
         Xf(1,0) = m_landArg.WP4(1,0);
         Xf(2,0) = m_landArg.WP4(2,0);
@@ -424,7 +419,6 @@ namespace Plan
         double w4_h = m_landArg.net_WGS84_height - m_landArg.WP4(2,0);
         Coordinates::WGS84::displace(m_landArg.WP4(0,0),m_landArg.WP4(1,0),&w4_lat,&w4_lon);
         //! Find WP4 coordinates relative to the m_estate
-        inf("Xf x=%f y=%f z=%f",Xf(0,0),Xf(1,0),Xf(2,0));
         Coordinates::WGS84::displacement(m_estate.lat,m_estate.lon,m_estate.height,w4_lat,w4_lon,w4_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
         inf("Xf x=%f y=%f z=%f",Xf(0,0),Xf(1,0),Xf(2,0));
         inf("Xs x=%f y=%f z=%f",Xs(0,0),Xs(1,0),Xs(2,0));
@@ -568,7 +562,7 @@ namespace Plan
           pPoint.x = path[i](0,0);
           pPoint.y = path[i](1,0);
           pPoint.z = path[i](2,0);
-          inf("x = %f y = %f z = %f",pPoint.x,pPoint.y,pPoint.z);
+          debug("x = %f y = %f z = %f",pPoint.x,pPoint.y,pPoint.z);
           fPath->points.push_back(pPoint);
         }
       }
@@ -670,7 +664,7 @@ namespace Plan
         Matrix PN = Matrix(2,1,0.0);
         PN(0,0) = Xcf+m_landArg.Rf*cos(thetaF);
         PN(1,0) = Ycf+m_landArg.Rf*sin(thetaF);
-        inf("Created entry tanget");
+        inf("Created entry tangent");
         //! Define turning arc
         std::vector<Matrix> arc;
         //! Declare angle array
@@ -808,7 +802,6 @@ namespace Plan
           path.push_back(arc[i]);
         }
         //! Empty arc
-
         arc.erase(arc.begin(),arc.end());
       }
       //! Constructs a glideslope from x0 towards height of loiter point along dubins path
@@ -823,7 +816,7 @@ namespace Plan
         for (unsigned i=0;i<Path.size()-1;i++)
         {
           D = sqrt(std::pow(Path[i+1](0,0)-Path[i](0,0),2)+std::pow(Path[i+1](1,0)-Path[i](1,0),2));
-          inf("The distance D = %f",D);
+          debug("The distance D = %f",D);
           debug("New angle %f descent angel %f",std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),D),2)),std::sqrt(std::pow(descentAngle,2)));
           if (!correctHeigth && std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),D),2))<std::sqrt(std::pow(descentAngle,2)))
           {
@@ -893,7 +886,7 @@ namespace Plan
           ynn = OF(1,0) + m_landArg.Rf*sin(theta0+theta(0,n));
           D = std::sqrt(std::pow(xnn-WPS0(0,0),2)+std::pow(ynn-WPS0(1,0),2));
           znn = WPS0(2,0)+D*std::tan(descentAngle);
-          inf("Next height %f",znn);
+          debug("Next height %f",znn);
           WPS1(0,0) = xnn;
           WPS1(1,0) = ynn;
           WPS1(2,0) = znn;
