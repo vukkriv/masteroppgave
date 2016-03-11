@@ -306,12 +306,13 @@ namespace Plan
         IMC::FollowPath fPath;
         double cur_lat = m_estate.lat;
         double cur_lon =  m_estate.lon;
-        Coordinates::WGS84::displace(m_estate.x,m_estate.y,&cur_lat,&cur_lon);
+        double cur_height = m_estate.height;
+        Coordinates::WGS84::displace(m_estate.x,m_estate.y,m_estate.z,&cur_lat,&cur_lon,&cur_height);
         fPath.lat = cur_lat;
         fPath.lon = cur_lon;
-        inf("Current lat: %f current lon: %f",fPath.lat,fPath.lon);
+        fPath.z = m_estate.height;
+        inf("Current lat: %f current lon: %f current height: %f",fPath.lat,fPath.lon,fPath.z);
         fPath.z_units = IMC::Z_HEIGHT;
-        fPath.z = m_estate.height - m_estate.z;
         //fPath.timeout = 10000;
         fPath.speed = 16;
         fPath.speed_units = IMC::SUNITS_METERS_PS;
@@ -330,10 +331,6 @@ namespace Plan
 
         //! Add a maneuver list to a plan
         addManeuverListToPlan(&maneuverList,plan_spec);
-
-        //man_spec.data.set(fPath);
-
-
 
         plan_db.arg.set(plan_spec);
 
@@ -362,6 +359,7 @@ namespace Plan
         Xs(1,0) = m_estate.y;
         Xs(2,0) = m_estate.z;
         Xs(3,0) = m_estate.psi;
+
         //! Direction of end turn
         bool RightF;
         //! Center of end turning circle
@@ -390,6 +388,11 @@ namespace Plan
         {
           //! Need an extra WP
           Xf = m_landArg.WPa;
+          double wa_lat = m_landArg.net_lat;
+          double wa_lon = m_landArg.net_lon;
+          double wa_h = m_landArg.net_WGS84_height - m_landArg.WPa(2,0);
+          Coordinates::WGS84::displace(m_landArg.WPa(0,0),m_landArg.WPa(1,0),&wa_lat,&wa_lon);
+          Coordinates::WGS84::displacement(m_estate.lat,m_estate.lon,m_estate.height,wa_lat,wa_lon,wa_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
           if (!dubinsPath(Xs,Xf,path,RightF,OCF))
           {
             war("Could not generate a landing path: Abort");
