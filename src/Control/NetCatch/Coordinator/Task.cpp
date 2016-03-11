@@ -696,7 +696,9 @@ namespace Control
           }
           else if(m_dz.z_units == IMC::Z_ALTITUDE)
           {
-            err("Altitude not supported");
+            //war("Altitude not supported, assuming HEIGHT for now");
+            m_runway.end_NED(2)   = m_estate[COPTER_LEAD].height - m_dz.value;
+            m_runway.start_NED(2) = m_estate[COPTER_LEAD].height - m_dz.value;
           }
           else
           {
