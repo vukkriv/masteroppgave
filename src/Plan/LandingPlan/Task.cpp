@@ -45,6 +45,8 @@ namespace Plan
       bool waitLoiter;
       //! Number of points in arc
       int N;
+      //! Arc segment distance
+      double arc_segment_distance;
     };
 
     struct LandingPathArguments
@@ -110,8 +112,10 @@ namespace Plan
       LandingPathArguments m_landArg;
       //! Accumulated EstimatedState message
       IMC::EstimatedState m_estate;
-
-
+      //! Segments in the start circle
+      int m_Ns;
+      //! Segments in the finish circle
+      int m_Nf;
 
       //! Constructor.
       //! @param[in] name task name.
@@ -128,6 +132,11 @@ namespace Plan
         .visibility(Tasks::Parameter::VISIBILITY_USER)
         .defaultValue("16")
         .description("Number of points in arc");
+
+        param("Distance Between Arc Segment",m_args.arc_segment_distance)
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .defaultValue("20")
+        .description("Distance Between Arc Segment");
 
 
         bind<IMC::EstimatedState>(this);
@@ -183,10 +192,10 @@ namespace Plan
         if (msg->plan_id=="land")
         {
           TupleList tList(msg->params,"=",";",true);
-          m_landArg.net_lat = Angles::radians(tList.get("land_lat1",63.629409));
-          m_landArg.net_lon = Angles::radians(tList.get("land_lon1",9.726401));
+          m_landArg.net_lat = Angles::radians(tList.get("land_lat",63.629409));
+          m_landArg.net_lon = Angles::radians(tList.get("land_lon",9.726401));
           m_landArg.net_WGS84_height = tList.get("net_WGS84_height1",0.0);
-          m_landArg.netHeading = Angles::radians(tList.get("land_heading1",60));
+          m_landArg.netHeading = Angles::radians(tList.get("land_heading",60));
           m_landArg.net_height = tList.get("net_height1",-3.0);
           m_landArg.gamma_a = Angles::radians(tList.get("attack_angle1",3.0));
           m_landArg.gamma_d = Angles::radians(tList.get("descend_angle1", 3.0));
@@ -198,8 +207,8 @@ namespace Plan
           m_landArg.speed_WP3 = tList.get("speed_wp31",12.0);
           m_landArg.speed_WP2 = tList.get("speed_wp21",12.0);
           m_landArg.speed_WP1 = tList.get("speed_wp11",12.0);
-          m_landArg.Rs = tList.get("min_turn_radius1", 20.0);
-          m_landArg.Rf = tList.get("loiter_radius",40.0);
+          m_landArg.Rs = tList.get("min_turn_radius1", 150.0);
+          m_landArg.Rf = tList.get("loiter_radius",150.0);
 
           //! Fill WP matrix
           m_landArg.WP1 = Matrix(3,1,0.0);
@@ -290,10 +299,6 @@ namespace Plan
           addNetApproach(maneuverList);
         }
 
-        //! Create plan maneuver
-        /*IMC::PlanManeuver man_spec;
-        man_spec.maneuver_id = 1;*/
-
         //! Add a maneuver list to a plan
         addManeuverListToPlan(&maneuverList,plan_spec);
 
@@ -309,7 +314,7 @@ namespace Plan
         //! Create and send plan start request
         IMC::PlanControl plan_ctrl;
         plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
-        plan_ctrl.op = IMC::PlanControl::PC_START;
+        plan_ctrl.op = IMC::PlanControl::PC_LOAD;
         plan_ctrl.plan_id = plan_spec.plan_id;
         plan_ctrl.request_id = 0;
         plan_ctrl.arg.set(plan_spec);
@@ -391,12 +396,9 @@ namespace Plan
         IMC::MessageList<IMC::Maneuver>::const_iterator it;
         IMC::PlanManeuver last_man;
         unsigned i = 1;
-        inf("Something should happen");
         for (it = maneuverList->begin();it!=maneuverList->end();it++,i++)
         {
           IMC::PlanManeuver man_spec;
-          inf("Happening");
-          inf("A cat in a tower with number %d",i);
 
           man_spec.data.set(*it);
           man_spec.maneuver_id = i;
@@ -422,10 +424,10 @@ namespace Plan
         addGotoPoint(m_landArg.WP3,m_landArg.speed_WP3,maneuverList);
 
         //2
-        addGotoPoint(m_landArg.WP3,m_landArg.speed_WP3,maneuverList);
+        addGotoPoint(m_landArg.WP2,m_landArg.speed_WP2,maneuverList);
 
         //1
-        addGotoPoint(m_landArg.WP3,m_landArg.speed_WP3,maneuverList);
+        addGotoPoint(m_landArg.WP1,m_landArg.speed_WP1,maneuverList);
 
       }
       //!
@@ -450,7 +452,7 @@ namespace Plan
       addPathPoint(std::vector<Matrix> path,IMC::FollowPath* fPath)
       {
         IMC::PathPoint pPoint;
-        for (int i=0;i<path.size();i++)
+        for (unsigned i=0;i<path.size();i++)
         {
           pPoint.x = path[i](0,0);
           pPoint.y = path[i](1,0);
@@ -634,8 +636,12 @@ namespace Plan
       void
       calculateTurningArcAngle(const double theta_limit,Matrix &theta)
       {
-        double step = theta_limit/(m_args.N-1);
-        for (int i=0;i<m_args.N;i++)
+        //inf("Test n with floor limitation: %f",std::floor((theta_limit)/(2*PI)*m_args.N));
+        //! Find the number of segments that are required to construct the arc
+        unsigned N = std::floor((theta_limit)/(2*PI)*m_args.N);
+        theta.resize(1,N);
+        double step = theta_limit/(N-1);
+        for (unsigned i=0;i<N;i++)
         {
           theta(0,i)=i*step;
         }
@@ -654,7 +660,7 @@ namespace Plan
       ConstructArc(const Matrix theta,const double theta0,const double R,const Matrix center,std::vector<Matrix>& arc)
       {
         Matrix tempP = Matrix(3,1,0.0);
-        for (int i=0;i<m_args.N;i++)
+        for (unsigned i=0;i<theta.columns();i++)
         {
 
           tempP(0,0) = center(0,0) + R*std::cos(theta0+theta(0,i));
@@ -667,8 +673,7 @@ namespace Plan
       void
       AddToPath(std::vector<Matrix> &arc,std::vector<Matrix> &path)
       {
-        std::vector<Matrix>::iterator it;
-        for (int i=0;i<m_args.N;i++)
+        for (unsigned i=0;i<arc.size();i++)
         {
           path.push_back(arc[i]);
         }
@@ -685,8 +690,7 @@ namespace Plan
         correctHeigth = false;
         double D;
         inf("Start height %f desired height %f",x0(2,0),WP(2,0));
-        int interationLength = Path.size()-1;
-        for (int i=0;i<interationLength;i++)
+        for (unsigned i=0;i<Path.size()-1;i++)
         {
           D = sqrt(std::pow(Path[i+1](0,0)-Path[i](0,0),2)+std::pow(Path[i+1](1,0)-Path[i](1,0),2));
           inf("New angle %f descent angel %f",std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),D),2)),std::sqrt(std::pow(descentAngle,2)));
@@ -742,11 +746,12 @@ namespace Plan
         Path.push_back(WPS0);
         Path.push_back(WPS1);
         inf("theta has %d elements",theta.size());
-        inf("The angle is %f",std::abs(std::atan2(dHeight-WPS1(2,0),D)));
-        inf("Glide angle is %f",descentAngle);
-        inf("Is its D fault %f",D);
-        while(!correctHeigth)
+        debug("Glide angle is %f",descentAngle);
+        int max_iter = 1000;
+        int cur_iter = 0;
+        while(!correctHeigth && cur_iter < max_iter)
         {
+          ++cur_iter;
           if (std::sqrt(std::pow(std::atan2(dHeight-WPS1(2,0),D),2))<std::sqrt(std::pow(descentAngle,2)))
           {
             descentAngle = std::atan2(dHeight-WPS1(2,0),D);
@@ -769,6 +774,8 @@ namespace Plan
             n = 1;
           }
         }
+        inf("Exited loop. N iterations: %d", cur_iter);
+
         double thetaH0 = std::atan2(WPS1(1,0)-OF(1,0),WPS1(0,0)-OF(0,0));
         double thetaH1 = std::atan2(WP4(1,0)-OF(1,0),WP4(0,0)-OF(0,0));
         std::vector<Matrix> arc;
