@@ -44,7 +44,7 @@ namespace Plan
       //! Wait at loiter
       bool waitLoiter;
       //! Number of points in arc
-      int N;
+      //int N;
       //! Arc segment distance
       double arc_segment_distance;
     };
@@ -128,10 +128,10 @@ namespace Plan
         .defaultValue("false")
         .description("Enable Wait At Loiter");
 
-        param("Number Of Points In Arc", m_args.N)
+        /*param("Number Of Points In Arc", m_args.N)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
         .defaultValue("16")
-        .description("Number of points in arc");
+        .description("Number of points in arc");*/
 
         param("Distance Between Arc Segment",m_args.arc_segment_distance)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -210,6 +210,21 @@ namespace Plan
           m_landArg.Rs = tList.get("min_turn_radius1", 150.0);
           m_landArg.Rf = tList.get("loiter_radius",150.0);
 
+          m_Ns = std::floor((2*m_landArg.Rs*PI)/m_args.arc_segment_distance);
+          m_Nf = std::floor((2*m_landArg.Rf*PI)/m_args.arc_segment_distance);
+
+          //! Check if m_Ns and m_Nf is bellow 4
+          if (m_Ns<4)
+          {
+            m_Ns = 4;
+          }
+          if (m_Nf<4)
+          {
+            m_Nf = 4;
+          }
+
+          inf("m_Ns = %d m_Nf = %d",m_Ns,m_Nf);
+
           //! Fill WP matrix
           m_landArg.WP1 = Matrix(3,1,0.0);
           m_landArg.WP1(0,0) = -m_landArg.a0;
@@ -248,6 +263,8 @@ namespace Plan
         }
         return false;
       }
+      //! Read tuplelist
+      void
       //! Generates a landing path
       bool
       generateLandingPath()
@@ -493,7 +510,7 @@ namespace Plan
         }
         OCS(0,0) = Xcs;
         OCS(1,0) = Ycs;
-
+        inf("Created start turn circle");
         //! Define end turning circle center (Ofs)
 
         if (std::atan2(Xs(1,0)-Xf(1,0),Xs(0,0)-Xf(0,0))<0)
@@ -511,6 +528,7 @@ namespace Plan
 
         OCF(0,0) = Xcf;
         OCF(1,0) = Ycf;
+        inf("Created finish turn circle");
         //! Calculate radius of second end turning circle
         Rsec = std::abs(m_landArg.Rf-m_landArg.Rs);
 
@@ -537,7 +555,7 @@ namespace Plan
           war("The start pose and end pose are to close.");
           return false;
         }
-
+        inf("Starting to create Dubins path");
         //! Calculate alpha
         double alpha = std::asin((m_landArg.Rf-m_landArg.Rs)/dc);
 
@@ -553,68 +571,77 @@ namespace Plan
         Matrix Pchi = Matrix(2,1,0.0);
         Pchi(0,0) = Xcs+m_landArg.Rs*cos(thetaS);
         Pchi(1,0) = Ycs+m_landArg.Rs*sin(thetaS);
+        inf("Created exit tangent");
         //! Entry tangent point
         Matrix PN = Matrix(2,1,0.0);
         PN(0,0) = Xcf+m_landArg.Rf*cos(thetaF);
         PN(1,0) = Ycf+m_landArg.Rf*sin(thetaF);
+        inf("Created entry tanget");
         //! Define turning arc
         std::vector<Matrix> arc;
         //! Declare angle array
-        Matrix theta =Matrix(1,m_args.N,0.0);
+        Matrix thetaTS =Matrix(1,m_Ns,0.0);
         //! First arc
+        inf("Starting to construct first arc");
         double theta0 = std::atan2(Xs(1,0)-Ycs,Xs(0,0)-Xcs);
         double theta1 = std::atan2(Pchi(1,0)-Ycs,Pchi(0,0)-Xcs);
         if (RightS)
         {
           if (Angles::normalizeRadian(theta1-theta0)<=0)
           {
-            calculateTurningArcAngle(-std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
+            calculateTurningArcAngle(-std::abs(Angles::normalizeRadian(theta1-theta0)),true,thetaTS);
           }
           else
           {
-            calculateTurningArcAngle(-(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0))),theta);
+            calculateTurningArcAngle(-(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0))),true,thetaTS);
           }
         }
         else
         {
           if (Angles::normalizeRadian(theta1-theta0)>=0)
           {
-            calculateTurningArcAngle(std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
+            calculateTurningArcAngle(std::abs(Angles::normalizeRadian(theta1-theta0)),true,thetaTS);
           }
           else
           {
-            calculateTurningArcAngle(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
+            calculateTurningArcAngle(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0)),true,thetaTS);
           }
         }
-        ConstructArc(theta,theta0,m_landArg.Rs,OCS,arc);
+        ConstructArc(thetaTS,theta0,m_landArg.Rs,OCS,arc);
         AddToPath(arc,Path);
+        inf("Constructed first arc");
         //! Second arc
+        inf("Starting to construct second arc");
         theta0 = std::atan2(PN(1,0)-Ycf,PN(0,0)-Xcf);
         theta1 = std::atan2(Xf(1,0)-Ycf,Xf(0,0)-Xcf);
+        //! Declare angle array
+        Matrix thetaTF =Matrix(1,m_Nf,0.0);
         if (RightF)
         {
           if(Angles::normalizeRadian(theta1-theta0)<=0)
           {
-            calculateTurningArcAngle(-std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
+            calculateTurningArcAngle(-std::abs(Angles::normalizeRadian(theta1-theta0)),false,thetaTF);
           }
           else
           {
-            calculateTurningArcAngle(-(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0))),theta);
+            calculateTurningArcAngle(-(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0))),false,thetaTF);
           }
         }
         else
         {
           if (Angles::normalizeRadian(theta1-theta0)>=0)
           {
-            calculateTurningArcAngle(std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
+            calculateTurningArcAngle(std::abs(Angles::normalizeRadian(theta1-theta0)),false,thetaTF);
           }
           else
           {
-            calculateTurningArcAngle(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0)),theta);
+            calculateTurningArcAngle(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0)),false,thetaTF);
           }
         }
-        ConstructArc(theta,theta0,m_landArg.Rf,OCF,arc);
+        ConstructArc(thetaTF,theta0,m_landArg.Rf,OCF,arc);
         AddToPath(arc,Path);
+        inf("Constructed second arc");
+        inf("Constructed Dubins path");
         return true;
 
       }
@@ -634,11 +661,20 @@ namespace Plan
       }
       //! Return N angle from 0 theta
       void
-      calculateTurningArcAngle(const double theta_limit,Matrix &theta)
+      calculateTurningArcAngle(const double theta_limit,const bool startCircle,Matrix &theta)
       {
         //inf("Test n with floor limitation: %f",std::floor((theta_limit)/(2*PI)*m_args.N));
         //! Find the number of segments that are required to construct the arc
-        unsigned N = std::floor((theta_limit)/(2*PI)*m_args.N);
+        unsigned N;
+        if (startCircle)
+        {
+          N = std::floor((theta_limit)/(2*PI)*m_Ns);
+        }
+        else
+        {
+          N = std::floor((theta_limit)/(2*PI)*m_Nf);
+        }
+        inf("N = %d, Ns = %d Nf = %d",N,m_Ns,m_Nf);
         theta.resize(1,N);
         double step = theta_limit/(N-1);
         for (unsigned i=0;i<N;i++)
@@ -693,7 +729,8 @@ namespace Plan
         for (unsigned i=0;i<Path.size()-1;i++)
         {
           D = sqrt(std::pow(Path[i+1](0,0)-Path[i](0,0),2)+std::pow(Path[i+1](1,0)-Path[i](1,0),2));
-          inf("New angle %f descent angel %f",std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),D),2)),std::sqrt(std::pow(descentAngle,2)));
+          inf("The distance D = %f",D);
+          debug("New angle %f descent angel %f",std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),D),2)),std::sqrt(std::pow(descentAngle,2)));
           if (!correctHeigth && std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),D),2))<std::sqrt(std::pow(descentAngle,2)))
           {
             correctHeigth = true;
@@ -722,14 +759,14 @@ namespace Plan
         }
         double theta0 = std::atan2(Path[Path.size()-1](1,0)-OF(1,0),Path[Path.size()-1](0,0)-OF(0,0));
         Matrix WP4 = Path.back();
-        Matrix theta = Matrix(1,m_args.N);
+        Matrix theta = Matrix(1,m_Nf);
         if (RightF)
         {
-          calculateTurningArcAngle(-2*PI,theta);
+          calculateTurningArcAngle(-2*PI,false,theta);
         }
         else
         {
-          calculateTurningArcAngle(2*PI,theta);
+          calculateTurningArcAngle(2*PI,false,theta);
         }
         Matrix WPS0 = Path.back();
         double xnn = OF(0,0) + m_landArg.Rf*cos(theta0+theta(0,1));
@@ -769,7 +806,7 @@ namespace Plan
           Path.push_back(WPS1);
           n = n+1;
           //! Check if n has reached m_N. Then set to 1, such that the 0 value is only used once
-          if (n>=m_args.N)
+          if (n>=m_Nf)
           {
             n = 1;
           }
@@ -783,22 +820,22 @@ namespace Plan
         {
           if (Angles::normalizeRadian(thetaH1-thetaH0)<=0)
           {
-            calculateTurningArcAngle(-std::abs(Angles::normalizeRadian(thetaH1-thetaH0)),theta);
+            calculateTurningArcAngle(-std::abs(Angles::normalizeRadian(thetaH1-thetaH0)),false,theta);
           }
           else
           {
-            calculateTurningArcAngle(-(2*PI-std::abs(Angles::normalizeRadian(thetaH1-thetaH0))),theta);
+            calculateTurningArcAngle(-(2*PI-std::abs(Angles::normalizeRadian(thetaH1-thetaH0))),false,theta);
           }
         }
         else
         {
           if (Angles::normalizeRadian(thetaH1-thetaH0)>=0)
           {
-            calculateTurningArcAngle(std::abs(Angles::normalizeRadian(thetaH1-thetaH0)),theta);
+            calculateTurningArcAngle(std::abs(Angles::normalizeRadian(thetaH1-thetaH0)),false,theta);
           }
           else
           {
-            calculateTurningArcAngle((2*PI-std::abs(Angles::normalizeRadian(thetaH1-thetaH0))),theta);
+            calculateTurningArcAngle((2*PI-std::abs(Angles::normalizeRadian(thetaH1-thetaH0))),false,theta);
           }
         }
         ConstructArc(theta,thetaH0,m_landArg.Rf,OF,arc);
