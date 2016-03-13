@@ -67,6 +67,8 @@ namespace Plan
       Matrix Net;
       //! Net orientation
       double netHeading;
+      //! The side the auxiliary wp
+      bool RightWPa;
       //! Landing waypoints
       //! WP1
       Matrix WP1;
@@ -279,7 +281,15 @@ namespace Plan
 
           m_landArg.WPa = Matrix(3,1,0.0);
           m_landArg.WPa(0,0) = m_landArg.WP1(0,0);
-          m_landArg.WPa(1,0) = 2*m_landArg.Rf;
+          if (m_landArg.RightWPa)
+          {
+            m_landArg.WPa(1,0) = 2*m_landArg.Rf;
+          }
+          else
+          {
+            m_landArg.WPa(1,0) = -2*m_landArg.Rf;
+          }
+
           m_landArg.WPa(2,0) = m_landArg.WP2(2,0)-m_landArg.a2*std::tan(m_landArg.gamma_a);
 
           //! Rotate all WP into NED
@@ -304,21 +314,22 @@ namespace Plan
       {
         m_landArg.net_lat = Angles::radians(tList.get("land_lat",63.629409));
         m_landArg.net_lon = Angles::radians(tList.get("land_lon",9.726401));
-        m_landArg.net_WGS84_height = tList.get("net_WGS84_height1",0.0);
+        m_landArg.net_WGS84_height = tList.get("net_WGS84_height",0.0);
         m_landArg.netHeading = Angles::radians(tList.get("land_heading",60));
-        m_landArg.net_height = tList.get("net_height1",-3.0);
-        m_landArg.gamma_a = Angles::radians(tList.get("attack_angle1",3.0));
-        m_landArg.gamma_d = Angles::radians(tList.get("descend_angle1", 3.0));
-        m_landArg.a0 = tList.get("behind_net1",10.0);
-        m_landArg.a1 = tList.get("final_approach1",10.0);
-        m_landArg.a2 = tList.get("glideslope1",300.0);
-        m_landArg.a3 = tList.get("approach1",100.0);
-        m_landArg.speed_WP4 = tList.get("speed_wp41",12.0);
-        m_landArg.speed_WP3 = tList.get("speed_wp31",12.0);
-        m_landArg.speed_WP2 = tList.get("speed_wp21",12.0);
-        m_landArg.speed_WP1 = tList.get("speed_wp11",12.0);
-        m_landArg.Rs = tList.get("min_turn_radius1", 150.0);
+        m_landArg.net_height = tList.get("net_height",-3.0);
+        m_landArg.gamma_a = Angles::radians(tList.get("attack_angle",3.0));
+        m_landArg.gamma_d = Angles::radians(tList.get("descend_angle", 3.0));
+        m_landArg.a0 = tList.get("dist_behind",10.0);
+        m_landArg.a1 = tList.get("final_approach",10.0);
+        m_landArg.a2 = tList.get("glideslope",300.0);
+        m_landArg.a3 = tList.get("approach",100.0);
+        m_landArg.speed_WP4 = tList.get("speed345",12.0);
+        m_landArg.speed_WP3 = tList.get("speed345",12.0);
+        m_landArg.speed_WP2 = tList.get("speed12",12.0);
+        m_landArg.speed_WP1 = tList.get("speed12",12.0);
+        m_landArg.Rs = tList.get("min_turn_radius", 150.0);
         m_landArg.Rf = tList.get("loiter_radius",150.0);
+        m_landArg.RightWPa = tList.get("auxiliary_WPa_side",true);
       }
       //! Generates a landing path
       bool
