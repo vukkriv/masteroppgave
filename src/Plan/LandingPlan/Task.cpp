@@ -278,8 +278,8 @@ namespace Plan
           m_landArg.WP4(2,0) = m_landArg.WP3(2,0);
 
           m_landArg.WPa = Matrix(3,1,0.0);
-          m_landArg.WPa(0,0) = m_landArg.WP2(0,0) + (m_landArg.a2)/2;
-          m_landArg.WPa(1,0) = m_landArg.Rf;
+          m_landArg.WPa(0,0) = m_landArg.WP1(0,0);
+          m_landArg.WPa(1,0) = 2*m_landArg.Rf;
           m_landArg.WPa(2,0) = m_landArg.WP2(2,0)-m_landArg.a2*std::tan(m_landArg.gamma_a);
 
           //! Rotate all WP into NED
@@ -420,34 +420,41 @@ namespace Plan
         Coordinates::WGS84::displace(m_landArg.WP4(0,0),m_landArg.WP4(1,0),&w4_lat,&w4_lon);
         //! Find WP4 coordinates relative to the m_estate
         Coordinates::WGS84::displacement(m_estate.lat,m_estate.lon,m_estate.height,w4_lat,w4_lon,w4_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
-        inf("Xf x=%f y=%f z=%f",Xf(0,0),Xf(1,0),Xf(2,0));
-        inf("Xs x=%f y=%f z=%f",Xs(0,0),Xs(1,0),Xs(2,0));
+        inf("Xf x=%f y=%f z=%f psi=%f",Xf(0,0),Xf(1,0),Xf(2,0),Xf(3,0));
+        inf("Xs x=%f y=%f z=%f psi=%f",Xs(0,0),Xs(1,0),Xs(2,0),Xs(3,0));
         inf("m_estate height: %f net height: %f",m_estate.height,m_landArg.net_WGS84_height);
         //! Calculated path
 
         if (!dubinsPath(Xs,Xf,path,RightF,OCF))
         {
           //! Need an extra WP
-          Xf = m_landArg.WPa;
+          Xf(0,0) = m_landArg.WPa(0,0);
+          Xf(1,0) = m_landArg.WPa(1,0);
+          Xf(2,0) = m_landArg.WPa(2,0);
+          Xf(3,0) = Angles::normalizeRadian(m_landArg.netHeading-PI);
           double wa_lat = m_landArg.net_lat;
           double wa_lon = m_landArg.net_lon;
           double wa_h = m_landArg.net_WGS84_height - m_landArg.WPa(2,0);
           Coordinates::WGS84::displace(m_landArg.WPa(0,0),m_landArg.WPa(1,0),&wa_lat,&wa_lon);
           Coordinates::WGS84::displacement(m_estate.lat,m_estate.lon,m_estate.height,wa_lat,wa_lon,wa_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
+          inf("Attempt to create new dubins path with XF: x= %f y=%f z=%f psi=%f",Xf(0,0),Xf(1,0),Xf(2,0),Xf(3,0));
           if (!dubinsPath(Xs,Xf,path,RightF,OCF))
           {
             war("Could not generate a landing path: Abort");
             return false;
           }
+          Matrix Xst = Matrix(4,1,0.0);
+          Xst = Xf;
           Coordinates::WGS84::displacement(m_estate.lat,m_estate.lon,m_estate.height,w4_lat,w4_lon,w4_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
-
           Xf(3,0) = Angles::normalizeRadian(m_landArg.netHeading-PI);
-          if (!dubinsPath(m_landArg.WPa,Xf,path,RightF,OCF))
+          inf("Attempt a new way toward the landing approach");
+          if (!dubinsPath(Xst,Xf,path,RightF,OCF))
           {
             war("Could not generate a landing path: Abort");
             return false;
           }
         }
+        inf("Found a new path to the landing approach");
         //! Is correct height
         bool correctHeight;
         if (Xf(2,0)<Xs(2,0))
@@ -926,7 +933,7 @@ namespace Plan
           }
         }
         ConstructArc(theta,thetaH0,m_landArg.Rf,OF,arc);
-        for (int i=0;i<arc.size();i++)
+        for (unsigned i=0;i<arc.size();i++)
         {
           arc[i](2,0) = Path[Path.size()-1](2,0);
         }
