@@ -429,9 +429,15 @@ namespace Plan
         double w4_lat = m_landArg.net_lat;
         double w4_lon = m_landArg.net_lon;
         double w4_h = m_landArg.net_WGS84_height - m_landArg.WP4(2,0);
-        Coordinates::WGS84::displace(m_landArg.WP4(0,0),m_landArg.WP4(1,0),&w4_lat,&w4_lon);
-        //! Find WP4 coordinates relative to the m_estate
-        Coordinates::WGS84::displacement(m_estate.lat,m_estate.lon,m_estate.height,w4_lat,w4_lon,w4_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
+
+        double state_lat = m_estate.lat;
+        double state_lon = m_estate.lon;
+        double state_height = m_estate.height;
+        //! Find wp4 lat lon
+        //Coordinates::WGS84::displace(m_landArg.WP4(0,0),m_landArg.WP4(1,0),&w4_lat,&w4_lon);
+        Coordinates::WGS84::displace(m_estate.x,m_estate.y,m_estate.z,&state_lat,&state_lon,&state_height);
+        //! Find m_estate coordinates relative to net lat lon
+        Coordinates::WGS84::displacement(m_landArg.net_lat,m_landArg.net_lon,m_landArg.net_height,state_lat,state_lon,state_height,&Xs(0,0),&Xs(1,0),&Xs(2,0));
         inf("Xf x=%f y=%f z=%f psi=%f",Xf(0,0),Xf(1,0),Xf(2,0),Xf(3,0));
         inf("Xs x=%f y=%f z=%f psi=%f",Xs(0,0),Xs(1,0),Xs(2,0),Xs(3,0));
         inf("m_estate height: %f net height: %f",m_estate.height,m_landArg.net_WGS84_height);
@@ -447,8 +453,8 @@ namespace Plan
           double wa_lat = m_landArg.net_lat;
           double wa_lon = m_landArg.net_lon;
           double wa_h = m_landArg.net_WGS84_height - m_landArg.WPa(2,0);
-          Coordinates::WGS84::displace(m_landArg.WPa(0,0),m_landArg.WPa(1,0),&wa_lat,&wa_lon);
-          Coordinates::WGS84::displacement(m_estate.lat,m_estate.lon,m_estate.height,wa_lat,wa_lon,wa_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
+          //Coordinates::WGS84::displace(m_landArg.WPa(0,0),m_landArg.WPa(1,0),&wa_lat,&wa_lon);
+          //Coordinates::WGS84::displacement(m_estate.lat,m_estate.lon,m_estate.height,wa_lat,wa_lon,wa_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
           inf("Attempt to create new dubins path with XF: x= %f y=%f z=%f psi=%f",Xf(0,0),Xf(1,0),Xf(2,0),Xf(3,0));
           if (!dubinsPath(Xs,Xf,path,RightF,OCF))
           {
@@ -457,7 +463,7 @@ namespace Plan
           }
           Matrix Xst = Matrix(4,1,0.0);
           Xst = Xf;
-          Coordinates::WGS84::displacement(m_estate.lat,m_estate.lon,m_estate.height,w4_lat,w4_lon,w4_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
+          //Coordinates::WGS84::displacement(m_estate.lat,m_estate.lon,m_estate.height,w4_lat,w4_lon,w4_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
           Xf(3,0) = Angles::normalizeRadian(m_landArg.netHeading-PI);
           inf("Attempt a new way toward the landing approach");
           if (!dubinsPath(Xst,Xf,path,RightF,OCF))
