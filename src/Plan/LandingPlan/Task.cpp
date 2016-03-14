@@ -281,6 +281,7 @@ namespace Plan
 
           m_landArg.WPa = Matrix(3,1,0.0);
           m_landArg.WPa(0,0) = m_landArg.WP1(0,0);
+          //! Ensure that the extra wp is valid
           if (m_landArg.RightWPa)
           {
             m_landArg.WPa(1,0) = 2*m_landArg.Rf;
