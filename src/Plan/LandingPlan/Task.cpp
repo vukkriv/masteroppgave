@@ -106,6 +106,9 @@ namespace Plan
       Matrix OCF;
       //! Start position
       Matrix Xs;
+      double state_lat;
+      double state_lon;
+      double state_height;
       //! Finish turning circle offset height
       double OCFz;
       //! Waiting at loiter
@@ -362,13 +365,14 @@ namespace Plan
         //! Create a followPath maneuver
         IMC::FollowPath fPath;
 
-        double cur_lat = m_landArg.net_lat;
+        /*double cur_lat = m_landArg.net_lat;
         double cur_lon =  m_landArg.net_lon;
         double cur_height = m_landArg.net_height;
-        Coordinates::WGS84::displace(m_landArg.Xs(0,0),m_landArg.Xs(1,0),m_landArg.Xs(2,0),&cur_lat,&cur_lon,&cur_height);
-        fPath.lat = cur_lat;
-        fPath.lon = cur_lon;
-        fPath.z = m_estate.height;
+        Coordinates::WGS84::displace(m_landArg.Xs(0,0),m_landArg.Xs(1,0),m_landArg.Xs(2,0),&cur_lat,&cur_lon,&cur_height);*/
+        fPath.lat = m_landArg.state_lat;
+        fPath.lon = m_landArg.state_lon;
+        fPath.z = m_landArg.state_height;
+
         inf("Current lat: %f current lon: %f current height: %f",fPath.lat,fPath.lon,fPath.z);
         fPath.z_units = IMC::Z_HEIGHT;
         fPath.speed = 16;
@@ -437,14 +441,21 @@ namespace Plan
         double state_lon = m_estate.lon;
         double state_height = m_estate.height;
         //! Find wp4 lat lon
-        //Coordinates::WGS84::displace(m_landArg.WP4(0,0),m_landArg.WP4(1,0),&w4_lat,&w4_lon);
+        Coordinates::WGS84::displace(m_landArg.WP4(0,0),m_landArg.WP4(1,0),&w4_lat,&w4_lon);
         Coordinates::WGS84::displace(m_estate.x,m_estate.y,m_estate.z,&state_lat,&state_lon,&state_height);
         //! Find m_estate coordinates relative to net lat lon
         Coordinates::WGS84::displacement(m_landArg.net_lat,m_landArg.net_lon,m_landArg.net_height,state_lat,state_lon,state_height,&Xs(0,0),&Xs(1,0),&Xs(2,0));
+        Coordinates::WGS84::displacement(state_lat,state_lon,state_height,w4_lat,w4_lon,w4_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
         inf("Xf x=%f y=%f z=%f psi=%f",Xf(0,0),Xf(1,0),Xf(2,0),Xf(3,0));
         inf("Xs x=%f y=%f z=%f psi=%f",Xs(0,0),Xs(1,0),Xs(2,0),Xs(3,0));
         inf("m_estate height: %f net height: %f",m_estate.height,m_landArg.net_WGS84_height);
         m_landArg.Xs = Xs;
+        m_landArg.state_lat = state_lat;
+        m_landArg.state_lon = state_lon;
+        m_landArg.state_height = state_height;
+        Xs(0,0) = 0.0;
+        Xs(1,0) = 0.0;
+        Xs(2,0) = 0.0;
         //! Calculated path
 
         if (!dubinsPath(Xs,Xf,path,RightF,OCF))
@@ -526,9 +537,9 @@ namespace Plan
       addLoiter(IMC::MessageList<IMC::Maneuver>& maneuverList)
       {
         IMC::Loiter loiter;
-        double loiter_lat = m_estate.lat;
-        double loiter_lon = m_estate.lon;
-        double loiter_h = m_estate.height;
+        double loiter_lat = m_landArg.net_lat;
+        double loiter_lon = m_landArg.net_lon;
+        double loiter_h = m_landArg.net_height;
         Coordinates::WGS84::displace(m_landArg.OCF(0,0),m_landArg.OCF(1,0),m_landArg.OCFz,&loiter_lat,&loiter_lon,&loiter_h);
         loiter.lat = loiter_lat;
         loiter.lon = loiter_lon;
@@ -792,8 +803,19 @@ namespace Plan
           N = std::floor((sign(theta_limit)*theta_limit)/(2*PI)*m_Nf);
         }
         inf("N = %d, Ns = %d Nf = %d",N,m_Ns,m_Nf);
+        if (N==0)
+          N = 1;
         theta.resize(1,N);
-        double step = theta_limit/(N-1);
+        double step;
+        if (N!=1)
+        {
+          step = theta_limit/(N-1);
+        }
+        else
+        {
+          step = theta_limit;
+        }
+
         for (unsigned i=0;i<N;i++)
         {
           theta(0,i)=i*step;
