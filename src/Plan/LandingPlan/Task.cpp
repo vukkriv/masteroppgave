@@ -614,7 +614,8 @@ namespace Plan
         {
           pPoint.x = path[i](0,0);
           pPoint.y = path[i](1,0);
-          pPoint.z = path[i](2,0);
+          //! Must invert due to dune
+          pPoint.z = -1*path[i](2,0);
           debug("x = %f y = %f z = %f",pPoint.x,pPoint.y,pPoint.z);
           fPath->points.push_back(pPoint);
         }
