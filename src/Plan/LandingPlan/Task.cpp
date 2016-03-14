@@ -113,6 +113,15 @@ namespace Plan
       double OCFz;
       //! Waiting at loiter
       bool wait_at_loiter = false;
+      //! Advance options
+      //! Automatic generation of start and finish circle
+      bool automatic;
+      //! Right start turning circle
+      bool rigthStartTurningCircle;
+      //! Right start turning direction
+      bool rightStartTurningDirection;
+      //! Right finish turning circle
+      bool rightFinishTurningCircle;
 
     };
 
@@ -336,6 +345,10 @@ namespace Plan
         m_landArg.Rs = tList.get("min_turn_radius", 150.0);
         m_landArg.Rf = tList.get("loiter_radius",150.0);
         m_landArg.RightWPa = tList.get("auxiliary_WPa_side",true);
+        m_landArg.automatic = tList.get("automatic",true);
+        m_landArg.rigthStartTurningCircle = tList.get("rightStartTurningCircle",false);
+        m_landArg.rightStartTurningDirection = tList.get("rightStartTurningDirection",false);
+        m_landArg.rightFinishTurningCircle = tList.get("rightFinishTurningCircle",false);
       }
       //! Generates a landing path
       bool
