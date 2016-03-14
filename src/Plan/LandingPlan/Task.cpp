@@ -775,11 +775,11 @@ namespace Plan
         unsigned N;
         if (startCircle)
         {
-          N = std::floor((theta_limit)/(2*PI)*m_Ns);
+          N = std::floor((sign(theta_limit)*theta_limit)/(2*PI)*m_Ns);
         }
         else
         {
-          N = std::floor((theta_limit)/(2*PI)*m_Nf);
+          N = std::floor((sign(theta_limit)*theta_limit)/(2*PI)*m_Nf);
         }
         inf("N = %d, Ns = %d Nf = %d",N,m_Ns,m_Nf);
         theta.resize(1,N);
