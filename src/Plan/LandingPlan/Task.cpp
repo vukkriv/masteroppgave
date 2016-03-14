@@ -579,13 +579,13 @@ namespace Plan
       addNetApproach(IMC::MessageList<IMC::Maneuver>& maneuverList)
       {
         //3
-        addGotoPoint(m_landArg.WP3,m_landArg.speed_WP3,maneuverList);
+        addGotoPoint(m_landArg.WP3,m_landArg.speed_WP1,maneuverList);
 
         //2
         addGotoPoint(m_landArg.WP2,m_landArg.speed_WP2,maneuverList);
 
         //1
-        addGotoPoint(m_landArg.WP1,m_landArg.speed_WP1,maneuverList);
+        addGotoPoint(m_landArg.WP1,m_landArg.speed_WP3,maneuverList);
 
       }
       //!
