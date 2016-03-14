@@ -104,6 +104,8 @@ namespace Plan
       bool clockwise;
       //! Finish turning circle center
       Matrix OCF;
+      //! Start position
+      Matrix Xs;
       //! Finish turning circle offset height
       double OCFz;
       //! Waiting at loiter
@@ -359,10 +361,11 @@ namespace Plan
 
         //! Create a followPath maneuver
         IMC::FollowPath fPath;
-        double cur_lat = m_estate.lat;
-        double cur_lon =  m_estate.lon;
-        double cur_height = m_estate.height;
-        Coordinates::WGS84::displace(m_estate.x,m_estate.y,m_estate.z,&cur_lat,&cur_lon,&cur_height);
+
+        double cur_lat = m_landArg.net_lat;
+        double cur_lon =  m_landArg.net_lon;
+        double cur_height = m_landArg.net_height;
+        Coordinates::WGS84::displace(m_landArg.Xs(0,0),m_landArg.Xs(1,0),m_landArg.Xs(2,0),&cur_lat,&cur_lon,&cur_height);
         fPath.lat = cur_lat;
         fPath.lon = cur_lon;
         fPath.z = m_estate.height;
@@ -441,6 +444,7 @@ namespace Plan
         inf("Xf x=%f y=%f z=%f psi=%f",Xf(0,0),Xf(1,0),Xf(2,0),Xf(3,0));
         inf("Xs x=%f y=%f z=%f psi=%f",Xs(0,0),Xs(1,0),Xs(2,0),Xs(3,0));
         inf("m_estate height: %f net height: %f",m_estate.height,m_landArg.net_WGS84_height);
+        m_landArg.Xs = Xs;
         //! Calculated path
 
         if (!dubinsPath(Xs,Xf,path,RightF,OCF))
