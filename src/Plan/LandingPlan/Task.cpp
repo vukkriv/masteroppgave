@@ -774,6 +774,33 @@ namespace Plan
 
       }
 
+      //! Return the the turning arc given a turning direction
+      void
+      calculateTurningArc(const double theta1,const double theta0,const bool clockwise,const bool startcircle,Matrix &theta)
+      {
+        if (!clockwise)
+          {
+            if(Angles::normalizeRadian(theta1-theta0)<=0)
+            {
+              calculateTurningArcAngle(-std::abs(Angles::normalizeRadian(theta1-theta0)),false,theta);
+            }
+            else
+            {
+              calculateTurningArcAngle(-(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0))),false,theta);
+            }
+          }
+          else
+          {
+            if (Angles::normalizeRadian(theta1-theta0)>=0)
+            {
+              calculateTurningArcAngle(std::abs(Angles::normalizeRadian(theta1-theta0)),false,theta);
+            }
+            else
+            {
+              calculateTurningArcAngle(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0)),false,theta);
+            }
+          }
+      }
       //! Return turn direction
       double
       turn(const bool Right,const double alpha,const double beta)
