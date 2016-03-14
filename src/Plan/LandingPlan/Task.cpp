@@ -636,40 +636,82 @@ namespace Plan
         //! Radius of second end turning circle
         double Rsec;
 
-        //! Define start turning circle center (Ocs)
-        if (std::atan2(Xs(1,0)-Xf(1,0),Xs(0,0)-Xf(0,0))<0)
+        if (m_landArg.automatic)
         {
-          RightS = false;
-          Xcs = Xs(0,0)-m_landArg.Rs*std::cos(Xs(3,0)-PI/2);
-          Ycs = Xs(1,0)-m_landArg.Rs*std::sin(Xs(3,0)-PI/2);
+          //! Define start turning circle center (Ocs)
+          if (std::atan2(Xs(1,0)-Xf(1,0),Xs(0,0)-Xf(0,0))<0)
+          {
+            RightS = false;
+            Xcs = Xs(0,0)-m_landArg.Rs*std::cos(Xs(3,0)-PI/2);
+            Ycs = Xs(1,0)-m_landArg.Rs*std::sin(Xs(3,0)-PI/2);
+          }
+          else
+          {
+            RightS = true;
+            Xcs = Xs(0,0)-m_landArg.Rs*std::cos(Xs(3,0)+PI/2);
+            Ycs = Xs(1,0)-m_landArg.Rs*std::sin(Xs(3,0)+PI/2);
+          }
+          OCS(0,0) = Xcs;
+          OCS(1,0) = Ycs;
+          inf("Created start turn circle");
+          //! Define end turning circle center (Ofs)
+
+          if (std::atan2(Xs(1,0)-Xf(1,0),Xs(0,0)-Xf(0,0))<0)
+          {
+            RightF = false;
+            Xcf = Xf(0,0)-m_landArg.Rf*std::cos(Xf(3,0)-PI/2);
+            Ycf = Xf(1,0)-m_landArg.Rf*std::sin(Xf(3,0)-PI/2);
+          }
+          else
+          {
+            RightF = true;
+            Xcf = Xf(0,0)-m_landArg.Rf*std::cos(Xf(3,0)+PI/2);
+            Ycf = Xf(1,0)-m_landArg.Rf*std::sin(Xf(3,0)+PI/2);
+          }
+
+          OCF(0,0) = Xcf;
+          OCF(1,0) = Ycf;
+          inf("Created finish turn circle");
         }
         else
         {
-          RightS = true;
-          Xcs = Xs(0,0)-m_landArg.Rs*std::cos(Xs(3,0)+PI/2);
-          Ycs = Xs(1,0)-m_landArg.Rs*std::sin(Xs(3,0)+PI/2);
-        }
-        OCS(0,0) = Xcs;
-        OCS(1,0) = Ycs;
-        inf("Created start turn circle");
-        //! Define end turning circle center (Ofs)
+          //! Define start turning circle center (Ocs)
+          if (m_landArg.rigthStartTurningCircle)
+          {
 
-        if (std::atan2(Xs(1,0)-Xf(1,0),Xs(0,0)-Xf(0,0))<0)
-        {
-          RightF = false;
-          Xcf = Xf(0,0)-m_landArg.Rf*std::cos(Xf(3,0)-PI/2);
-          Ycf = Xf(1,0)-m_landArg.Rf*std::sin(Xf(3,0)-PI/2);
-        }
-        else
-        {
-          RightF = true;
-          Xcf = Xf(0,0)-m_landArg.Rf*std::cos(Xf(3,0)+PI/2);
-          Ycf = Xf(1,0)-m_landArg.Rf*std::sin(Xf(3,0)+PI/2);
+            Xcs = Xs(0,0)-m_landArg.Rs*std::cos(Xs(3,0)+PI/2);
+            Ycs = Xs(1,0)-m_landArg.Rs*std::sin(Xs(3,0)+PI/2);
+          }
+          else
+          {
+
+            Xcs = Xs(0,0)-m_landArg.Rs*std::cos(Xs(3,0)-PI/2);
+            Ycs = Xs(1,0)-m_landArg.Rs*std::sin(Xs(3,0)-PI/2);
+          }
+          RightS = m_landArg.rightStartTurningDirection;
+          OCS(0,0) = Xcs;
+          OCS(1,0) = Ycs;
+          inf("Created start turn circle");
+          //! Define end turning circle center (Ofs)
+
+          if (m_landArg.rightFinishTurningCircle)
+          {
+            RightF = true;
+            Xcf = Xf(0,0)-m_landArg.Rf*std::cos(Xf(3,0)+PI/2);
+            Ycf = Xf(1,0)-m_landArg.Rf*std::sin(Xf(3,0)+PI/2);
+          }
+          else
+          {
+            RightF = false;
+            Xcf = Xf(0,0)-m_landArg.Rf*std::cos(Xf(3,0)-PI/2);
+            Ycf = Xf(1,0)-m_landArg.Rf*std::sin(Xf(3,0)-PI/2);
+          }
+
+          OCF(0,0) = Xcf;
+          OCF(1,0) = Ycf;
+          inf("Created finish turn circle");
         }
 
-        OCF(0,0) = Xcf;
-        OCF(1,0) = Ycf;
-        inf("Created finish turn circle");
         //! Calculate radius of second end turning circle
         Rsec = std::abs(m_landArg.Rf-m_landArg.Rs);
 
@@ -691,7 +733,7 @@ namespace Plan
         double dXsXf = sqrt(std::pow(Xs(0,0)-Xf(0,0),2)+std::pow(Xs(1,0)-Xf(1,0),2));
 
         //! Check if the start pose and end pose is to close
-        if (dXsXf<2*m_landArg.Rf)
+        if (dXsXf<2*m_landArg.Rf && m_landArg.automatic)
         {
           war("The start pose and end pose are to close.");
           return false;
