@@ -81,6 +81,7 @@ namespace Control
         double sigmoid_history_time;
         double sigmoid_gain;
         double sigmoid_shift;
+        bool enable_pendulum_observer;
       };
 
       static const std::string c_parcel_names[] = {DTR_RT("PID"), DTR_RT("Beta-X"),
@@ -278,6 +279,115 @@ namespace Control
         double percent_below_threshold;
       };
 
+      class ObserverState
+      {
+      public:
+        ObserverState():
+          A(Matrix(4,4,0.0)),
+          C(Matrix(2,4,0.0)),
+          L(Matrix(4,2,0.0)),
+          A_total(Matrix(4,4, 0.0)),
+          prev_time(0.0),
+          x_hat(Matrix(4,1, 0.0))
+        {
+            /* Intentionally empty */
+        };
+
+        void ResetState(LoadAngle ea)
+        {
+          x_hat = Matrix(4,1, 0.0);
+          x_hat(0) = ea.phi;
+          x_hat(2) = ea.theta;
+          prev_time = ea.timestamp;
+        }
+
+        // Steps the observer
+        // On return, the velocities of measurement are filled.
+        bool Step(Task *task,  LoadAngle *measurement)
+        {
+          // Do a step. Timediff is in y
+          Matrix y = Matrix(2,1, 0.0);
+          y(0) = measurement->phi;
+          y(1) = measurement->theta;
+
+          double dt = measurement->timestamp - prev_time;
+
+          if (!( dt > 0 && dt < 1.0))
+          {
+            task->war("Invalid DT: %f", dt);
+            prev_time = measurement->timestamp;
+
+            // Not updating state.
+            return false;
+          }
+
+          x_hat = x_hat + dt * ((A_total)*x_hat + L*y);
+
+          measurement->phi = x_hat(0);
+          measurement->theta = x_hat(2);
+          measurement->dphi = x_hat(1);
+          measurement->dtheta = x_hat(3);
+
+          prev_time = measurement->timestamp;
+
+          return true;
+
+
+        }
+
+        void CalculateMatrices(double l)
+        {
+          // Calculates the matrices depending on the pendulum length l
+          A = Matrix(4,4, 0.0);
+
+          /*
+           * A = [0 1 0 0;
+                 g/l -d 0 0;
+                 0 0 0 1;
+                 0 0 g/l -d];
+
+            C = [1 0 0 0;
+                 0 0 1 0];
+
+           */
+          A(0,1) = 1;
+          A(1,0) = -Math::c_gravity/l;
+
+          A(2,3) = 1;
+          A(3,2) = -Math::c_gravity/l;
+
+          C = Matrix(2,4, 0.0);
+          C(0,0) = 1;
+          C(1,2) = 1;
+
+          // Gains for L computed with LQR
+          /*
+           * L =
+
+                10     0
+                 8     0
+                 0    10
+                 0     8
+          */
+
+          L = Matrix(4,2, 0.0);
+          L(0,0) = 10.0;
+          L(1,0) = 8;
+          L(2,1) = 10;
+          L(3,1) = 8;
+
+          A_total = A-L*C;
+
+        }
+
+        Matrix A;
+        Matrix C;
+        Matrix L;
+        Matrix A_total;
+        double prev_time;
+        Matrix x_hat;
+      };
+
       struct Task: public DUNE::Control::PathController
       {
         IMC::DesiredControl m_desired_control;
@@ -330,6 +440,8 @@ namespace Control
         SigmoidSmoothingState m_sigmoid_state;
         //! Reference history to use by sigmoid smoother
         std::vector<ReferenceHistoryContainer> m_sigmoid_refhistory;
+        //! Observer State
+        ObserverState m_observer_state;
 
 
 
@@ -551,6 +663,11 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Use the square of the velocity to calculate wind ff");
 
+          param("CtrlMisc - Enable Pendulum Observer", m_args.enable_pendulum_observer)
+          .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Enable Luenberger type observer for pendulum behavior. ");
+
           bind<IMC::EulerAngles>(this);
           bind<IMC::EstimatedState>(this);
           bind<IMC::DesiredSpeed>(this);
@@ -566,6 +683,7 @@ namespace Control
           // Default speed
           m_dspeed.speed_units = IMC::SUNITS_METERS_PS;
           m_dspeed.value = 1.5;
+
 
 
 
@@ -638,6 +756,8 @@ namespace Control
 
           }
 
+          // Update observer matrices
+          m_observer_state.CalculateMatrices(m_args.suspended_rope_length);
 
         }
 
@@ -737,15 +857,32 @@ namespace Control
           inf("R is: %s", buf);
           */
 
-          if (dt > 0.0 && dt < 1)
+          // Use observer or numerical differentiation
+          if (m_args.enable_pendulum_observer)
           {
-            newLoadAngles.dphi   = (newLoadAngles.phi - m_loadAngle.phi) / dt;
-            newLoadAngles.dtheta = (newLoadAngles.theta - m_loadAngle.theta) / dt;
+            // Use the observer to set the velocities.
+            m_observer_state.Step(this, &newLoadAngles);
           }
           else
           {
-            debug("Angle DT is: %f", dt);
+            if (dt > 0.0 && dt < 1)
+            {
+              newLoadAngles.dphi   = (newLoadAngles.phi - m_loadAngle.phi) / dt;
+              newLoadAngles.dtheta = (newLoadAngles.theta - m_loadAngle.theta) / dt;
+            }
+            else
+            {
+              debug("Angle DT is: %f", dt);
+            }
           }
+
+          // Set some sanity limits on velocity
+          double maxvel = 10 * Math::c_pi / 180.0;
+          if (abs(newLoadAngles.dphi) > maxvel)
+            newLoadAngles.dphi = maxvel * newLoadAngles.dphi / abs(newLoadAngles.dphi);
+
+          if (abs(newLoadAngles.dtheta > maxvel))
+            newLoadAngles.dtheta = maxvel * newLoadAngles.dtheta / abs(newLoadAngles.dtheta);
 
           // store
           m_loadAngle = newLoadAngles;
@@ -754,6 +891,7 @@ namespace Control
           updateSystemMatrices();
 
           // Dispatch the new angels in logs
+          m_calculated_angles.time = newLoadAngles.timestamp;
           m_calculated_angles.phi = newLoadAngles.phi;
           m_calculated_angles.theta = newLoadAngles.theta;
           m_calculated_angles.psi = newLoadAngles.dphi;
@@ -891,6 +1029,13 @@ namespace Control
           if (Clock::get() - m_timestamp_prev_step > 4.0)
           {
             m_alpha_45 = Matrix(2,1, 0.0);
+          }
+
+          // The observer does not need a reset, but for simplicity we still do it in case of error buildups.
+          // If more than 2 seconds since last step:
+          if (Clock::get() - m_timestamp_prev_step > 2.0)
+          {
+            m_observer_state.ResetState(m_loadAngle);
           }
 
           // Store current position as reference for delayed feedback hover control
@@ -1149,6 +1294,8 @@ namespace Control
           {
 
             LoadAngle oldAngle = m_anglehistory.front().angle;
+
+
 
 
             m_delayed_feedback_state.addPos(0)     =  sin(oldAngle.theta);
