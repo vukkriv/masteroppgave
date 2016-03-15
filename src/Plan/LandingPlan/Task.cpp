@@ -327,6 +327,9 @@ namespace Plan
       void
       readTupleList(TupleList tList)
       {
+        m_landArg.rigthStartTurningCircle = (tList.get("right_start_turning_circle") == "true" ) ? true : false;
+        m_landArg.rightStartTurningDirection = (tList.get("right_start_turning_direction") == "true") ? true : false;
+        m_landArg.rightFinishTurningCircle = (tList.get("right_finish_turning_circle") == "true") ? true : false;
         m_landArg.net_lat = Angles::radians(tList.get("land_lat",63.629409));
         m_landArg.net_lon = Angles::radians(tList.get("land_lon",9.726401));
         m_landArg.net_WGS84_height = tList.get("net_WGS84_height",0.0);
@@ -344,11 +347,29 @@ namespace Plan
         m_landArg.speed_WP1 = tList.get("speed12",12.0);
         m_landArg.Rs = tList.get("min_turn_radius", 150.0);
         m_landArg.Rf = tList.get("loiter_radius",150.0);
-        m_landArg.RightWPa = tList.get("auxiliary_WPa_side",true);
-        m_landArg.automatic = tList.get("automatic",true);
-        m_landArg.rigthStartTurningCircle = tList.get("rightStartTurningCircle",false);
-        m_landArg.rightStartTurningDirection = tList.get("rightStartTurningDirection",false);
-        m_landArg.rightFinishTurningCircle = tList.get("rightFinishTurningCircle",false);
+        m_landArg.RightWPa = (tList.get("auxiliary_WPa_side") == "true") ? true:false;
+        m_landArg.automatic = (tList.get("automatic") == "true") ? true : false;
+        inf("Content from tList:");
+        inf("Net Lat %f",m_landArg.net_lat);
+        inf("Net lon %f",m_landArg.net_lon);
+        inf("Net WGS %f",m_landArg.net_WGS84_height);
+        inf("Net Height %f",m_landArg.net_height);
+        inf("Net heading %f", m_landArg.netHeading);
+        inf("Attack angle %f",m_landArg.gamma_a);
+        inf("Descent %f",m_landArg.gamma_d);
+        inf("A0 %f",m_landArg.a0);
+        inf("A1 %f",m_landArg.a1);
+        inf("A2 %f",m_landArg.a2);
+        inf("A3 %f",m_landArg.a3);
+        inf("Speed 35 %f",m_landArg.speed_WP4);
+        inf("Speed 12 %f",m_landArg.speed_WP1);
+        inf("Rs %f",m_landArg.Rs);
+        inf("Rf %f",m_landArg.Rf);
+        inf("Automatic %d",m_landArg.automatic);
+        inf("Right start circle %d",m_landArg.rigthStartTurningCircle);
+        inf("Right start dir %d",m_landArg.rightStartTurningDirection);
+        inf("Right finish %d",m_landArg.rightFinishTurningCircle);
+        inf("WPA %d",m_landArg.RightWPa);
       }
       //! Generates a landing path
       bool
@@ -636,9 +657,11 @@ namespace Plan
         double Ycf;
         //! Radius of second end turning circle
         double Rsec;
+        inf("Start circle %d, Start direction %d Finish circle %d",m_landArg.rigthStartTurningCircle,m_landArg.rightStartTurningDirection,m_landArg.rightFinishTurningCircle);
 
         if (m_landArg.automatic)
         {
+          inf("Creating a plan automatic");
           //! Define start turning circle center (Ocs)
           if (std::atan2(Xs(1,0)-Xf(1,0),Xs(0,0)-Xf(0,0))<0)
           {
@@ -676,6 +699,8 @@ namespace Plan
         }
         else
         {
+          inf("Creating a user specified path");
+          inf("Start circle %d, Start direction %d Finish circle %d",m_landArg.rigthStartTurningCircle,m_landArg.rightStartTurningDirection,m_landArg.rightFinishTurningCircle);
           //! Define start turning circle center (Ocs)
           if (m_landArg.rigthStartTurningCircle)
           {
