@@ -272,9 +272,9 @@ namespace Control
             Matrix vel = Matrix(3,1, 0.0);
 
 
-            vel(0) = pwmToValueDeadband(-m_args.max_speed_xy, m_args.max_speed_xy, 900, 2100, 1, 0.1, m_pwm_inputs[CH_X]);
-            vel(1) = pwmToValueDeadband(-m_args.max_speed_xy, m_args.max_speed_xy, 900, 2100, 0, 0.1, m_pwm_inputs[CH_Y]);
-            vel(2) = pwmToValueDeadband( m_args.max_speed_z, -m_args.max_speed_z,  900, 2100, 0, 0.1, m_pwm_inputs[CH_Z]);
+            vel(0) = pwmToValueDeadband(-m_args.max_speed_xy, m_args.max_speed_xy, 1100, 1900, 1, 0.07, m_pwm_inputs[CH_X]);
+            vel(1) = pwmToValueDeadband(-m_args.max_speed_xy, m_args.max_speed_xy, 1100, 1900, 0, 0.07, m_pwm_inputs[CH_Y]);
+            vel(2) = pwmToValueDeadband( m_args.max_speed_z, -m_args.max_speed_z,  1100, 1900, 0, 0.07, m_pwm_inputs[CH_Z]);
 
             // Rotate velocity
             double u,v,w;
