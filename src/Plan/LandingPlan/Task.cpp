@@ -507,7 +507,7 @@ namespace Plan
           inf("Attempt to create new dubins path with XF: x= %f y=%f z=%f psi=%f",Xf(0,0),Xf(1,0),Xf(2,0),Xf(3,0));
           if (!dubinsPath(Xs,Xf,path,RightF,OCF))
           {
-            war("Could not generate a landing path: Abort");
+            err("Could not generate a landing path: Abort");
             return false;
           }
           Matrix Xst = Matrix(4,1,0.0);
@@ -517,11 +517,12 @@ namespace Plan
           inf("Attempt a new way toward the landing approach");
           if (!dubinsPath(Xst,Xf,path,RightF,OCF))
           {
-            war("Could not generate a landing path: Abort");
+            err("Could not generate a landing path: Abort");
             return false;
           }
+          inf("Found a new path to the landing approach");
         }
-        inf("Found a new path to the landing approach");
+        inf("Dubins path has been created");
         //! Is correct height
         bool correctHeight;
         if (Xf(2,0)<Xs(2,0))
@@ -571,9 +572,9 @@ namespace Plan
       addLoiter(IMC::MessageList<IMC::Maneuver>& maneuverList)
       {
         IMC::Loiter loiter;
-        double loiter_lat = m_landArg.net_lat;
-        double loiter_lon = m_landArg.net_lon;
-        double loiter_h = m_landArg.net_height;
+        double loiter_lat = m_landArg.state_lat;
+        double loiter_lon = m_landArg.state_lon;
+        double loiter_h = m_landArg.state_height;
         Coordinates::WGS84::displace(m_landArg.OCF(0,0),m_landArg.OCF(1,0),m_landArg.OCFz,&loiter_lat,&loiter_lon,&loiter_h);
         loiter.lat = loiter_lat;
         loiter.lon = loiter_lon;
