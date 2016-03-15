@@ -875,7 +875,7 @@ namespace Control
           }
 
           // Set some sanity limits on velocity
-          double maxvel = 10 * Math::c_pi / 180.0;
+          double maxvel = 20 * Math::c_pi / 180.0;
           if (abs(newLoadAngles.dphi) > maxvel)
             newLoadAngles.dphi = maxvel * newLoadAngles.dphi / abs(newLoadAngles.dphi);
 
