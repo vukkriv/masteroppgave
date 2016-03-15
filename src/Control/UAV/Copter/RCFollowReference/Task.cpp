@@ -46,6 +46,10 @@ namespace Control
           double lookahead_time;
           bool auto_enable;
           double stop_distance_multiplier;
+          std::string knob_tuning_task;
+          std::string knob_tuning_parameter;
+          double knob_tuning_max;
+          double knob_tuning_min;
         };
 
 
@@ -90,6 +94,12 @@ namespace Control
 
           //! Last velocity input
           Matrix m_last_vel;
+
+          //! Tuning enabled
+          bool m_knob_tuning_enabled;
+
+          //! Time of last tuning value sent
+          double m_time_last_knob_tuning;
           //!
           //! Constructor.
           //! @param[in] name task name.
@@ -99,7 +109,8 @@ namespace Control
             m_fr_is_running(false),
             m_lat(0.0), m_lon(0.0), m_hae(0.0), m_dspeed(0.0),
             m_vehicle_last_lat(0.0), m_vehicle_last_lon(0.0), m_vehicle_last_hae(0.0), m_vehicle_last_speed(0.0),
-            m_last_vel(Matrix(3,1, 0.0))
+            m_last_vel(Matrix(3,1, 0.0)),
+            m_knob_tuning_enabled(false)
           {
 
             param("Max Speed - XY", m_args.max_speed_xy)
@@ -132,6 +143,20 @@ namespace Control
             .minimumValue("0.5")
             .maximumValue("2.0");
 
+            param("Knob Tuning Task to Send to", m_args.knob_tuning_task)
+            .defaultValue("Simple Acceleration Path Controller");
+
+            param("Knob Tuning Parameter", m_args.knob_tuning_parameter)
+            .values("None,Controller - Bandwidth,Model - Wind Drag Coefficient,Delayed - tau_d extra")
+            .defaultValue("None")
+            .description("Which parameter to tune. ");
+
+            param("Knob Tuning Minimum", m_args.knob_tuning_min)
+            .defaultValue("0.5");
+
+            param("Knob Tuning Maximum", m_args.knob_tuning_max)
+            .defaultValue("0.5");
+
 
             bind<IMC::PWM>(this);
             bind<IMC::PlanControlState>(this);
@@ -140,6 +165,7 @@ namespace Control
             bind<IMC::AutopilotMode>(this);
 
             m_time_last_dispatch = Clock::get();
+            m_time_last_knob_tuning = Clock::get();
 
             for (int i = 0; i < 8; i++)
             {
@@ -238,10 +264,57 @@ namespace Control
               {
                 m_time_last_dispatch = now;
                 calculateReference();
+                calculateKnobTuning();
               }
             }
 
             //inf("Channel: %d, value: %f", pwm->id, pwmToValueDeadband(-4, 4, 900, 2100, 0.1, pwm->duty_cycle));
+
+          }
+
+          void
+          calculateKnobTuning(void)
+          {
+
+
+            // Check if tuning
+            if (m_knob_tuning_enabled)
+            {
+              // Check time
+              double now = Clock::get();
+
+              if (now - m_time_last_knob_tuning > 1.0)
+              {
+                m_time_last_knob_tuning = now;
+                // Calculate and send new one
+                double val = pwmToValueDeadband(m_args.knob_tuning_min, m_args.knob_tuning_max, 1100, 1900, 0, 0.0, m_pwm_inputs[CH_TUNE]);
+
+                // Send a parameter update request
+                IMC::EntityParameter tuningParam;
+                tuningParam.name = m_args.knob_tuning_parameter;
+
+                char buffer[32];
+
+                snprintf(buffer, sizeof(buffer), "%.4g", val);
+                tuningParam.value = std::string(buffer);
+
+                MessageList<IMC::EntityParameter> msgList;
+                msgList.push_back(tuningParam);
+
+
+                IMC::SetEntityParameters toSet;
+                toSet.name = m_args.knob_tuning_task;
+                toSet.params = msgList;
+
+                dispatch(toSet);
+
+                debug("Set %s to value %s", m_args.knob_tuning_parameter.c_str(), buffer);
+
+              }
+              debug("Enable, not time.");
+
+            }
+            debug("not enable. ");
 
           }
 
@@ -527,6 +600,10 @@ namespace Control
           void
           onUpdateParameters(void)
           {
+            // Check knob tuning
+            m_knob_tuning_enabled = false;
+            if (m_args.knob_tuning_parameter != "None")
+              m_knob_tuning_enabled = true;
           }
 
           //! Reserve entity identifiers.
