@@ -409,7 +409,7 @@ namespace Plan
 
         inf("Current lat: %f current lon: %f current height: %f",fPath.lat,fPath.lon,fPath.z);
         fPath.z_units = IMC::Z_HEIGHT;
-        fPath.speed = 16;
+        fPath.speed = m_landArg.speed_WP1;
         fPath.speed_units = IMC::SUNITS_METERS_PS;
         addPathPoint(path,&fPath);
         maneuverList.push_back(fPath);
@@ -580,7 +580,7 @@ namespace Plan
         loiter.lon = loiter_lon;
         loiter.z = loiter_h;
         loiter.z_units = IMC::Z_HEIGHT;
-        loiter.speed = m_landArg.speed_WP4;
+        loiter.speed = m_landArg.speed_WP2;
         loiter.speed_units = IMC::SUNITS_METERS_PS;
         loiter.type = IMC::Loiter::LT_CIRCULAR;
         if (m_landArg.clockwise)
@@ -601,13 +601,13 @@ namespace Plan
       addNetApproach(IMC::MessageList<IMC::Maneuver>& maneuverList)
       {
         //3
-        addGotoPoint(m_landArg.WP3,m_landArg.speed_WP1,maneuverList);
+        addGotoPoint(m_landArg.WP3,m_landArg.speed_WP2,maneuverList);
 
         //2
-        addGotoPoint(m_landArg.WP2,m_landArg.speed_WP2,maneuverList);
+        addGotoPoint(m_landArg.WP2,m_landArg.speed_WP3,maneuverList);
 
         //1
-        addGotoPoint(m_landArg.WP1,m_landArg.speed_WP3,maneuverList);
+        addGotoPoint(m_landArg.WP1,m_landArg.speed_WP4,maneuverList);
 
       }
       //!
@@ -623,7 +623,7 @@ namespace Plan
         gotoWP.lon = w1_lon;
         gotoWP.z = w1_h;
         gotoWP.z_units = IMC::Z_HEIGHT;
-        gotoWP.speed = m_landArg.speed_WP1;
+        gotoWP.speed = speed;
         gotoWP.speed_units = IMC::SUNITS_METERS_PS;
         maneuverList.push_back(gotoWP);
       }
