@@ -147,14 +147,17 @@ namespace Control
             .defaultValue("Simple Acceleration Path Controller");
 
             param("Knob Tuning Parameter", m_args.knob_tuning_parameter)
+            .visibility(Parameter::VISIBILITY_USER)
             .values("None,Controller - Bandwidth,Model - Wind Drag Coefficient,Delayed - tau_d extra")
             .defaultValue("None")
             .description("Which parameter to tune. ");
 
             param("Knob Tuning Minimum", m_args.knob_tuning_min)
+            .visibility(Parameter::VISIBILITY_USER)
             .defaultValue("0.5");
 
             param("Knob Tuning Maximum", m_args.knob_tuning_max)
+            .visibility(Parameter::VISIBILITY_USER)
             .defaultValue("0.5");
 
 
