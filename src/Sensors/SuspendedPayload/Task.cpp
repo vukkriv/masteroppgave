@@ -45,6 +45,10 @@ namespace Sensors
       std::string spi_device_1;
       std::string spi_device_2;
 
+      //! Offset
+      double offset_phi_deg;
+      double offset_theta_deg;
+
     };
 
     class Error: public std::runtime_error
@@ -85,6 +89,14 @@ namespace Sensors
         param("SPI Device 2", m_args.spi_device_2)
         .defaultValue("/dev/spidev1.1")
         .description("Path to SPIdev device. ");
+
+        param("Offset Phi", m_args.offset_phi_deg)
+        .units(Units::Degree)
+        .defaultValue("3");
+
+        param("Offset Theta", m_args.offset_theta_deg)
+        .units(Units::Degree)
+        .defaultValue("12");
 
       }
 
@@ -134,10 +146,17 @@ namespace Sensors
       doRead(void)
       {
 
-        float a1 = m_sensor_1->read() - 180.0;
-        float a2 = m_sensor_2->read() - 180.0;
+        double a1 = m_sensor_1->read() - 180.0;
+        double a2 = m_sensor_2->read() - 180.0;
 
         debug("Angle: %f, %f \n", a1, a2);
+
+        // Applying offset
+        a1 = a1 - m_args.offset_phi_deg; // Negative since a1 is negated
+        a2 = a2 + m_args.offset_theta_deg;
+
+        debug("After offset: %f, %f", a1, a2);
+
 
         IMC::EulerAngles angles;
         angles.time = Clock::get();
