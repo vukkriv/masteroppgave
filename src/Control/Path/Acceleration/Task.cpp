@@ -83,6 +83,11 @@ namespace Control
         double sigmoid_shift;
         bool enable_pendulum_observer;
         double slung_numerical_diff_filter_beta;
+        bool enable_sigmoid_gainscheduler;
+        double sigmoid_gainschedule_angle_thresh;
+        double sigmoid_gainschedule_history_time;
+        double sigmoid_gainschedule_gain;
+        double sigmoid_gainschedule_shift;
       };
 
       static const std::string c_parcel_names[] = {DTR_RT("PID"), DTR_RT("Beta-X"),
@@ -280,6 +285,18 @@ namespace Control
         double percent_below_threshold;
       };
 
+      class SigmoidGainScheduleState
+      {
+      public:
+        SigmoidGainScheduleState():
+          percent_below_threshold(0.0)
+      {
+          /* Intentionally Empty */
+      };
+
+        double percent_below_threshold;
+      };
+
       class ObserverState
       {
       public:
@@ -441,6 +458,10 @@ namespace Control
         std::vector<ReferenceHistoryContainer> m_sigmoid_refhistory;
         //! Observer State
         ObserverState m_observer_state;
+        //! State of the sigmoid gain scheduler
+        SigmoidGainScheduleState m_sigmoid_gainschedule_state;
+        //! Angle history for the gain scheduler
+        std::vector<LoadAngleHistoryContainer> m_sigmoid_gainschedule_anghistory;
 
 
 
@@ -673,6 +694,29 @@ namespace Control
           .defaultValue("0.8")
           .maximumValue("1.0")
           .description("Increase to make the response slower. ");
+
+          param("Sigmoid Gain Scheuler - Enable", m_args.enable_sigmoid_gainscheduler)
+          .defaultValue("false")
+          .visibility(Parameter::VISIBILITY_USER);
+
+          param("Sigmoid Gain Scheuler - Angle Threshold", m_args.sigmoid_gainschedule_angle_thresh)
+          .defaultValue("6")
+          .units(Units::Degree)
+          .visibility(Parameter::VISIBILITY_USER);
+
+          param("Sigmoid Gain Scheuler - Backwards History Time",m_args.sigmoid_gainschedule_history_time)
+          .defaultValue("3.0")
+          .visibility(Parameter::VISIBILITY_USER);
+
+          param("Sigmoid Gain Scheuler - Gain", m_args.sigmoid_gainschedule_gain)
+          .defaultValue("15")
+          .visibility(Parameter::VISIBILITY_USER);
+
+          param("Sigmoid Gain Scheuler - Shift", m_args.sigmoid_gainschedule_shift)
+          .defaultValue("-0.5")
+          .visibility(Parameter::VISIBILITY_USER);
+
+
 
           bind<IMC::EulerAngles>(this);
           bind<IMC::EstimatedState>(this);
@@ -912,6 +956,9 @@ namespace Control
 
           // store
           m_anglehistory.push_back(LoadAngleHistoryContainer(newLoadAngles, eangles->time));
+
+          // Update sigmoid gainscheduler
+          updateSigmoidGainSchedulingState(eangles->time);
         }
 
 
@@ -1032,6 +1079,11 @@ namespace Control
           if (!m_sigmoid_refhistory.empty() && Clock::get() - m_sigmoid_refhistory.front().timestamp > 4.0)
           {
             while(!m_sigmoid_refhistory.empty()) m_sigmoid_refhistory.erase(m_sigmoid_refhistory.begin());
+          }
+
+          if (!m_sigmoid_gainschedule_anghistory.empty() && Clock::get() - m_sigmoid_gainschedule_anghistory.front().timestamp > 4.0)
+          {
+            while(!m_sigmoid_gainschedule_anghistory.empty()) m_sigmoid_gainschedule_anghistory.erase(m_sigmoid_gainschedule_anghistory.begin());
           }
 
           // If more than 2 seconds since last step, restart suspended integrator
@@ -1296,6 +1348,19 @@ namespace Control
             Gd = gain * Gd;
           }
 
+          // Check gain scheduler
+          if (m_args.enable_sigmoid_gainscheduler)
+          {
+
+            // The state is updated when receiving and angle.
+
+            double gain = gainedSigmoidScheduler(m_sigmoid_gainschedule_state.percent_below_threshold);
+
+            trace("Gainscheduler percent, gain: %.3f, %.3f", m_sigmoid_gainschedule_state.percent_below_threshold, gain);
+
+            Gd = (1-gain) * Gd;
+          }
+
 
 
           // check if we have angles far enough back
@@ -1356,6 +1421,12 @@ namespace Control
         gainedSigmoid(double t)
         {
           return sigmoid(m_args.sigmoid_gain * (m_args.sigmoid_shift + t));
+        }
+
+        double
+        gainedSigmoidScheduler(double t)
+        {
+          return sigmoid(m_args.sigmoid_gainschedule_gain * (m_args.sigmoid_gainschedule_shift + t));
         }
 
         double
@@ -1423,6 +1494,38 @@ namespace Control
 
           // Set percent
           m_sigmoid_state.percent_below_threshold = (double) accumulated_sum / (double) m_sigmoid_refhistory.size();
+        }
+
+        void
+        updateSigmoidGainSchedulingState(double now)
+        {
+          m_sigmoid_gainschedule_anghistory.push_back(LoadAngleHistoryContainer(m_loadAngle, now));
+
+          // This queue should only hold values newer than x seconds old.
+          while ( m_sigmoid_gainschedule_anghistory.size() >= 1
+              && now - m_sigmoid_gainschedule_anghistory.front().timestamp > m_args.sigmoid_gainschedule_history_time)
+          {
+            // Old, remove.
+            m_sigmoid_gainschedule_anghistory.erase(m_sigmoid_gainschedule_anghistory.begin());
+          }
+
+          // Calculate percent
+          std::vector<LoadAngleHistoryContainer>::iterator it = m_sigmoid_gainschedule_anghistory.begin();
+
+          int accumulated_sum = 0.0;
+          double tresh = m_args.sigmoid_gainschedule_angle_thresh * Math::c_pi / 180.0;
+          for ( ;it != m_sigmoid_gainschedule_anghistory.end(); ++it)
+          {
+
+            if ( abs((*it).angle.phi) < tresh &&
+                  abs((*it).angle.theta) < tresh)
+            {
+              accumulated_sum++;
+            }
+          }
+
+          // Set percent
+          m_sigmoid_gainschedule_state.percent_below_threshold = (double) accumulated_sum / (double) m_sigmoid_gainschedule_anghistory.size();
         }
 
         void
