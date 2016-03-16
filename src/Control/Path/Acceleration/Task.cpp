@@ -1354,11 +1354,11 @@ namespace Control
 
             // The state is updated when receiving and angle.
 
-            double gain = gainedSigmoidScheduler(m_sigmoid_gainschedule_state.percent_below_threshold);
+            double gain = 1.0-gainedSigmoidScheduler(m_sigmoid_gainschedule_state.percent_below_threshold);
 
             trace("Gainscheduler percent, gain: %.3f, %.3f", m_sigmoid_gainschedule_state.percent_below_threshold, gain);
 
-            Gd = (1-gain) * Gd;
+            Gd = gain * Gd;
           }
 
 
@@ -1517,11 +1517,13 @@ namespace Control
           for ( ;it != m_sigmoid_gainschedule_anghistory.end(); ++it)
           {
 
-            if ( abs((*it).angle.phi) < tresh &&
-                  abs((*it).angle.theta) < tresh)
+            if ( std::fabs((double)(*it).angle.phi) < tresh &&
+                  std::fabs((*it).angle.theta) < tresh)
             {
               accumulated_sum++;
             }
+
+
           }
 
           // Set percent
