@@ -178,6 +178,33 @@ namespace Control
 
 
           double
+          pwmToValue(double val_min, double val_max, unsigned int rc_min, unsigned int rc_max, unsigned int rc_in)
+          {
+            // Range
+            double range = val_max - val_min;
+
+            // Pwm range
+            unsigned int pwm_range = rc_max - rc_min;
+
+            // clean input
+            if (rc_in > rc_max)
+              rc_in = rc_max;
+
+            if (rc_in < rc_min)
+              rc_in = rc_min;
+
+            // Percent input
+            double pwm_percent = (double) (rc_in - rc_min) / (double) pwm_range;
+
+            // Set output
+
+            return pwm_percent * range + val_min;
+
+
+          }
+
+
+          double
           pwmToValueDeadband(double val_min, double val_max, unsigned int rc_min, unsigned int rc_max, int inverse, double deadbandPercent, unsigned int rc_in)
           {
             unsigned int rc_trim = (rc_max + rc_min)/2;
@@ -293,7 +320,7 @@ namespace Control
               {
                 m_time_last_knob_tuning = now;
                 // Calculate and send new one
-                double val = pwmToValueDeadband(m_args.knob_tuning_min, m_args.knob_tuning_max, 1100, 1900, 0, 0.0, m_pwm_inputs[CH_TUNE]);
+                double val = pwmToValue(m_args.knob_tuning_min, m_args.knob_tuning_max, 1100, 1900, m_pwm_inputs[CH_TUNE]);
 
                 // Send a parameter update request
                 IMC::EntityParameter tuningParam;
