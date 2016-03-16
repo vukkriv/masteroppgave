@@ -82,6 +82,7 @@ namespace Control
         double sigmoid_gain;
         double sigmoid_shift;
         bool enable_pendulum_observer;
+        double slung_numerical_diff_filter_beta;
       };
 
       static const std::string c_parcel_names[] = {DTR_RT("PID"), DTR_RT("Beta-X"),
@@ -666,6 +667,12 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Enable Luenberger type observer for pendulum behavior. ");
 
+          param("CtrlMisc - Slung Numerical Filter Beta", m_args.slung_numerical_diff_filter_beta)
+          .minimumValue("0.0")
+          .defaultValue("0.8")
+          .maximumValue("1.0")
+          .description("Increase to make the response slower. ");
+
           bind<IMC::EulerAngles>(this);
           bind<IMC::EstimatedState>(this);
           bind<IMC::DesiredSpeed>(this);
@@ -867,6 +874,12 @@ namespace Control
             {
               newLoadAngles.dphi   = (newLoadAngles.phi - m_loadAngle.phi) / dt;
               newLoadAngles.dtheta = (newLoadAngles.theta - m_loadAngle.theta) / dt;
+
+              // Filter a bit.
+              double beta = m_args.slung_numerical_diff_filter_beta;
+              newLoadAngles.dphi = m_loadAngle.dphi*beta + (1-beta)*newLoadAngles.dphi;
+              newLoadAngles.dtheta = m_loadAngle.dtheta*beta + (1-beta)*newLoadAngles.dtheta;
+
             }
             else
             {
@@ -875,13 +888,10 @@ namespace Control
           }
 
           // Set some sanity limits on velocity
-          double maxvel = 20 * Math::c_pi / 180.0;
-          if (abs(newLoadAngles.dphi) > maxvel)
-            newLoadAngles.dphi = maxvel * newLoadAngles.dphi / abs(newLoadAngles.dphi);
+          double maxvel = 40 * Math::c_pi / 180.0;
 
-          if (abs(newLoadAngles.dtheta > maxvel))
-            newLoadAngles.dtheta = maxvel * newLoadAngles.dtheta / abs(newLoadAngles.dtheta);
-
+          newLoadAngles.dphi = trimValue(newLoadAngles.dphi, -maxvel, maxvel);
+          newLoadAngles.dtheta = trimValue(newLoadAngles.dtheta, -maxvel, maxvel);
           // store
           m_loadAngle = newLoadAngles;
 
