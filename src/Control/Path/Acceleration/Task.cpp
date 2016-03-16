@@ -562,6 +562,7 @@ namespace Control
           .description("Mass of suspended object. Used for various filters. ");
 
           param("Model - Suspended Rope Length", m_args.suspended_rope_length)
+          .minimumValue("0.5")
           .defaultValue("4.3")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Length of suspended rope. Used for various filters. ");
