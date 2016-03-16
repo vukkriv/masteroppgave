@@ -148,7 +148,7 @@ namespace Control
 
             param("Knob Tuning Parameter", m_args.knob_tuning_parameter)
             .visibility(Parameter::VISIBILITY_USER)
-            .values("None,Controller - Bandwidth,Model - Wind Drag Coefficient,Delayed - tau_d extra")
+            .values("None,Controller - Bandwidth,Model - Wind Drag Coefficient,Delayed - tau_d extra,Model - Suspended Rope Length")
             .defaultValue("None")
             .description("Which parameter to tune. ");
 
@@ -267,8 +267,11 @@ namespace Control
               {
                 m_time_last_dispatch = now;
                 calculateReference();
-                calculateKnobTuning();
               }
+            }
+            if (pwm->id == 8)
+            {
+              calculateKnobTuning();
             }
 
             //inf("Channel: %d, value: %f", pwm->id, pwmToValueDeadband(-4, 4, 900, 2100, 0.1, pwm->duty_cycle));
