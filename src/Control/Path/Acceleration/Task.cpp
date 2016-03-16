@@ -700,20 +700,20 @@ namespace Control
           .visibility(Parameter::VISIBILITY_USER);
 
           param("Sigmoid Gain Scheuler - Angle Threshold", m_args.sigmoid_gainschedule_angle_thresh)
-          .defaultValue("8")
+          .defaultValue("6")
           .units(Units::Degree)
           .visibility(Parameter::VISIBILITY_USER);
 
           param("Sigmoid Gain Scheuler - Backwards History Time",m_args.sigmoid_gainschedule_history_time)
-          .defaultValue("5.0")
+          .defaultValue("3.0")
           .visibility(Parameter::VISIBILITY_USER);
 
           param("Sigmoid Gain Scheuler - Gain", m_args.sigmoid_gainschedule_gain)
-          .defaultValue("12")
+          .defaultValue("15")
           .visibility(Parameter::VISIBILITY_USER);
 
           param("Sigmoid Gain Scheuler - Shift", m_args.sigmoid_gainschedule_shift)
-          .defaultValue("-0.3")
+          .defaultValue("-0.5")
           .visibility(Parameter::VISIBILITY_USER);
 
 
