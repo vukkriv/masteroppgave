@@ -233,47 +233,11 @@ namespace Control
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
            .defaultValue("false").description("Enable Formation Controller.");
 
-          param("Vehicle List", m_args.formation_systems)
-          .defaultValue("")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("System name list of the formation vehicles.");
-
-          param("Desired Formation", m_args.desired_formation)
-          .defaultValue("0.0, 0.0, 0.0")
-          .units(Units::Meter)
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Desired formation positions matrix.");
-
-          param("Incidence Matrix", m_args.incidence_matrix)
-          .defaultValue("0")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Incidence matrix.");
-
-          param("Link Gains", m_args.link_gains)
-          .defaultValue("1.0")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Gains assigned to formation links.");
-
-          param("Disable Formation Velocity", m_args.disable_formation_velocity)
-          .defaultValue("false")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Disable formation velocity.");
-
-          param("Disable Mission Velocity", m_args.disable_mission_velocity)
-          .defaultValue("false")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Disable mission velocity.");
-
           param("Constant Mission Velocity", m_args.const_mission_velocity)
           .defaultValue("0.0, 0.0, 0.0")
           .units(Units::MeterPerSecond)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Constant mission velocity.");
-
-          param("Disable Collision Velocity", m_args.disable_collision_velocity)
-          .defaultValue("false")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Disable collision velocity.");
 
           param("Collision Avoidance Radius", m_args.collision_radius)
           .defaultValue("5.0")
@@ -308,11 +272,6 @@ namespace Control
           .units(Units::Millisecond)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Threshold for issuing warnings on delay in position updates.");
-
-          param("Hold Current Formation", m_args.hold_current_formation)
-          .defaultValue("true")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Use current position of vehicles as desired formation");
 
           param("Resend Abort Threshold", m_args.abort_resend_threshold)
           .defaultValue("200")
@@ -401,138 +360,6 @@ namespace Control
         {
           debug("Starting update of parameters.");
 
-          bool calc_desired_diff_var = false;
-
-          if (paramChanged(m_args.formation_systems))
-          {
-            inf("New Formation vehicles' list.");
-
-            // Extract vehicle IDs
-            m_uav_ID.clear();
-            if (m_args.formation_systems.empty())
-            {
-              war("Formation vehicle list is empty!");
-              m_uav_ID.push_back(this->getSystemId());
-              m_N = 1;
-              m_i = 0;
-            }
-            else
-            {
-              m_N = m_args.formation_systems.size();
-              bool found_self = false;
-              for (unsigned int uav = 0; uav < m_N; uav++)
-              {
-                debug("UAV %u: %s", uav, m_args.formation_systems[uav].c_str());
-                m_uav_ID.push_back(
-                    this->resolveSystemName(m_args.formation_systems[uav]));
-                if (m_uav_ID[uav] == this->getSystemId())
-                {
-                  m_i = uav; // Set my formation id
-                  found_self = true;
-                }
-              }
-              if (!found_self)
-                throw DUNE::Exception(
-                    "Vehicle not found in formation vehicle list!");
-            }
-            // Resize and reset position and velocity matrices to fit number of vehicles
-            m_x.resizeAndFill(3, m_N, 0);
-            m_v.resizeAndFill(3, 1, 0);
-            m_a.resizeAndFill(3, 1, 0);
-          }
-
-          if (paramChanged(m_args.desired_formation))
-          {
-            inf("New desired formation.");
-
-            // Check dimensions
-            if (m_args.desired_formation.size() == 0)
-              throw DUNE::Exception(
-                  "Desired formation positons matrix is empty!");
-            if (m_args.desired_formation.size() % 3 != 0)
-              throw DUNE::Exception(
-                  "Invalid number of coordinates in desired formation positions matrix!");
-            if ((unsigned int)m_args.desired_formation.size() / 3 != m_N)
-              throw DUNE::Exception(
-                  "Incorrect number of vehicles in desired formation positions matrix!");
-
-            // Resize desired formation matrix to fit number of vehicles
-            m_x_c_default.resizeAndFill(3, m_N, 0);
-            // Update desired formation matrix
-            for (unsigned int uav_id = 0; uav_id < m_N; uav_id++)
-            {
-              for (unsigned int coord = 0; coord < 3; coord++)
-                m_x_c_default(coord, uav_id) = m_args.desired_formation(
-                    coord + uav_id * 3);
-              debug("UAV %u: [%1.1f, %1.1f, %1.1f]", uav_id,
-                    m_x_c_default(0, uav_id), m_x_c_default(1, uav_id),
-                    m_x_c_default(2, uav_id));
-            }
-            m_x_c = m_x_c_default;
-            // Desired difference variables will have to be calculated
-            calc_desired_diff_var = true;
-          }
-
-          if (paramChanged(m_args.incidence_matrix))
-          {
-            inf("New incidence matrix.");
-
-            // Check dimensions
-            if (m_args.incidence_matrix.size() == 0)
-              throw DUNE::Exception("Incidence matrix is empty!");
-            if (m_args.incidence_matrix.rows() % m_N != 0)
-              throw DUNE::Exception(
-                  "Incidence matrix doesn't match number of vehicles!");
-
-            // Update number of links
-            m_L = m_args.incidence_matrix.rows() / m_N;
-            // Resize incidence matrix
-            m_D.resize(m_N, m_L);
-            // Update incidence matrix
-            for (unsigned int link = 0; link < m_L; link++)
-            {
-              for (unsigned int uav = 0; uav < m_N; uav++)
-                m_D(uav, link) = m_args.incidence_matrix(uav + link * m_N);
-            }
-            // Desired difference variables will have to be calculated
-            calc_desired_diff_var = true;
-
-            printMatrix(m_D);
-          }
-
-          if (paramChanged(m_args.link_gains))
-          {
-            inf("New link gains.");
-
-            if (m_args.link_gains.size() == 1)
-            {
-              // Scalar gain, set all to this
-              m_delta = Matrix(m_L, 1, m_args.link_gains(0));
-            }
-            else if ((unsigned int)m_args.link_gains.size() != m_L)
-              throw DUNE::Exception("Link gains doesn't match number of links!");
-            else
-            {
-              // Update gains
-              m_delta = m_args.link_gains;
-            }
-
-            printMatrix(m_delta);
-          }
-
-          if (calc_desired_diff_var)
-          {
-            inf("New desired difference variables.");
-
-            // Resize and reset difference variables matrices to fit number of links
-            m_z.resizeAndFill(3, m_L, 0);
-            m_z_d.resizeAndFill(3, m_L, 0);
-            // Update desired difference variables matrix
-            calcDiffVariable(&m_z_d, m_D, m_x_c);
-
-            printMatrix(m_z_d);
-          }
-
           if (paramChanged(m_args.const_mission_velocity))
           {
             inf("New constant mission velocity.");
@@ -572,11 +399,6 @@ namespace Control
         {
           PeriodicUAVAutopilot::onResourceInitialization();
 
-          // Initialize matrices
-          m_last_pos_update = Matrix(1, m_N, Clock::get());
-          m_last_heading_update = Matrix(1, m_N, Clock::get());
-          m_pos_update_rate = Matrix(1, m_N, 0);
-          m_pos_update_delay = Matrix(1, m_N, 0);
         }
 
         //! Release resources.
@@ -647,6 +469,158 @@ namespace Control
         }
 
         void
+        updateFormationParameters()
+        {
+          debug("New desired difference variables.");
+
+          // Resize and reset difference variables matrices to fit number of links
+          m_z.resizeAndFill(3, m_L, 0);
+          m_z_d.resizeAndFill(3, m_L, 0);
+          // Update desired difference variables matrix
+          calcDiffVariable(&m_z_d, m_D, m_x_c);
+
+          printMatrix(m_z_d);
+
+          // Initialize matrices
+          m_last_pos_update = Matrix(1, m_N, Clock::get());
+          m_last_heading_update = Matrix(1, m_N, Clock::get());
+          m_pos_update_rate = Matrix(1, m_N, 0);
+          m_pos_update_delay = Matrix(1, m_N, 0);
+        }
+
+        void
+        configParseParticipants(const IMC::CoordConfig* config)
+        {
+          debug("New desired formation.");
+
+          const IMC::MessageList<IMC::VehicleFormationParticipant>* part = &config->participants;
+          IMC::MessageList<IMC::VehicleFormationParticipant>::const_iterator p_itr;
+          // Extract vehicle IDs
+          m_uav_ID.clear();
+
+          if (static_cast<unsigned int>(part->size()) == 0)
+          {
+            m_uav_ID.push_back(this->getSystemId());
+            m_N = 1;
+            m_i = 0;
+          }
+          else
+          {
+            m_N = static_cast<unsigned int>(part->size());
+            bool found_self = false;
+            unsigned int uav = 0;
+
+            // Resize desired formation matrix to fit number of vehicles
+            m_x_c_default.resizeAndFill(3, m_N, 0);
+            for (p_itr = part->begin(); p_itr != part->end(); p_itr++)
+            {
+              //all participants
+              m_uav_ID.push_back((*p_itr)->vid);
+
+              if ((*p_itr)->vid == this->getSystemId())
+              {
+                m_i = uav; // Set my formation id
+                found_self = true;
+              }
+              m_x_c_default(0,uav) = (*p_itr)->off_x;
+              m_x_c_default(1,uav) = (*p_itr)->off_y;
+              m_x_c_default(2,uav) = (*p_itr)->off_z;
+              debug("UAV %u: [%1.1f, %1.1f, %1.1f]", uav,
+                    m_x_c_default(0, uav), m_x_c_default(1, uav),
+                    m_x_c_default(2, uav));
+              uav += 1;
+            }
+            if (!found_self)
+              throw DUNE::Exception(
+                  "Vehicle not found in formation vehicle list!");
+
+            // Resize and reset position and velocity matrices to fit number of vehicles
+            m_x.resizeAndFill(3, m_N, 0);
+            m_v.resizeAndFill(3, 1, 0);
+            m_a.resizeAndFill(3, 1, 0);
+
+            m_x_c = m_x_c_default;
+          }
+        }
+
+        void
+        configParseIncidence(const IMC::CoordConfig* config)
+        {
+          debug("New incidence matrix.");
+          const IMC::MessageList<IMC::CoordIncidenceAgent>* incidence_agents = &config->incidence;
+          IMC::MessageList<IMC::CoordIncidenceAgent>::const_iterator i_itr;
+
+          // Update number of links
+          unsigned int noLinks = 0;
+          unsigned int link = 0;
+          unsigned int uav = 0;
+          debug("m_L=%d,m_N=%d",m_L,m_N);
+          if (static_cast<unsigned int>(incidence_agents->size()) != m_N)
+            err("Number of agents in incidence matrix (%d) does not match the number of agents in the desired formation (%d)!",
+                static_cast<unsigned int>(incidence_agents->size()),m_N);
+
+          for (i_itr = incidence_agents->begin(); i_itr != incidence_agents->end(); i_itr++)
+          {
+            //all participants
+
+            //parse through links
+            const IMC::MessageList<IMC::CoordIncidenceLink>* incidence_links = &(*i_itr)->links;
+            IMC::MessageList<IMC::CoordIncidenceLink>::const_iterator j_itr;
+
+            if (i_itr == incidence_agents->begin())
+            {
+              noLinks = static_cast<unsigned int>(incidence_links->size());
+              m_D.resize(m_N, noLinks);
+              debug("noLinks=%d,m_N=%d",noLinks,m_N);
+            }
+
+            if (static_cast<unsigned int>(incidence_links->size()) != noLinks)
+              err("Number of links to the agent (%d) does not match the number of links in the previous agents (%d)!",
+                  static_cast<unsigned int>(incidence_links->size()), noLinks);
+
+            link = 0;
+            for (j_itr = incidence_links->begin(); j_itr != incidence_links->end(); j_itr++)
+            {
+              debug("uav=%d,link=%d",uav,link);
+              m_D(uav, link) = (*j_itr)->orientation;
+              link += 1;
+            }
+            uav += 1;
+          }
+          m_L = noLinks;
+          debug("m_L=%d,m_N=%d",m_L,m_N);
+          printMatrix(m_D);
+        }
+        void
+        configParseLinkGains(const IMC::CoordConfig* config)
+        {
+          debug("New link gains.");
+          const IMC::MessageList<IMC::CoordLinkGain>* link_gain = &config->link_gains;
+          IMC::MessageList<IMC::CoordLinkGain>::const_iterator i_itr;
+
+          Matrix linkGains = Matrix(link_gain->size(),1);
+          unsigned int link = 0;
+          for (i_itr = link_gain->begin(); i_itr != link_gain->end(); i_itr++)
+          {
+            linkGains(link) = (*i_itr)->value;
+            link += 1;
+          }
+          if (linkGains.size() == 1)
+          {
+            // Scalar gain, set all to this
+            m_delta = Matrix(m_L, 1, linkGains(0));
+          }
+          else if ((unsigned int)linkGains.size() != m_L)
+            err("No of link gains (%d) doesn't match number of links (%d)!",linkGains.size(),m_L);
+          else
+          {
+            // Update gains
+            m_delta = linkGains;
+          }
+          printMatrix(m_delta);
+        }
+
+        void
         consume(const IMC::CoordConfig* config)
         {
           double now = Clock::getSinceEpoch();
@@ -657,18 +631,31 @@ namespace Control
             spew("Got CoordConfig from '%s'", resolveSystemId(config->getSource()));
             last_print = now;
           }
-          if (!m_configured)
-          {
-            m_configured = true;
-            debug("Configured with IMC::CoordConfig");
+
+          if (config->update || !m_configured)
+          {            
+            //CoordConfig contains new formation data
+            // Parse participants
+            configParseParticipants(config);
+            // Parse incidence matrix
+            configParseIncidence(config);
+            // Parse link gains
+            configParseLinkGains(config);
+
+            updateFormationParameters();
+            if (!m_configured)
+            {
+              m_configured = true;
+              debug("Configured with IMC::CoordConfig");
+            }
           }
-          const IMC::MessageList<IMC::VehicleFormationParticipant>* list = &config->participants;
-
-          IMC::MessageList<IMC::VehicleFormationParticipant>::const_iterator itr;
-
-          for (itr = list->begin(); itr != list->end(); itr++)
+          else
           {
-            //(*itr)->off_x;
+            //CoordConfig only contains new flags
+            m_args.disable_collision_velocity = config->disable_collision_vel;
+            m_args.disable_formation_velocity = config->disable_formation_vel;
+            m_args.disable_mission_velocity   = config->disable_mission_vel;
+            m_args.hold_current_formation     = config->formation;
           }
           debug("CoordConfig handled");
         }
@@ -753,12 +740,12 @@ namespace Control
               }
 
               // Update position
-              spew("Update positions, uav=%d,m_x.size()=%d",uav,m_x.size());
+              //spew("Update positions, uav=%d,m_x.size()=%d",uav,m_x.size());
               m_x(0, uav) = msg->state->x;
               m_x(1, uav) = msg->state->y;
               m_x(2, uav) = msg->state->z;
 
-              spew("m_last_pos_update.size()=%d",m_last_pos_update.size());
+              //spew("m_last_pos_update.size()=%d",m_last_pos_update.size());
               m_last_pos_update(uav) = now;
 
               if (!m_args.print_frequency || !last_print
@@ -1172,6 +1159,8 @@ namespace Control
         void
         task(void)
         {
+          if (!m_configured)
+            spew("Not configured!");
           if (!m_args.use_controller || !isActive() || !m_configured)
             return;
 
@@ -1248,6 +1237,18 @@ namespace Control
                 * sin(phi)) + (sin(theta) * sin(psi) * cos(phi)), -sin(theta),
                 cos(theta) * sin(phi), cos(theta) * cos(phi) };
           return Matrix(R_en_elements, 3, 3);
+        }
+
+        void
+        parseCSVstring(std::string CSVstring, std::vector<std::string>& result)
+        {
+          std::stringstream ss(CSVstring);
+          while( ss.good() )
+          {
+              std::string substr;
+              getline( ss, substr, ',' );
+              result.push_back( substr );
+          }
         }
       };
     }

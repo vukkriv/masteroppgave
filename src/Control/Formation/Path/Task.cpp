@@ -590,6 +590,7 @@ namespace Control
         void
         stepRefSim(const IMC::EstimatedLocalState& state, const TrackingState& ts)
         {
+          (void)state;
           spew("Step refsim");
           //get target speed and heading (these or the reference states should be logged somehow)
 
@@ -649,6 +650,8 @@ namespace Control
         void
         updateReferenceSim(const IMC::EstimatedLocalState& state, const TrackingState& ts, double now)
         {
+          (void)now;
+          
           double ref_heading = ts.los_angle;
           m_refsim.setRefHeading(ref_heading);
           m_desired_heading[D_REFERENCE].value = m_refsim.x_ref(R_HEADING);

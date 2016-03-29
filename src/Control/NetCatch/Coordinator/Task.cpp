@@ -1087,25 +1087,6 @@ namespace Control
           dispatch(state);
         }
 
-        void
-        sendDesiredLocalVelocity(Matrix vel)
-        {
-          IMC::DesiredVelocity m_desired_vel;
-
-          m_desired_vel.u = vel(0);
-          m_desired_vel.v = vel(1);
-          m_desired_vel.w = vel(2);
-
-          if (m_args.disable_Z)
-            m_desired_vel.flags = IMC::DesiredVelocity::FL_SURGE
-                | IMC::DesiredVelocity::FL_SWAY;
-          else
-            m_desired_vel.flags = IMC::DesiredVelocity::FL_SURGE
-                | IMC::DesiredVelocity::FL_SWAY | IMC::DesiredVelocity::FL_HEAVE;
-
-          dispatch(m_desired_vel);
-        }
-
         Matrix
         getNetPosition(std::vector<Matrix> p)
         {
