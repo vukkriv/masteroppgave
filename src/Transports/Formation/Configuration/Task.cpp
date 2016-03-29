@@ -105,8 +105,9 @@ namespace Transports
 
         IMC::CoordConfig m_config;
         IMC::VehicleFormationParticipant m_agent;
-        IMC::CoordIncidenceLinks m_incidence_links;
-
+        IMC::CoordIncidenceAgent m_incidence_agent;
+        IMC::CoordIncidenceLink m_incidence_link;
+        IMC::CoordLinkGain m_link_gain;
 
         //! Constructor.
         //! @param[in] name task name.
@@ -120,7 +121,7 @@ namespace Transports
           param("Formation Configuration", m_args.use_task)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .defaultValue("false")
+          .defaultValue("true")
           .description("Enable Formation Configuration.");
 
           param("Vehicle List", m_args.formation_systems)
@@ -159,19 +160,27 @@ namespace Transports
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Disable collision velocity.");
 
+          param("Hold Current Formation", m_args.hold_current_formation)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Use current formation as desired formation.");
+
           param("Latitude", m_args.ref_lat)
           .defaultValue("-999.0")
           .units(Units::Degree)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Reference Latitude");
 
           param("Longitude", m_args.ref_lon)
           .defaultValue("0.0")
           .units(Units::Degree)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Reference Longitude");
 
           param("Height", m_args.ref_hae)
           .defaultValue("0.0")
           .units(Units::Meter)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Reference Height (above ellipsoid)");
 
           param("Use Static Reference", m_args.use_static_ref)
@@ -184,22 +193,6 @@ namespace Transports
         void
         onUpdateParameters(void)
         {
-          if (paramChanged(m_args.disable_collision_velocity) ||
-              paramChanged(m_args.disable_formation_velocity) ||
-              paramChanged(m_args.disable_mission_velocity)   ||
-              paramChanged(m_args.hold_current_formation)
-             )
-          {
-            debug("m_config.update = false");
-            m_config.update = false;
-            m_config.disable_collision_vel = m_args.disable_collision_velocity;
-            m_config.disable_formation_vel = m_args.disable_formation_velocity;
-            m_config.disable_mission_vel   = m_args.disable_mission_velocity;
-            m_config.formation  = m_args.hold_current_formation;
-            dispatch(m_config);
-            debug("CoordConfig dispatched");
-          }
-
           if (paramChanged(m_args.formation_systems) ||
               paramChanged(m_args.desired_formation) ||
               paramChanged(m_args.incidence_matrix) ||
@@ -288,6 +281,7 @@ namespace Transports
                for (unsigned int uav = 0; uav < m_N; uav++)
                  m_D(uav, link) = m_args.incidence_matrix(uav + link * m_N);
               }
+              printMatrix(m_D);
             }
             if (paramChanged(m_args.link_gains))
             {
@@ -299,11 +293,15 @@ namespace Transports
               }
               else if ((unsigned int)m_args.link_gains.size() != m_L)
                 throw DUNE::Exception("Link gains doesn't match number of links!");
+
             }
             //now add data (and dispatch message?)
 
             m_config.incidence.clear();
             m_config.participants.clear();
+            m_config.incidence.clear();
+            //! participants and incidence matrix
+            debug("m_L=%d,m_N=%d",m_L,m_N);
             for (unsigned int uav = 0; uav < m_N; uav++)
             {
               m_agent.off_x = m_x_c_default(0,uav);
@@ -311,14 +309,36 @@ namespace Transports
               m_agent.off_z = m_x_c_default(2,uav);
               m_agent.vid = m_uav_ID[uav];
               m_config.participants.push_back(m_agent);
-
-              //! incidence row, comma separated list
-              //m_incidence_links.vehicles =
-              m_config.incidence.push_back(m_incidence_links);
+              for (unsigned int link = 0; link < m_L; link++)
+              {
+                m_incidence_agent.links.clear();
+                m_incidence_link.orientation = m_args.incidence_matrix(uav + link * m_N);
+                m_incidence_agent.links.push_back(m_incidence_link);
+                debug("[%d,%d]:m_incidence_link.orientation=%d",uav,link,m_incidence_link.orientation);
+              }
+              debug("m_incidence_agent[%d]",uav);
+              m_config.incidence.push_back(m_incidence_agent);
             }
-            //! link gains, comma separated list
-
-            IMC::Parser a;
+            //! link gains
+            m_config.link_gains.clear();
+            for (unsigned int link = 0; link < m_L; link++)
+            {
+              if (m_args.link_gains.size() == 1)
+              {
+                // Scalar gain, set all to this
+                m_link_gain.value = m_args.link_gains(0);
+              }
+              else if ((unsigned int)m_args.link_gains.size() != m_L)
+                throw DUNE::Exception("Link gains doesn't match number of links!");
+              else
+              {
+                // Update gains
+                m_link_gain.value = m_args.link_gains(link);
+              }
+              m_config.link_gains.push_back(m_link_gain);
+            }
+            dispatch(m_config);
+            debug("CoordConfig dispatched from update");
           }
 
           if (paramChanged(m_args.ref_lat) || paramChanged(m_args.ref_lon) || paramChanged(m_args.ref_hae))
@@ -348,6 +368,23 @@ namespace Transports
            m_config.lat   = m_ref_lat;
            m_config.lon   = m_ref_lon;
            m_config.height= m_ref_hae;
+
+           dispatch(m_config);
+          }          
+          if (paramChanged(m_args.disable_collision_velocity) ||
+              paramChanged(m_args.disable_formation_velocity) ||
+              paramChanged(m_args.disable_mission_velocity)   ||
+              paramChanged(m_args.hold_current_formation)
+             )
+          {
+            debug("m_config.update = false");
+            m_config.update = false;
+            m_config.disable_collision_vel = m_args.disable_collision_velocity;
+            m_config.disable_formation_vel = m_args.disable_formation_velocity;
+            m_config.disable_mission_vel   = m_args.disable_mission_velocity;
+            m_config.formation  = m_args.hold_current_formation;
+            dispatch(m_config);
+            debug("CoordConfig dispatched");
           }
           dispatch(m_config);
           debug("CoordConfig dispatched");
@@ -386,8 +423,26 @@ namespace Transports
         void
         task(void)
         {
-          //if (!isActive())
-          //  return;
+          m_config.update = false;
+          dispatch(m_config);
+        }
+
+        //! Print matrix (for debuging)
+        void
+        printMatrix(Matrix m, DUNE::Tasks::DebugLevel dbg = DEBUG_LEVEL_DEBUG)
+        {
+          if (getDebugLevel() >= dbg)
+          {
+            printf("[DEBUG Matrix]\n");
+            for (int i = 0; i < m.rows(); i++)
+            {
+              for (int j = 0; j < m.columns(); j++)
+              {
+                printf("%f ", m.element(i, j));
+              }
+              printf("\n");
+            }
+          }
         }
       };
     }
