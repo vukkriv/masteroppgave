@@ -42,7 +42,9 @@ namespace Transports
         bool use_task;
 
         //! Vehicle list
-        std::vector<std::string> formation_systems;
+        //std::vector<std::string> formation_systems;
+
+        float print_frequency;
       };
 
       //static const std::string c_entity_names[] = {DTR_RT("Centroid")};
@@ -66,11 +68,15 @@ namespace Transports
         std::vector<bool> connected;
 
         void
-        setVehicleList(std::vector<std::string> list, DUNE::Tasks::Task *task)
+        setVehicleList(const IMC::CoordConfig* config, DUNE::Tasks::Task *task)
         {
+          const IMC::MessageList<IMC::VehicleFormationParticipant>* part = &config->participants;
+          IMC::MessageList<IMC::VehicleFormationParticipant>::const_iterator itr;
+
           // Extract vehicle IDs
           m_uav_ID.clear();
-          if (list.empty())
+
+          if (static_cast<unsigned int>(part->size()) == 0)
           {
             m_uav_ID.push_back(task->getSystemId());
             m_N = 1;
@@ -78,21 +84,26 @@ namespace Transports
           }
           else
           {
-            m_N = list.size();
+            m_N = static_cast<unsigned int>(part->size());
             bool found_self = false;
-            for (unsigned int uav = 0; uav < m_N; uav++)
+            unsigned int uav = 0;
+            for (itr = part->begin(); itr != part->end(); itr++)
             {
-              m_uav_ID.push_back(task->resolveSystemName(list[uav]));
-              if (m_uav_ID[uav] == task->getSystemId())
+              //all participants
+              m_uav_ID.push_back((*itr)->vid);
+
+              if ((*itr)->vid == task->getSystemId())
               {
                 m_i = uav; // Set my formation id
                 found_self = true;
               }
+              uav += 1;
             }
             if (!found_self)
               throw DUNE::Exception(
                   "Vehicle not found in formation vehicle list!");
           }
+
           connected = std::vector<bool>(m_N, false);
         }
 
@@ -100,8 +111,7 @@ namespace Transports
         allConnected()
         {
           bool allConn = true;
-          for (std::vector<bool>::iterator it = connected.begin();
-              it != connected.end(); ++it)
+          for (std::vector<bool>::iterator it = connected.begin(); it != connected.end(); ++it)
             allConn *= *it;
           return allConn;
         }
@@ -150,6 +160,8 @@ namespace Transports
         Matrix alpha;
 
         IMC::EstimatedLocalState els;
+        IMC::EstimatedState m_es;
+        IMC::Acceleration m_acc;
 
         void
         calculateCentroid(std::vector<IMC::EstimatedLocalState> &el_v,
@@ -157,17 +169,18 @@ namespace Transports
         {
           this->m_N = noAgents;
 
-          els.state->x = 0;
-          els.state->y = 0;
-          els.state->z = 0;
+          m_es.x = 0;
+          m_es.y = 0;
+          m_es.z = 0;
+
           v_n *= 0;
           a_n *= 0;
           for (int i = 0; i < noAgents; i++)
           {
             double factor = (double)1 / double(noAgents);
-            els.state->x += factor * (el_v[i].state->x);
-            els.state->y += factor * (el_v[i].state->y);
-            els.state->z += factor * (el_v[i].state->z);
+            m_es.x += factor * (el_v[i].state->x);
+            m_es.y += factor * (el_v[i].state->y);
+            m_es.z += factor * (el_v[i].state->z);
 
             v_n(0) += factor * (el_v[i].state->vx);
             v_n(1) += factor * (el_v[i].state->vy);
@@ -184,9 +197,9 @@ namespace Transports
             a_n(2) += factor * (el_v[i].acc->z + alpha(2));
           };
 
-          els.state->vx = v_n(0);
-          els.state->vy = v_n(1);
-          els.state->vz = v_n(2);
+          m_es.vx = v_n(0);
+          m_es.vy = v_n(1);
+          m_es.vz = v_n(2);
 
           /*
            let the internal localstate acc be in body
@@ -195,28 +208,32 @@ namespace Transports
            state.az = a_n(2);
            */
 
-          els.state->phi = 0;
-          els.state->theta = 0;
-          els.state->psi = this->centroidHeading(el_v);
+          m_es.phi = 0;
+          m_es.theta = 0;
+          m_es.psi = this->centroidHeading(el_v);
 
-          els.state->p = 0;
-          els.state->q = 0;
-          els.state->r = 0;  //TODO: find expression for this
-          omega(2) = els.state->r;
+          m_es.p = 0;
+          m_es.q = 0;
+          m_es.r = 0;  //TODO: find expression for this
+          omega(2) = m_es.r;
 
           v_b = getBodyVelocity();
-          els.state->u = v_b(0);
-          els.state->v = v_b(1);
-          els.state->w = v_b(2);
+          m_es.u = v_b(0);
+          m_es.v = v_b(1);
+          m_es.w = v_b(2);
+
           a_b = getBodyAcceleration();
-          els.acc->x = a_b(0);
-          els.acc->y = a_b(1);
-          els.acc->z = a_b(2);
+          m_acc.x = a_b(0);
+          m_acc.y = a_b(1);
+          m_acc.z = a_b(2);
 
           //all vehicles should have the same reference point
-          els.state->lat     = el_v[0].state->lat;
-          els.state->lon     = el_v[0].state->lon;
-          els.state->height  = el_v[0].state->height;
+          m_es.lat     = el_v[0].state->lat;
+          m_es.lon     = el_v[0].state->lon;
+          m_es.height  = el_v[0].state->height;
+
+          els.state.set(m_es);
+          els.acc.set(m_acc);
         }
       private:
 
@@ -237,21 +254,21 @@ namespace Transports
           }
           else
           {
-            return el_v[1].state->psi;
+            return el_v[0].state->psi;
           }
         }
 
         Matrix
         getBodyVelocity()
         {
-          Matrix Rcn = transpose(Rz(els.state->psi));
+          Matrix Rcn = transpose(Rz(m_es.psi));
           return Rcn * v_n;
         }
 
         Matrix
         getBodyAcceleration()
         {
-          Matrix Rcn = transpose(Rz(els.state->psi));
+          Matrix Rcn = transpose(Rz(m_es.psi));
           return Rcn * (a_n - skew(omega) * v_n);
         }
 
@@ -280,22 +297,31 @@ namespace Transports
 
         std::vector<IMC::EstimatedLocalState> states;
 
+        bool m_configured;
         //! Constructor.
         //! @param[in] name task name.
         //! @param[in] ctx context.
         Task(const std::string& name, Tasks::Context& ctx) :
-            DUNE::Tasks::Task(name, ctx)
+            DUNE::Tasks::Task(name, ctx),
+            m_configured(false)
         {
           param("Formation Centroid", m_args.use_task)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .defaultValue("false")
+//          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .defaultValue("true")
           .description("Enable Formation Centroid EstimatedLocalState.");
-
+/*
           param("Vehicle List", m_args.formation_systems)
           .defaultValue("")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("System name list of the formation vehicles.");
+*/
+          param("Print Frequency", m_args.print_frequency)
+          .defaultValue("0.0")
+          .units(Units::Second)
+          .description("Frequency of pos.data prints. Zero => Print on every update.");
 
+          bind<IMC::CoordConfig>(this);
           bind<IMC::EstimatedLocalState>(this);
         }
 
@@ -303,6 +329,7 @@ namespace Transports
         void
         onUpdateParameters(void)
         {
+          /*
           debug("Starting update of parameters.");
           if (paramChanged(m_args.formation_systems))
           {
@@ -310,6 +337,7 @@ namespace Transports
             m_vehicles.setVehicleList(m_args.formation_systems, this);
             states = std::vector<IMC::EstimatedLocalState>(m_vehicles.m_N);
           }
+          */
         }
 
         //! Reserve entity identifiers.
@@ -343,14 +371,57 @@ namespace Transports
         onResourceRelease(void)
         {
         }
+
+        void
+        consume(const IMC::CoordConfig* config)
+        {
+          double now = Clock::getSinceEpoch();
+          static double last_print;
+          if (!m_args.print_frequency || !last_print
+              || (now - last_print) > 1.0 / m_args.print_frequency)
+          {
+            spew("Got CoordConfig from '%s'", resolveSystemId(config->getSource()));
+            last_print = now;
+          }
+
+          if (config->update || !m_configured)
+          {
+            //CoordConfig contains new formation data
+            debug("New Formation vehicles' list.");
+            m_vehicles.setVehicleList(config, this);
+            states = std::vector<IMC::EstimatedLocalState>(m_vehicles.m_N);
+            if (!m_configured)
+            {
+              m_configured = true;
+              debug("Configured with IMC::CoordConfig");
+            }
+          }
+        }
+
         void
         consume(const IMC::EstimatedLocalState* msg)
         {
-          std::string vh_name = resolveSystemId(msg->getSource());
-          spew("Got EstimatedLocalState \nfrom '%s'", vh_name.c_str());
+          if (!m_configured)
+          {
+            spew("Not configured!");
+            return;
+          }
+          double now = Clock::getSinceEpoch();
+          static double last_print;
+          if (!m_args.print_frequency || !last_print
+              || (now - last_print) > 1.0 / m_args.print_frequency)
+          {
+            spew("Got EstimatedLocalState from system '%s'.",resolveSystemId(msg->getSource()));
+            if (msg->getSource() == this->getSystemId())
+              spew("Entity '%s'", resolveEntity(msg->getSourceEntity()).c_str());
+            last_print = now;
+            if (!m_configured)
+              spew("Not configured");
+          }
 
-          if (msg->getSource() == this->getSystemId())
-            spew("Entity '%s'", resolveEntity(msg->getSourceEntity()).c_str());
+          if (!m_configured)
+            return;
+
           int vh_id = m_vehicles.getVehicle(msg->getSource());
           spew("Vehicle[%d]", vh_id);
           if (vh_id != -1)
@@ -374,6 +445,7 @@ namespace Transports
           if (m_vehicles.allConnected()
               && msg->getSource() == this->getSystemId())
           {
+            //spew("m_centroid.v_n.size()=%d",m_centroid.);
             m_centroid.calculateCentroid(states, m_vehicles.m_N);
             spew(
                 "Dispatching centroid EstimatedLocalState, heading: %f [deg], noAgents=[%d]",
