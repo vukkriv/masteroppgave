@@ -36,13 +36,6 @@ namespace Transports
 
     struct Arguments
     {
-      double ref_lat;
-      //! Reference longitude
-      double ref_lon;
-      //! Reference height (above elipsoid)
-      double ref_hae;
-
-      bool use_static_ref;
     };
 
     struct Task: public DUNE::Tasks::Task
@@ -54,6 +47,7 @@ namespace Transports
       fp64_t m_ref_lat, m_ref_lon;
       fp32_t m_ref_hae;
       bool m_ref_valid;
+      bool m_use_fallback;
 
       IMC::EstimatedLocalState m_elstate;
       IMC::EstimatedState m_estate;
@@ -64,57 +58,20 @@ namespace Transports
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Task(name, ctx)
+        DUNE::Tasks::Task(name, ctx),
+        m_use_fallback(true)
       {
-        param("Latitude", m_args.ref_lat)
-        .defaultValue("-999.0")
-        .units(Units::Degree)
-        .description("Reference Latitude");
-
-        param("Longitude", m_args.ref_lon)
-        .defaultValue("0.0")
-        .units(Units::Degree)
-        .description("Reference Longitude");
-
-        param("Height", m_args.ref_hae)
-        .defaultValue("0.0")
-        .units(Units::Meter)
-        .description("Reference Height (above elipsoid)");
-
-        param("Use Static Reference", m_args.use_static_ref)
-        .defaultValue("true")
-        .visibility(Tasks::Parameter::VISIBILITY_USER)
-        .description("Static reference LLH is set from config file");
-
         // Bind to incoming IMC messages
         bind<IMC::EstimatedState>(this);
         bind<IMC::Acceleration>(this);
+        bind<IMC::CoordConfig>(this);
       }
 
       //! Update internal state with new parameter values.
       void
       onUpdateParameters(void)
       {
-        if (paramChanged(m_args.ref_lat) || paramChanged(m_args.ref_lon) || paramChanged(m_args.ref_hae))
-        {
-          if (m_args.ref_lat == -999) // Reference not set; return
-            return;
 
-          inf("New reference position.");
-
-          // Check validity
-          if (std::abs(m_args.ref_lat) > 90)
-            throw DUNE::Exception("Unvalid reference latitude!");
-          if (std::abs(m_args.ref_lon) > 180)
-            throw DUNE::Exception("Unvalid reference longitude!");
-
-          m_ref_lat = Angles::radians(m_args.ref_lat);
-          m_ref_lon = Angles::radians(m_args.ref_lon);
-          m_ref_hae = m_args.ref_hae;
-          m_ref_valid = true;
-          inf("Ref. LLH set from ini: [Lat = %f, Lon = %f, Height = %.1f]",
-              Angles::degrees(m_ref_lat), Angles::degrees(m_ref_lon), m_ref_hae);
-        }
       }
 
       //! Reserve entity identifiers.
@@ -148,13 +105,37 @@ namespace Transports
       }
 
       void
+      consume(const IMC::CoordConfig* config)
+      {
+        m_use_fallback = config->use_fallback;
+        if (m_use_fallback)
+        {
+          if (config->lat == -999) // Reference not set; return
+            return;
+
+          // Check validity
+          if (std::abs(config->lat) > 90)
+            throw DUNE::Exception("Unvalid reference latitude!");
+          if (std::abs(config->lon) > 180)
+            throw DUNE::Exception("Unvalid reference longitude!");
+
+          m_ref_lat = config->lat;
+          m_ref_lon = config->lon;
+          m_ref_hae = config->height;
+          m_ref_valid = true;
+          debug("Ref. LLH set from ini: [Lat = %f, Lon = %f, Height = %.1f]",
+              Angles::degrees(m_ref_lat), Angles::degrees(m_ref_lon), m_ref_hae);
+        }
+      }
+
+      void
       consume(const IMC::EstimatedState* msg)
       {
         //Message should be from this vehicle
         if ( msg->getSource() != getSystemId() )
         return;
 
-        if (!m_ref_valid && m_args.use_static_ref)
+        if (!m_ref_valid && m_use_fallback)
         {
          war("Ignored ESTATE; valid reference LLH not set!");
          return;
@@ -163,7 +144,7 @@ namespace Transports
         spew("Got Estimated State from system '%s' and entity '%s'.",
         resolveSystemId(msg->getSource()),
         resolveEntity(msg->getSourceEntity()).c_str());
-        if (m_args.use_static_ref)
+        if (m_use_fallback)
         {
          m_estate.lat    = m_ref_lat;
          m_estate.lon    = m_ref_lon;
