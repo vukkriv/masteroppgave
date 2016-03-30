@@ -120,7 +120,7 @@ namespace Transports
         {
           param("Formation Configuration", m_args.use_task)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          //.scope(Tasks::Parameter::SCOPE_MANEUVER)
           .defaultValue("true")
           .description("Enable Formation Configuration.");
 
@@ -386,7 +386,6 @@ namespace Transports
             dispatch(m_config);
             debug("CoordConfig dispatched");
           }
-          dispatch(m_config);
           debug("CoordConfig dispatched");
         }
 
