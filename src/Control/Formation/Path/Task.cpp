@@ -591,13 +591,12 @@ namespace Control
         stepRefSim(const IMC::EstimatedLocalState& state, const TrackingState& ts)
         {
           (void)state;
-          spew("Step refsim");
           //get target speed and heading (these or the reference states should be logged somehow)
 
+          spew("ts.delta=%f",ts.delta);
           //update system matrix with the current states
           updateMatrixA();
 
-          spew("Get integrator value");
           Matrix e     = m_refsim.getError();
           Matrix e_dot = m_refsim.getDError();
 
@@ -609,20 +608,18 @@ namespace Control
           if (m_integrator_value.norm_2() > m_args.max_integral)
             m_integrator_value = m_args.max_integral * m_integrator_value / m_integrator_value.norm_2();
 
-          spew("Calculate u");
 
           Matrix u_p = m_refsim.Kp*e;
           Matrix u_i = m_refsim.Ki*m_integrator_value;
           Matrix u_d = m_refsim.Kd*e_dot;
           Matrix u   = u_p + u_i + u_d;
-          spew("Set x_dot_des");
+
           m_refsim.x_dot_des = m_refsim.getDesXdot(u);
           // Integrate (Euler)
-          spew("Integrate Euler");
           m_refsim.x_des += ts.delta * (m_refsim.x_dot_des);
-
+          if (m_refsim.x_des.norm_2() > 100)
+            war("m_refsim.x_des.norm_2()=%f",m_refsim.x_des.norm_2());
           m_refsim.x_des(R_HEADING) = Angles::normalizeRadian(m_refsim.x_des(R_HEADING));
-          spew("Step refsim done.");
 
           IMC::ControlParcel parcel_s = m_parcels[PC_PID_SURGE];
           parcel_s.p = u_p(0);
@@ -657,6 +654,7 @@ namespace Control
           m_desired_heading[D_REFERENCE].value = m_refsim.x_ref(R_HEADING);
           dispatch(m_desired_heading[D_REFERENCE]);
 
+          spew("stepRefSim");
           stepRefSim(state, ts);
 
           if (!m_args.enable_refsim)
@@ -672,6 +670,7 @@ namespace Control
             m_refsim.x_dot_des(R_HEADING) = 0;
             m_refsim.x_dot_des(R_HEADING+1) = 0;
           }
+
           if (!m_args.refsim.c_surge.use_controller)
           {
             m_refsim.x_des(R_SURGE)     = m_refsim.x_ref(R_SURGE);
@@ -687,11 +686,16 @@ namespace Control
         step(const IMC::EstimatedLocalState& state, const TrackingState& ts)
         {
           if (!m_args.use_controller)
+          {
+            trace("Controller not enabled");
             return;
+          }
 
           double now = Clock::get();
+          spew("updateReferenceSim");
 
           updateReferenceSim(state, ts, now);
+
 
           //Desired acceleration and velocity in body
           m_desired_linear[D_DESIRED].vx = m_refsim.getDesSpeed();
@@ -705,6 +709,7 @@ namespace Control
           dispatch(m_desired_linear[D_DESIRED]);
           //Desired heading
           m_desired_heading[D_DESIRED].value = m_refsim.getDesHeading();
+          dispatch(m_desired_heading[D_DESIRED]);
           dispatch(m_desired_heading[D_DESIRED]);
           //
           m_timestamp_prev_step = Clock::get();
