@@ -80,12 +80,8 @@ namespace Control
         Matrix Ki;
         Matrix Kd;
 
-
         double max_norm_v;
         double max_integral;
-
-        //! Frequency of controller
-        double m_freq;
 
         //! Maximum cross-track error aircraft
         Matrix eps_ct_a;
@@ -93,6 +89,8 @@ namespace Control
         Matrix eps_ct_n;
 
         std::string centroid_els_entity_label;
+
+        float print_frequency;
       };
 
       static const std::string c_desired_names[] = {"Reference","Desired"};
@@ -128,7 +126,7 @@ namespace Control
 
       enum Vehicle
       {
-        AIRCRAFT = 0, COPTER_LEAD, COPTER_FOLLOW, INVALID = -1
+        FIXEDWING = 0, CENTROID, INVALID = -1
       };
 
       static const char * NetRecoveryLevelEnumStrings[] =
@@ -304,11 +302,6 @@ namespace Control
           .defaultValue("false").description(
               "Use mean window on aircraft states");
 
-          param("Frequency", m_args.m_freq).visibility(
-              Tasks::Parameter::VISIBILITY_USER)
-  //	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .defaultValue("1.0").description("Controller frequency");
-
           param("Disable Z flag", m_args.disable_Z).defaultValue("false").visibility(
               Tasks::Parameter::VISIBILITY_USER).description(
               "Choose whether to disable Z flag. In turn, this will utilize new rate controller on some targets");
@@ -392,6 +385,11 @@ namespace Control
           .defaultValue("Formation Centroid")
           .description("Entity label for the centroid EstimatedLocalState");
 
+          param("Print Frequency", m_args.print_frequency)
+          .defaultValue("0.0")
+          .units(Units::Second)
+          .description("Frequency of pos.data prints. Zero => Print on every update.");
+
           // Bind incoming IMC messages
           bind<IMC::EstimatedLocalState>(this);
           bind<IMC::DesiredNetRecoveryPath>(this);
@@ -403,7 +401,7 @@ namespace Control
         {
           debug("Reserve entities");
           for (unsigned i = 0; i < NUM_PARCELS; ++i)
-            m_parcels[i].setSourceEntity(reserveEntity(c_parcel_names[i] + " Parcel"));         
+            m_parcels[i].setSourceEntity(reserveEntity(c_parcel_names[i] + " Parcel" + this->getEntityLabel()) );         
           for (unsigned i = 0; i < NUM_DESIRED; ++i)
           {
             m_desired_linear[i].setSourceEntity(reserveEntity(c_desired_names[i] + " Linear " + this->getEntityLabel()));
@@ -418,10 +416,6 @@ namespace Control
         void
         onUpdateParameters(void)
         {
-          debug("Current frequency: %f", getFrequency());
-          setFrequency(m_args.m_freq);
-          debug("Frequency changed to : %f", getFrequency());
-
           Kp = Matrix(3);
           Ki = Matrix(3);
           Kd = Matrix(3);
@@ -551,9 +545,9 @@ namespace Control
           //     resolveEntity(el->getSourceEntity()).c_str(),
           //     resolveSystemId(el->getSource()));
 
-          std::string vh_id = resolveSystemId(el->getSource());
           //debug("Received EstimatedLocalState from %s: ",vh_id.c_str());
-          int s = getVehicle(vh_id);
+          int s = getVehicle(el);
+
           //spew("s=%d",s);
           if (s == INVALID)  //invalid vehicle
             return;
@@ -592,6 +586,23 @@ namespace Control
                    ***********************/
                   //m_curr_state = IMC::NetRecoveryState::NR_STOP;
                   inf("Initialized, at standby");
+                }
+                else
+                {
+                  static double last_print;
+                  double now = Clock::getSinceEpoch();
+                  if (!m_args.print_frequency || !last_print
+                      || (now - last_print) > 1.0 / m_args.print_frequency)
+                  {
+
+                    if (!m_initialized[FIXEDWING])
+                      war("FixedWing not connected");
+                    else if (!m_initialized[CENTROID])
+                      war("Centroid not connected");
+                    else
+                      war("FixedWing and Centroid is not connected");
+                    last_print = now;
+                  }
                 }
                 break;
               }
@@ -686,7 +697,7 @@ namespace Control
             inf("Coordinator already initialized");
             return;
           }
-          unsigned int no_vehicles = m_vehicles.no_vehicles;
+          unsigned int no_vehicles = 2;
 
           m_estate = std::vector<IMC::EstimatedLocalState>(no_vehicles);
           m_p = std::vector<Matrix>(no_vehicles);
@@ -790,7 +801,7 @@ namespace Control
           m_p_path[s] = eps;
           m_v_path[s] = eps_dot;
 
-          if (s == AIRCRAFT)
+          if (s == FIXEDWING)
           {
             m_p_path[s](1) = m_p_path[s](1) - m_args.m_crosstrack_offset;
             m_p_path[s](2) = m_p_path[s](2) + m_runway.z_off_a;
@@ -799,8 +810,8 @@ namespace Control
           Matrix p_n = getNetPosition(m_p);
           Matrix v_n = getNetVelocity(m_v);
 
-          Matrix delta_p_path = R * (p_n - m_p[AIRCRAFT]);
-          Matrix delta_v_path = R * (v_n - m_v[AIRCRAFT]);
+          Matrix delta_p_path = R * (p_n - m_p[FIXEDWING]);
+          Matrix delta_v_path = R * (v_n - m_v[FIXEDWING]);
 
           delta_p_path_x = delta_p_path(0);
           delta_v_path_x = delta_v_path(0);
@@ -845,8 +856,8 @@ namespace Control
         {
           bool aircraftOff = false;
           bool netOff = false;
-          if (abs(m_p_path_mean[AIRCRAFT](1)) >= m_args.eps_ct_a(0)
-              || abs(m_p_path_mean[AIRCRAFT](2)) >= m_args.eps_ct_a(1))
+          if (abs(m_p_path_mean[FIXEDWING](1)) >= m_args.eps_ct_a(0)
+              || abs(m_p_path_mean[FIXEDWING](2)) >= m_args.eps_ct_a(1))
           {
             aircraftOff = true;
           }
@@ -861,21 +872,18 @@ namespace Control
         }
 
         Vehicle
-        getVehicle(std::string src_entity)
+        getVehicle(const EstimatedLocalState* el)
         {
-          if (src_entity == m_vehicles.aircraft)
+          std::string vh_id = resolveSystemId(el->getSource());
+
+          if (vh_id == m_vehicles.aircraft)
           {
-            return AIRCRAFT;
+            return FIXEDWING;
           }
-          for (unsigned int i = 0; i < m_vehicles.copters.size(); i++)
+          else if(  el->getSource() == this->getSystemId() &&
+                    resolveEntity(el->getSourceEntity()).c_str() == m_args.centroid_els_entity_label)
           {
-            if (src_entity == m_vehicles.copters[i])
-            {
-              if (i == 0)
-                return COPTER_LEAD;
-              else
-                return COPTER_FOLLOW;
-            }
+            return CENTROID;
           }
           return INVALID;
         }
@@ -883,9 +891,7 @@ namespace Control
         bool
         allInitialized()
         {
-          unsigned int vehicles = m_vehicles.no_vehicles;
-          if (!m_args.enable_coord)
-            vehicles = 2;
+          unsigned int vehicles = 2;
 
           for (unsigned int i = 0; i < vehicles; i++)
           {
@@ -898,11 +904,11 @@ namespace Control
         bool
         aircraftApproaching()
         {
-          if (   m_v_path[AIRCRAFT](0) > 0
-              && m_p_path[AIRCRAFT](0) < 0
-              && m_p_path[AIRCRAFT](0) > -m_args.max_px_app
-              && abs(m_p_path[AIRCRAFT](1)) < m_args.max_py_app
-              && abs(m_v_path[AIRCRAFT](1)) < m_args.max_vy_app)
+          if (   m_v_path[FIXEDWING](0) > 0
+              && m_p_path[FIXEDWING](0) < 0
+              && m_p_path[FIXEDWING](0) > -m_args.max_px_app
+              && abs(m_p_path[FIXEDWING](1)) < m_args.max_py_app
+              && abs(m_v_path[FIXEDWING](1)) < m_args.max_vy_app)
             return true;
           return false;
         }
@@ -929,8 +935,8 @@ namespace Control
         {
           //simulation: position check
           //real life: weight cell in combination with rotary sensor
-          Matrix diff = m_p_path[COPTER_LEAD] - m_p_path[AIRCRAFT];
-          if (diff.norm_2() < m_args.m_coll_eps && m_v_path[AIRCRAFT](0) > 0)
+          Matrix diff = m_p_path[CENTROID] - m_p_path[FIXEDWING];
+          if (diff.norm_2() < m_args.m_coll_eps && m_v_path[FIXEDWING](0) > 0)
             return true;
           return false;
         }
@@ -938,7 +944,7 @@ namespace Control
         bool
         aircraftPassed()
         {
-          Matrix diff = m_p_path[COPTER_LEAD] - m_p_path[AIRCRAFT];
+          Matrix diff = m_p_path[CENTROID] - m_p_path[FIXEDWING];
           if (diff(0) < -m_args.m_coll_eps)
             return true;
           return false;
@@ -958,7 +964,7 @@ namespace Control
         void
         updateStartRadius()
         {
-          double v_a = abs(m_v_path[AIRCRAFT](0));
+          double v_a = abs(m_v_path[FIXEDWING](0));
           m_startCatch_radius = calcStartRadius(v_a, 0, m_u_ref, m_ad,
                                                   m_args.m_coll_r);
           if (m_startCatch_radius == -1)
@@ -1068,13 +1074,13 @@ namespace Control
           state.y_n_d = m_p_ref_path(1);
           state.z_n_d = m_p_ref_path(2);
 
-          state.x_a = m_p_path[AIRCRAFT](0);
-          state.y_a = m_p_path[AIRCRAFT](1);
-          state.z_a = m_p_path[AIRCRAFT](2);
+          state.x_a = m_p_path[FIXEDWING](0);
+          state.y_a = m_p_path[FIXEDWING](1);
+          state.z_a = m_p_path[FIXEDWING](2);
 
-          state.vx_a = m_v_path[AIRCRAFT](0);
-          state.vy_a = m_v_path[AIRCRAFT](1);
-          state.vz_a = m_v_path[AIRCRAFT](2);
+          state.vx_a = m_v_path[FIXEDWING](0);
+          state.vy_a = m_v_path[FIXEDWING](1);
+          state.vz_a = m_v_path[FIXEDWING](2);
 
           state.delta_p_p = delta_p_path_x;
           state.delta_v_p = delta_v_path_x;
@@ -1090,31 +1096,13 @@ namespace Control
         Matrix
         getNetPosition(std::vector<Matrix> p)
         {
-          Matrix p_n;
-          if (m_args.enable_coord && m_vehicles.no_vehicles == 3)
-          {
-            p_n = 0.5 * (p[COPTER_LEAD] + p[COPTER_FOLLOW]);
-          }
-          else
-          {
-            p_n = p[COPTER_LEAD];
-          }
-          return p_n;
+          return p[CENTROID];
         }
 
         Matrix
         getNetVelocity(std::vector<Matrix> v)
         {
-          Matrix v_n;
-          if (m_args.enable_coord && m_vehicles.no_vehicles == 3)
-          {
-            v_n = 0.5 * (v[COPTER_LEAD] + v[COPTER_FOLLOW]);
-          }
-          else
-          {
-            v_n = v[COPTER_LEAD];
-          }
-          return v_n;
+          return v[CENTROID];
         }
 
         //! Control loop in path-frame
@@ -1376,13 +1364,13 @@ namespace Control
             {
               if (m_args.use_mean_window_aircraft)
               {
-                p_a_path = m_p_path_mean[AIRCRAFT];
-                v_a_path = m_v_path_mean[AIRCRAFT];
+                p_a_path = m_p_path_mean[FIXEDWING];
+                v_a_path = m_v_path_mean[FIXEDWING];
               }
               else
               {
-                p_a_path = m_p_path[AIRCRAFT];
-                v_a_path = m_v_path[AIRCRAFT];
+                p_a_path = m_p_path[FIXEDWING];
+                v_a_path = m_v_path[FIXEDWING];
               }
             }
 
