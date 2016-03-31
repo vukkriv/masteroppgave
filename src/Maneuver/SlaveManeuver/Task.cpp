@@ -54,6 +54,7 @@ namespace Maneuver
       void
       consume(const IMC::SlaveManeuver* maneuver)
       {
+        (void) maneuver;
         inf("SlaveManeuver maneuver received");
         // First disable all
         setControl(0);
