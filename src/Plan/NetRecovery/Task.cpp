@@ -303,15 +303,27 @@ namespace Plan
         man_loit.duration      = m_args.fw_loiter.duration;
         man_loit.radius        = m_args.fw_loiter.radius;
 
-        //Should calculate based on a desired along-track position behind the virtual runway
-        man_loit.lat = maneuver->start_lat;
-        man_loit.lon = maneuver->start_lon;
+        //Calculate loiter point based on desired along-track position behind the start point of the virtual runway
 
         double bearing;
         double range;
+
         WGS84::getNEBearingAndRange(maneuver->start_lat,maneuver->start_lon,
                                     maneuver->end_lat,maneuver->end_lon,
                                     &bearing,&range);
+
+        double N_offset = -m_args.fw_loiter.distance_runway * cos(bearing);
+        double E_offset = -m_args.fw_loiter.distance_runway * sin(bearing);
+        double lat_offset = maneuver->start_lat;
+        double lon_offset = maneuver->start_lon;
+        double height_offset = 0.0;
+
+        WGS84::displace(N_offset, E_offset, 0.0,
+                  &lat_offset, &lon_offset, &height_offset);
+
+        man_loit.lat = lat_offset;
+        man_loit.lon = lon_offset;
+
 
 
 
