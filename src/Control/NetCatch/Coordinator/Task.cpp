@@ -460,30 +460,7 @@ namespace Control
           m_dz.z_units = msg->z_units;
 
           m_vehicles.aircraft = msg->aircraft;
-          m_vehicles.no_vehicles = 1;
-          m_vehicles.copters = std::vector<std::string>();
-          std::stringstream lineStream(msg->multicopters.c_str());
-          std::string copter;
-          while (std::getline(lineStream, copter, ','))
-          {
-            std::stringstream copterStream(copter.c_str());
-            while (std::getline(copterStream, copter, ' '))
-            {
-              if (copter == "list")
-                break;
-              inf("Copter: %s", copter.c_str());
-              m_vehicles.no_vehicles++;
-              m_vehicles.copters.push_back(copter);
-            }
-            if (!m_args.enable_coord)
-              break;
-          }
-          inf("No vehicles: %d", m_vehicles.no_vehicles);
-          inf("Aircraft: %s", m_vehicles.aircraft.c_str());
-          for (unsigned int i = 0; i < m_vehicles.copters.size(); i++)
-          {
-            inf("Multicopter[%d]: %s", i, m_vehicles.copters[i].c_str());
-          }
+          m_vehicles.no_vehicles = 2; //aircraft and virtual vehicle "centroid"
 
           m_runway.lat_start = msg->start_lat;
           m_runway.lon_start = msg->start_lon;
@@ -874,9 +851,7 @@ namespace Control
         Vehicle
         getVehicle(const EstimatedLocalState* el)
         {
-          std::string vh_id = resolveSystemId(el->getSource());
-
-          if (vh_id == m_vehicles.aircraft)
+          if (resolveSystemId(el->getSource()) == m_vehicles.aircraft)
           {
             return FIXEDWING;
           }
@@ -891,9 +866,7 @@ namespace Control
         bool
         allInitialized()
         {
-          unsigned int vehicles = 2;
-
-          for (unsigned int i = 0; i < vehicles; i++)
+          for (unsigned int i = 0; i < m_vehicles.no_vehicles; i++)
           {
             if (!m_initialized[i])
               return false;
@@ -1261,6 +1234,7 @@ namespace Control
           dispatch(errors_cross_y);
           dispatch(errors_cross_z);
 
+		  //sendCentroidLinearState(m_v_ref_path,Matrix(3,1,0.0),D_REFERENCE);
           return v_path;
         }
 
@@ -1272,28 +1246,26 @@ namespace Control
         }
 
         void
-        sendDesiredCentroidLinearState(Matrix vel,Matrix acc)
+        sendCentroidLinearState(Matrix vel,Matrix acc, DesiredEntites type)
         {
           //please note that these value are given in the centroid body frame
 
-          IMC::DesiredLinearState m_desired_state;
+          m_desired_linear[type].vx = vel(0);
+          m_desired_linear[type].vy = vel(1);
+          m_desired_linear[type].vz = vel(2);
 
-          m_desired_state.vx = vel(0);
-          m_desired_state.vy = vel(1);
-          m_desired_state.vz = vel(2);
-
-          m_desired_state.ax = acc(0);
-          m_desired_state.ay = acc(1);
-          m_desired_state.az = acc(2);
+          m_desired_linear[type].ax = acc(0);
+          m_desired_linear[type].ay = acc(1);
+          m_desired_linear[type].az = acc(2);
 
           if (m_args.disable_Z)
-            m_desired_state.flags = IMC::DesiredLinearState::FL_X
+            m_desired_linear[type].flags = IMC::DesiredLinearState::FL_X
                 | IMC::DesiredLinearState::FL_Y;
           else
-            m_desired_state.flags = IMC::DesiredLinearState::FL_X
+            m_desired_linear[type].flags = IMC::DesiredLinearState::FL_X
             | IMC::DesiredLinearState::FL_Y | IMC::DesiredLinearState::FL_Z;
 
-          dispatch(m_desired_state);
+          dispatch(m_desired_linear[type]);
         }
 
         virtual void
@@ -1387,7 +1359,7 @@ namespace Control
             Matrix v_d = RCentroidPath()*v_path_d;
             Matrix a_d = RCentroidPath()*m_a_des_path;
 
-            sendDesiredCentroidLinearState(v_d,a_d);
+            sendCentroidLinearState(v_d,a_d,D_DESIRED);
           }
 
         }
