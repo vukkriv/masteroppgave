@@ -472,14 +472,15 @@ namespace Control
         updateFormationParameters()
         {
           debug("New desired difference variables.");
-
-          // Resize and reset difference variables matrices to fit number of links
-          m_z.resizeAndFill(3, m_L, 0);
-          m_z_d.resizeAndFill(3, m_L, 0);
-          // Update desired difference variables matrix
-          calcDiffVariable(&m_z_d, m_D, m_x_c);
-
-          printMatrix(m_z_d);
+          if (m_N > 1)
+          {
+            // Resize and reset difference variables matrices to fit number of links
+            m_z.resizeAndFill(3, m_L, 0);
+            m_z_d.resizeAndFill(3, m_L, 0);
+            // Update desired difference variables matrix
+            calcDiffVariable(&m_z_d, m_D, m_x_c);
+            printMatrix(m_z_d);
+          }
 
           // Initialize matrices
           m_last_pos_update = Matrix(1, m_N, Clock::get());
@@ -637,11 +638,13 @@ namespace Control
             //CoordConfig contains new formation data
             // Parse participants
             configParseParticipants(config);
-            // Parse incidence matrix
-            configParseIncidence(config);
-            // Parse link gains
-            configParseLinkGains(config);
-
+            if (m_N > 1)
+            {
+              // Parse incidence matrix
+              configParseIncidence(config);
+              // Parse link gains
+              configParseLinkGains(config);
+            }
             updateFormationParameters();
             if (!m_configured)
             {
@@ -1112,7 +1115,8 @@ namespace Control
 
           //F_i in AGENT i body
           Matrix F_i = Matrix(3, 1, 0.0);
-          Matrix Rni = RNedAgent();
+          Matrix Rni = Matrix(3, 1, 0.0);
+          Rni = RNedAgent();
 
           Matrix e_v_est = v_des - m_v;
           Matrix e_a_est = a_des - m_a;
@@ -1136,7 +1140,11 @@ namespace Control
           m_desired_force.y = F_des(1);
           m_desired_force.z = F_des(2);
 
-          if (m_args.disable_heave)
+          if (m_args.disable_force_output)
+          {
+              m_desired_force.flags = 0x00;
+          }
+          else if (m_args.disable_heave)
           {
             m_desired_force.flags = IMC::DesiredControl::FL_X
                 | IMC::DesiredControl::FL_Y;
@@ -1164,19 +1172,22 @@ namespace Control
           if (!m_args.use_controller || !isActive() || !m_configured)
             return;
 
-          // update formation based on current desired heading
-          // NB: only master should change according to his desired heading?
           updateFormation();
 
           // Check if we should abort
           checkFormation();
 
-          // Calculate external feedback, u (desired velocity in NED)
-          Matrix u = formationVelocity() + collAvoidVelocity();
-
-          // Set heave to zero if not controlling altitude
-          if (!m_args.use_altitude)
-            u(2) = 0;
+          // update formation based on current desired heading
+          // NB: only master should change according to his desired heading?
+          Matrix u = Matrix(3,1,0.0);
+          if (m_N > 1)
+          {
+            // Calculate external feedback, u (desired velocity in NED)
+            u = formationVelocity() + collAvoidVelocity();
+            // Set heave to zero if not controlling altitude
+            if (!m_args.use_altitude)
+              u(2) = 0;
+          }
 
           // Calculate internal feedback, alpha in AGENT body
           // missionVelocity in CENTROID body
@@ -1190,8 +1201,8 @@ namespace Control
           m_time_end = Clock::getMsec();
 
           Matrix tau = velocityControl(alpha,RAgentCentroid()*m_a_mission_centroid);
-          if (m_args.disable_force_output)
-            return;
+          //if (m_args.disable_force_output)
+          //  return;
           sendDesiredForce(tau);
         }
 
@@ -1206,7 +1217,10 @@ namespace Control
         Matrix
         RNedCentroid() const
         {
-          return Rz(m_curr_heading);
+          if (m_N > 1)
+            return Rz(m_curr_heading);
+          else
+            return RNedAgent();
         }
 
         //! R^(n)_(agent)
