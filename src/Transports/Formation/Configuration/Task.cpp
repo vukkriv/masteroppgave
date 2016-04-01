@@ -232,7 +232,7 @@ namespace Transports
                     "Vehicle not found in formation vehicle list!");
             }
 
-            if (paramChanged(m_args.desired_formation))
+            if (m_N > 1)
             {
               inf("New desired formation.");
               debug("m_N = %d",m_N);
@@ -260,7 +260,7 @@ namespace Transports
               }
             }
 
-            if (paramChanged(m_args.incidence_matrix))
+            if (m_N > 1)
             {
               inf("New incidence matrix.");
 
@@ -286,62 +286,73 @@ namespace Transports
             if (paramChanged(m_args.link_gains))
             {
               inf("New link gains.");
-              if (m_args.link_gains.size() == 1)
-              {
-                // Scalar gain, set all to this
-                //m_delta = Matrix(m_L, 1, m_args.link_gains(0));
-              }
-              else if ((unsigned int)m_args.link_gains.size() != m_L)
-                throw DUNE::Exception("Link gains doesn't match number of links!");
-
             }
             //now add data (and dispatch message?)
 
-            m_config.incidence.clear();
             m_config.participants.clear();
             m_config.incidence.clear();
             //! participants and incidence matrix
             debug("m_L=%d,m_N=%d",m_L,m_N);
             for (unsigned int uav = 0; uav < m_N; uav++)
             {
-              m_agent.off_x = m_x_c_default(0,uav);
-              m_agent.off_y = m_x_c_default(1,uav);
-              m_agent.off_z = m_x_c_default(2,uav);
+              if (m_N > 1)
+              {
+                m_agent.off_x = m_x_c_default(0,uav);
+                m_agent.off_y = m_x_c_default(1,uav);
+                m_agent.off_z = m_x_c_default(2,uav);
+              }
+              else
+              {
+                m_agent.off_x = 0;
+                m_agent.off_y = 0;
+                m_agent.off_z = 0;
+              }
               m_agent.vid = m_uav_ID[uav];
               m_config.participants.push_back(m_agent);
-              for (unsigned int link = 0; link < m_L; link++)
+              if (m_N > 1)
+              {
+                for (unsigned int link = 0; link < m_L; link++)
+                {
+                  m_incidence_agent.links.clear();
+                  m_incidence_link.orientation = m_args.incidence_matrix(uav + link * m_N);
+                  m_incidence_agent.links.push_back(m_incidence_link);
+                  debug("[%d,%d]:m_incidence_link.orientation=%d",uav,link,m_incidence_link.orientation);
+                }
+                debug("m_incidence_agent[%d]",uav);
+                m_config.incidence.push_back(m_incidence_agent);
+              }
+              else
               {
                 m_incidence_agent.links.clear();
-                m_incidence_link.orientation = m_args.incidence_matrix(uav + link * m_N);
-                m_incidence_agent.links.push_back(m_incidence_link);
-                debug("[%d,%d]:m_incidence_link.orientation=%d",uav,link,m_incidence_link.orientation);
+                m_config.incidence.push_back(m_incidence_agent);
               }
-              debug("m_incidence_agent[%d]",uav);
-              m_config.incidence.push_back(m_incidence_agent);
             }
             //! link gains
             m_config.link_gains.clear();
-            for (unsigned int link = 0; link < m_L; link++)
+            if (m_N > 1)
             {
-              if (m_args.link_gains.size() == 1)
+              for (unsigned int link = 0; link < m_L; link++)
               {
-                // Scalar gain, set all to this
-                m_link_gain.value = m_args.link_gains(0);
+                if (m_args.link_gains.size() == 1)
+                {
+                  // Scalar gain, set all to this
+                  m_link_gain.value = m_args.link_gains(0);
+                }
+                else if ((unsigned int)m_args.link_gains.size() != m_L)
+                  throw DUNE::Exception("Link gains doesn't match number of links!");
+                else
+                {
+                  // Update gains
+                  m_link_gain.value = m_args.link_gains(link);
+                }
+                m_config.link_gains.push_back(m_link_gain);
               }
-              else if ((unsigned int)m_args.link_gains.size() != m_L)
-                throw DUNE::Exception("Link gains doesn't match number of links!");
-              else
-              {
-                // Update gains
-                m_link_gain.value = m_args.link_gains(link);
-              }
-              m_config.link_gains.push_back(m_link_gain);
             }
             dispatch(m_config);
             debug("CoordConfig dispatched from update");
           }
 
-          if (paramChanged(m_args.ref_lat) || paramChanged(m_args.ref_lon) || paramChanged(m_args.ref_hae))
+          if (paramChanged(m_args.ref_lat) || paramChanged(m_args.ref_lon) || paramChanged(m_args.ref_hae) || paramChanged(m_args.use_static_ref))
           {
            m_config.update = false;
            m_config.use_fallback = m_args.use_static_ref;
@@ -370,6 +381,7 @@ namespace Transports
            m_config.height= m_ref_hae;
 
            dispatch(m_config);
+	   debug("CoordConfig dispatched from new llh");
           }          
           if (paramChanged(m_args.disable_collision_velocity) ||
               paramChanged(m_args.disable_formation_velocity) ||
@@ -384,9 +396,8 @@ namespace Transports
             m_config.disable_mission_vel   = m_args.disable_mission_velocity;
             m_config.formation  = m_args.hold_current_formation;
             dispatch(m_config);
-            debug("CoordConfig dispatched");
+            debug("CoordConfig dispatched from new flags");
           }
-          debug("CoordConfig dispatched");
         }
 
         //! Reserve entity identifiers.
@@ -422,8 +433,12 @@ namespace Transports
         void
         task(void)
         {
-          m_config.update = false;
-          dispatch(m_config);
+          if (m_args.use_task)
+          {
+            m_config.update = false;
+            dispatch(m_config);
+            debug("CoordConfig dispatched from task");
+          }
         }
 
         //! Print matrix (for debuging)
