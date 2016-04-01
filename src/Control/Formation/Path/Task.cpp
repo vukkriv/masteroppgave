@@ -62,6 +62,14 @@ namespace Control
         double surge_d;
       };
 
+      struct LosArguments
+      {
+        bool use_LOSangle;
+        bool use_bearingHeading;
+        double delta_y;
+        double delta_z;
+      };
+
       struct Arguments
       {
         bool use_controller;
@@ -73,6 +81,41 @@ namespace Control
         bool enable_refsim;
         float print_frequency;
         ReferenceSimArguments refsim;
+        LosArguments los;
+      };
+
+      struct LosControl
+      {
+        //Current vehicle position
+        Matrix p;
+
+        //Start WP position
+        Matrix startWP;
+
+        //Next WP position
+        Matrix endWP;
+
+        //Current along- and cross-track error
+        Matrix eps;
+
+        //Current path course (alpha) and pitching angle (theta)
+        double alpha;
+        double theta;
+
+        //Current desired path course (xi_d) and pitching angle (theta_d)
+        double xi_d;
+        double theta_d;
+
+        //Current reference path velocity
+        Matrix v_p;
+
+        //Current desired NED LOS velocity
+        Matrix v_n_los;
+
+        //Current reference body velocity
+        Matrix v_ref;
+        //Current reference body acceleration
+        Matrix a_ref;
       };
 
       static const std::string c_parcel_names[] = { "PID-SURGE", "PID-HEADING", "ERROR-SURGE", "ERROR-HEADING"};
@@ -257,11 +300,19 @@ namespace Control
         //! Reference Model
         ReferenceSimulator m_refsim;
 
-        //! Current integrator value
-        Matrix m_integrator_value;
+        //! LOS
+        LosControl m_los;
 
         //! The current reference
         DesiredReference m_desired;
+
+        //! Localization origin (WGS-84)
+        fp64_t m_ref_lat, m_ref_lon;
+        fp32_t m_ref_hae;
+        bool m_ref_valid;
+
+        //! Current integrator value
+        Matrix m_integrator_value;
 
         //! Reference and desired linear state, the reference message only sent for logging
         IMC::DesiredLinearState m_desired_linear[NUM_DESIRED];
@@ -269,12 +320,16 @@ namespace Control
         IMC::DesiredHeading m_desired_heading[NUM_DESIRED];
         //! Last Estimated Local State received
         IMC::EstimatedLocalState m_elstate;
+        //! Current desired Z
+        IMC::DesiredZ m_dz;
 
         //! Timestamp of previous step
         double m_timestamp_prev_step;
 
         //! Desired speed profile
-        double m_desired_speed;
+        double m_reference_speed;
+
+
 
         //double m_Amatrix[9];
         //double m_Bmatrix[6];
@@ -287,9 +342,13 @@ namespace Control
         //! @param[in] ctx context.
         Task(const std::string& name, Tasks::Context& ctx):
           PathFormationController(name, ctx),
+          m_ref_lat(0.0),
+          m_ref_lon(0.0),
+          m_ref_hae(0.0),
+          m_ref_valid(false),
           m_integrator_value(2,1, 0.0),
           m_timestamp_prev_step(0.0),
-          m_desired_speed(0)
+          m_reference_speed(0)
         {
           param("Formation Path Controller", m_args.use_controller)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -297,7 +356,31 @@ namespace Control
           .defaultValue("false")
           .description("Enable Formation Path Controller.");
 
-          param("RefSim--Enable",m_args.enable_refsim)
+          param("LOS -- Lookahead NE", m_args.los.delta_y)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .defaultValue("1.0")
+          .description("Lookahead distance for LOS control in North-East plane.");
+
+          param("LOS -- Lookahead Down", m_args.los.delta_z)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .defaultValue("1.0")
+          .description("Lookahead distance for LOS height control.");
+
+          param("LOS -- Use LOS Heading", m_args.los.use_LOSangle)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .defaultValue("false")
+          .description("Enable LOS heading from current position to next WP as reference heading.");
+
+          param("LOS -- Use Bearing Heading", m_args.los.use_bearingHeading)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .defaultValue("false")
+          .description("Enable bearing heading from last WP to next WP as reference heading.");
+
+          param("Reference - Enable",m_args.enable_refsim)
           .defaultValue("True")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
@@ -318,11 +401,13 @@ namespace Control
           param("RefSim--Enable surge", m_args.refsim.c_surge.use_controller)
           .defaultValue("True")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Enable surge reference simulator output.");
 
           param("RefSim--Enable heading", m_args.refsim.c_heading.use_controller)
           .defaultValue("True")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Enable heading reference simulator output.");
 
           param("RefSim--Max Integral", m_args.max_integral)
@@ -424,6 +509,8 @@ namespace Control
           .defaultValue("0.0")
           .units(Units::Second)
           .description("Frequency of pos.data prints. Zero => Print on every update.");
+
+          bind<IMC::DesiredZ>(this);
         }
 
         //! Consumer for DesiredSpeed message.
@@ -435,26 +522,33 @@ namespace Control
           // Update desired speed
           if (dspeed->value < m_args.refsim.max_speed)
           {
-            m_desired_speed = dspeed->value;
+            m_reference_speed = dspeed->value;
           }
           else
           {
-            m_desired_speed = m_args.refsim.max_speed;
+            m_reference_speed = m_args.refsim.max_speed;
             debug("Trying to set a speed above maximum speed. ");
           }
 
           PathFormationController::consume(dspeed);
-
-          if (!m_args.use_controller)
-            return;
-
-          m_refsim.x_ref = Matrix(3,1,0.0);
-          m_refsim.setRefSpeed(m_desired_speed);
-          m_desired_linear[D_REFERENCE].vx = m_refsim.x_ref(R_SURGE);
-          dispatch(m_desired_linear[D_REFERENCE]);
-
-          debug("New surge reference: [%f] m/s",m_refsim.x_ref(R_SURGE));
         }
+
+        void
+        consume(const IMC::DesiredZ* zref)
+        {
+          trace("Got Desired Z. ");
+          if (zref->z_units == IMC::Z_ALTITUDE || zref->z_units == IMC::Z_HEIGHT)
+          {
+            m_dz = *zref;
+          }
+        }
+
+        virtual bool
+        hasSpecificZControl(void) const
+        {
+          return false;
+        }
+
         //! Update internal state with new parameter values.
         void
         onUpdateParameters(void)
@@ -462,7 +556,7 @@ namespace Control
           PathFormationController::onUpdateParameters();
 
           // update desired speed to max speed
-          m_desired_speed = m_args.refsim.max_speed;
+          m_reference_speed = m_args.refsim.max_speed;
 
           debug("Setting new surge tuning parameters");
           double Kp_s = m_args.refsim.c_surge.Kp;
@@ -491,6 +585,21 @@ namespace Control
           }
           m_refsim.setPID(Kp_h,Ki_h,Kd_h,static_cast<int>(R_HEADING));
           debug("New parameters set");
+
+          if (paramChanged(m_args.los.delta_y) || paramChanged(m_args.los.delta_z))
+          {
+            if (m_args.los.delta_y == 0)
+            {
+              war("LOS -- Lookahead NE set to zero, setting to default value [1.0]");
+              m_args.los.delta_y = 1.0;
+            }
+            if (m_args.los.delta_z == 0)
+            {
+              war("LOS -- Lookahead Down set to zero, setting to default value [1.0]");
+              m_args.los.delta_z = 1.0;
+            }
+          }
+          debug("Parameters set");
         }
 
         //! Reserve entity identifiers.
@@ -511,15 +620,6 @@ namespace Control
           debug("Entities reserved");
         }
 
-        void
-        consume(const IMC::EstimatedLocalState* elstate)
-        {
-          //should be of type centroid and be local
-          if (this->sourceFilter(elstate) || resolveEntity(elstate->getSourceEntity()).c_str() != m_state_entity)
-            return;
-          m_elstate = *elstate;
-        }
-
         virtual void
         onPathStartup(const IMC::EstimatedLocalState& state, const TrackingState& ts)
         {
@@ -528,6 +628,9 @@ namespace Control
 
           // Restart Reference Simulator
           initRefSim(state);
+
+          // Restart LOS control
+          initLOS(state,ts);
 
           // Reset integral
           // If switch, and always if more than x seconds since last step.
@@ -553,6 +656,27 @@ namespace Control
         }
 
         void
+        initLOS(const IMC::EstimatedLocalState& el, const TrackingState& ts)
+        {
+          (void) el;
+          (void) ts;
+
+          m_los.p       = Matrix(3,1,0.0);
+
+          m_los.eps     = Matrix(3,1,0.0);
+
+          m_los.v_p    = Matrix(3,1,0.0);
+          m_los.v_n_los= Matrix(3,1,0.0);
+
+          m_los.v_ref   = Matrix(3,1,0.0);
+          m_los.a_ref   = Matrix(3,1,0.0);
+
+          m_los.startWP = Matrix(3,1,0.0);
+          m_los.endWP   = Matrix(3,1,0.0);
+          debug("LOS initialized");
+        }
+
+        void
         initRefSim(const IMC::EstimatedLocalState& el)
         {
           debug("Initialize reference simulator");
@@ -561,7 +685,7 @@ namespace Control
           if (m_args.reset_to_state || Clock::get() - m_timestamp_prev_step > 2.0)
           {
             m_refsim.x_ref    = Matrix(3, 1, 0.0);
-            m_refsim.x_ref(0) = m_desired_speed;
+            m_refsim.x_ref(0) = m_reference_speed;
             m_refsim.x_ref(1) = el.state->psi;
             m_refsim.x_ref(2) = el.state->r;
 
@@ -649,11 +773,6 @@ namespace Control
         {
           (void)now;
           
-          double ref_heading = ts.los_angle;
-          m_refsim.setRefHeading(ref_heading);
-          m_desired_heading[D_REFERENCE].value = m_refsim.x_ref(R_HEADING);
-          dispatch(m_desired_heading[D_REFERENCE]);
-
           spew("stepRefSim");
           stepRefSim(state, ts);
 
@@ -680,7 +799,151 @@ namespace Control
         	m_desired.setDesiredReference(m_refsim.x_des);
         }
 
+        void
+        setReferences(const IMC::EstimatedLocalState& el, const TrackingState& ts)
+        {
 
+          float desiredZstart = el.state->z;
+          float desiredZend   = el.state->z;
+          // Z ref handling
+          if (m_dz.z_units == IMC::Z_HEIGHT)
+          {
+            desiredZstart = el.state->height - ts.start.z;
+            desiredZend   = el.state->height - ts.end.z;
+          }
+          else if(m_dz.z_units == IMC::Z_ALTITUDE)
+          {
+            desiredZstart = el.state->z + el.state->alt - ts.start.z;
+            desiredZend   = el.state->z + el.state->alt - ts.end.z;
+          }
+          else
+          {
+            war("DesiredZ not received");
+          }
+
+          //global reference point and these value might change during maneuver
+          spew("setReferences: set new states");
+          m_los.p(0) = el.state->x;
+          m_los.p(1) = el.state->y;
+          m_los.p(2) = el.state->z;
+          m_los.startWP(0) = ts.start.x;
+          m_los.startWP(1) = ts.start.y;
+          m_los.startWP(2) = desiredZstart;
+          m_los.endWP(0)   = ts.end.x;
+          m_los.endWP(1)   = ts.end.y;
+          m_los.endWP(2)   = desiredZend;
+
+          spew("setReferences: set new states done");
+
+          Matrix deltaWP = m_los.endWP - m_los.startWP;
+          double deltaWP_NE = deltaWP.get(0, 1, 0, 0).norm_2();
+
+          spew("setReferences: calc alpha and theta");
+          m_los.alpha  =  atan2(deltaWP(1), deltaWP(0));
+          m_los.theta  = -atan2(deltaWP_NE, deltaWP(2)) + Angles::radians(90);
+
+          m_los.eps = transpose(RNedPath())*(m_los.p - m_los.startWP);
+
+          spew("setReferences: calc psi_los and theta_los");
+          double e_y = m_los.eps(1);
+          double e_z = m_los.eps(2);
+
+          double psi_los     = atan(-e_y/m_args.los.delta_y);
+          double theta_los   = atan(-e_z/m_args.los.delta_z);
+
+          spew("setReferences: calc psi_los and theta_los done");
+          m_los.xi_d     = m_los.alpha + psi_los;
+          m_los.theta_d  = m_los.theta + theta_los;
+
+
+
+          // set reference heading
+          double ref_heading = 0.0;
+          if(m_args.los.use_LOSangle)
+            ref_heading = ts.los_angle;
+          else if(m_args.los.use_bearingHeading)
+            ref_heading = ts.track_bearing;
+          else
+            ref_heading = m_los.xi_d;
+
+          //save and dispatch references
+          m_refsim.setRefHeading(ref_heading);
+          m_desired_heading[D_REFERENCE].value = m_refsim.x_ref(R_HEADING);
+          dispatch(m_desired_heading[D_REFERENCE]);
+          spew("setReferences: reference heading dispatched");
+
+          m_los.v_p(0)  = m_reference_speed;
+          m_los.v_n_los = Rzyx(0,-m_los.theta_d,m_los.xi_d)*m_los.v_p;
+
+          spew("setReferences: rotate body XY to NED");
+          // Ned reference velocity
+          Matrix v_NE = Rzyx(0,0,el.state->psi)*m_los.v_p;
+
+          spew("setReferences: rotate to NED");
+          // Reference velocity in NED
+          Matrix v_n = Matrix(3,1,0.0);
+          v_n(0) = v_NE(0);
+          v_n(1) = v_NE(1);
+          v_n(2) = m_los.v_n_los(2);
+
+          spew("setReferences: rotate back to body");
+          //Rotate back to body
+          m_los.v_ref = transpose(RNedCentroid())*v_n;
+
+          spew("setReferences: desired body velocity calculated");
+          if (!m_args.use_altitude)
+          {
+            m_los.v_ref(2) = 0;
+            m_los.a_ref(2) = 0;
+          }
+
+          m_refsim.setRefSpeed(m_los.v_ref(0));
+          m_desired_linear[D_REFERENCE].vx = m_los.v_ref(0);
+          m_desired_linear[D_REFERENCE].vy = m_los.v_ref(1);
+          m_desired_linear[D_REFERENCE].vz = m_los.v_ref(2);
+          dispatch(m_desired_linear[D_REFERENCE]);
+          spew("setReferences: reference linear state dispatched");
+
+          double now = Clock::get();
+          static double last_print;
+          if (!m_args.print_frequency || !last_print
+              || (now - last_print) > 1.0 / m_args.print_frequency)
+          {
+            trace("setReferences: alpha=[%f],theta=[%f]",m_los.alpha,m_los.theta);
+            trace("setReferences: xi_d=[%f],theta_d=[%f]",m_los.xi_d,m_los.theta_d);
+            trace("setReferences: v_n=[%f,%f,%f]",v_n(0),v_n(1),v_n(2));
+            trace("setReferences: v_n_los=[%f,%f,%f]",m_los.v_n_los(0),m_los.v_n_los(1),m_los.v_n_los(2));
+            trace("setReferences: eps=[%f,%f,%f]",m_los.eps(0),m_los.eps(1),m_los.eps(2));
+            trace("setReferences: delta=[%f,%f]",m_args.los.delta_y,m_args.los.delta_z);
+            trace("setReferences: ts.start.z=[%f]",ts.start.z);
+            trace("setReferences: ts.end.z=[%f]",ts.end.z);
+            trace("setReferences: desiredZstart=[%f]",desiredZstart);
+            trace("setReferences: desiredZend=[%f]",desiredZend);
+            trace("setReferences: z=[%f]",el.state->z);
+            trace("setReferences: height=[%f]",el.state->height);
+
+            last_print = now;
+          }
+
+        }
+
+        void
+        sendDesired()
+        {
+          //Desired acceleration and velocity in body
+          m_desired_linear[D_DESIRED].vx = m_refsim.getDesSpeed();
+          m_desired_linear[D_DESIRED].vy = m_los.v_ref(1);
+          m_desired_linear[D_DESIRED].vz = m_los.v_ref(2);
+          //Desired acceleration in body
+          m_desired_linear[D_DESIRED].ax = m_refsim.getDesAcc();
+          m_desired_linear[D_DESIRED].ay = m_los.a_ref(1);
+          m_desired_linear[D_DESIRED].az = m_los.a_ref(2);
+
+          dispatch(m_desired_linear[D_DESIRED]);
+          //Desired heading
+          m_desired_heading[D_DESIRED].value = m_refsim.getDesHeading();
+          dispatch(m_desired_heading[D_DESIRED]);
+        }
 
         void
         step(const IMC::EstimatedLocalState& state, const TrackingState& ts)
@@ -690,28 +953,20 @@ namespace Control
             trace("Controller not enabled");
             return;
           }
+          m_elstate = state;
 
           double now = Clock::get();
-          spew("updateReferenceSim");
 
+
+          spew("setReferences");
+          setReferences(state,ts);
+
+          spew("updateReferenceSim");
           updateReferenceSim(state, ts, now);
 
+          spew("sendDesired");
+          sendDesired();
 
-          //Desired acceleration and velocity in body
-          m_desired_linear[D_DESIRED].vx = m_refsim.getDesSpeed();
-          m_desired_linear[D_DESIRED].vy = 0;
-          m_desired_linear[D_DESIRED].vz = 0;
-          //Desired acceleration in body
-          m_desired_linear[D_DESIRED].ax = m_refsim.getDesAcc();
-          m_desired_linear[D_DESIRED].ay = 0;
-          m_desired_linear[D_DESIRED].az = 0;
-
-          dispatch(m_desired_linear[D_DESIRED]);
-          //Desired heading
-          m_desired_heading[D_DESIRED].value = m_refsim.getDesHeading();
-          dispatch(m_desired_heading[D_DESIRED]);
-          dispatch(m_desired_heading[D_DESIRED]);
-          //
           m_timestamp_prev_step = Clock::get();
 
           static double last_print;
@@ -770,6 +1025,28 @@ namespace Control
         	spew("A matrix updated");
         }
 
+        //! R^(n)_(centroid)
+        Matrix
+        RNedPath() const
+        {
+          return Rzyx(0,-m_los.theta,m_los.alpha);
+        }
+
+        //! R^(n)_(centroid)
+        Matrix
+        RNedCentroid() const
+        {
+          return Rzyx(m_elstate.state->phi,m_elstate.state->theta,m_elstate.state->psi);
+        }
+
+        //! @return  Rotation yaw matrix.
+        Matrix
+        Rz(double psi) const
+        {
+          double R_en_elements[] =
+            { cos(psi), -sin(psi), 0, sin(psi), cos(psi), 0, 0, 0, 1 };
+          return Matrix(R_en_elements, 3, 3);
+        }
 
         //! @return  Rotation matrix.
         Matrix
