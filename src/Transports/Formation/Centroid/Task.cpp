@@ -45,6 +45,8 @@ namespace Transports
         //std::vector<std::string> formation_systems;
 
         float print_frequency;
+
+        std::vector<std::string> desired_heading_entity_labels;
       };
 
       //static const std::string c_entity_names[] = {DTR_RT("Centroid")};
@@ -298,6 +300,11 @@ namespace Transports
         std::vector<IMC::EstimatedLocalState> states;
 
         bool m_configured;
+
+        //! Last received desired heading from master agent
+        IMC::DesiredHeading m_desired_heading;
+        double m_curr_desired_heading;
+
         //! Constructor.
         //! @param[in] name task name.
         //! @param[in] ctx context.
@@ -321,8 +328,13 @@ namespace Transports
           .units(Units::Second)
           .description("Frequency of pos.data prints. Zero => Print on every update.");
 
+          param("Desired Heading Entity Labels", m_args.desired_heading_entity_labels)
+          .defaultValue("Desired Heading")
+          .description("Entity labels for the DesiredHeading message");
+
           bind<IMC::CoordConfig>(this);
           bind<IMC::EstimatedLocalState>(this);
+          bind<IMC::DesiredHeading>(this);
         }
 
         //! Update internal state with new parameter values.
@@ -447,6 +459,14 @@ namespace Transports
           {
             //spew("m_centroid.v_n.size()=%d",m_centroid.);
             m_centroid.calculateCentroid(states, m_vehicles.m_N);
+            if (m_vehicles.m_N == 1)
+            {
+              //TODO:
+              //with heading control, this would not be necessary
+              //then the current vehicle heading should be the same as
+              //the virtual centroid heading
+              m_centroid.els.state->psi = m_curr_desired_heading;
+            }
             spew(
                 "Dispatching centroid EstimatedLocalState, heading: %f [deg], noAgents=[%d]",
                 Angles::degrees(m_centroid.els.state->psi), m_centroid.m_N);
@@ -454,6 +474,28 @@ namespace Transports
             m_centroid.els.ots = msg->getTimeStamp();
             dispatch(m_centroid.els);
           }
+        }
+
+        void
+        consume(const IMC::DesiredHeading* msg)
+        {
+          double now = Clock::getSinceEpoch();
+          static double last_print;
+          if (!m_args.print_frequency || !last_print
+              || (now - last_print) > 1.0 / m_args.print_frequency)
+          {
+            spew("Got DesiredHeading from '%s'", resolveSystemId(msg->getSource()));
+            spew("DesiredHeading [%f]",msg->value);
+            last_print = now;
+          }
+          //Desired heading should only come from master only
+          //if receiving local message, it should have the correct entity (desired vs reference)
+          if (   msg->getSource() == this->getSystemId()
+              && !isDesiredHeading(msg->getSourceEntity())      )
+            return;
+
+          m_desired_heading = *msg;
+          m_curr_desired_heading = m_desired_heading.value;
         }
 
         //! Main loop.
@@ -464,6 +506,16 @@ namespace Transports
           {
             waitForMessages(1.0);
           }
+        }
+
+        bool
+        isDesiredHeading(uint8_t msgSourceEntity)
+        {
+          std::string msgEntity = resolveEntity(msgSourceEntity).c_str();
+          for (std::vector<std::string>::iterator it = m_args.desired_heading_entity_labels.begin(); it != m_args.desired_heading_entity_labels.end(); ++it)
+            if (*it == msgEntity)
+              return true;
+          return false;
         }
       };
     }
