@@ -386,7 +386,7 @@ namespace Control
           .defaultValue("false")
           .description("Enable bearing heading from last WP to next WP as reference heading.");
 
-          param("Reference - Enable",m_args.enable_refsim)
+          param("RefSim--Enable",m_args.enable_refsim)
           .defaultValue("True")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
