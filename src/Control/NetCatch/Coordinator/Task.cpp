@@ -119,7 +119,7 @@ namespace Control
 
       struct Vehicles
       {
-        int no_vehicles;
+        unsigned int no_vehicles;
         std::string aircraft;
         std::vector<std::string> copters;
       };
@@ -1259,12 +1259,15 @@ namespace Control
           m_desired_linear[type].az = acc(2);
 
           if (m_args.disable_Z)
-            m_desired_linear[type].flags = IMC::DesiredLinearState::FL_X
-                | IMC::DesiredLinearState::FL_Y;
+          {
+            m_desired_linear[type].flags = IMC::DesiredLinearState::FL_VX | IMC::DesiredLinearState::FL_VY
+                                         | IMC::DesiredLinearState::FL_AX | IMC::DesiredLinearState::FL_AY;
+          }
           else
-            m_desired_linear[type].flags = IMC::DesiredLinearState::FL_X
-            | IMC::DesiredLinearState::FL_Y | IMC::DesiredLinearState::FL_Z;
-
+          {
+            m_desired_linear[type].flags = IMC::DesiredLinearState::FL_VX | IMC::DesiredLinearState::FL_VY | IMC::DesiredLinearState::FL_VZ
+                                         | IMC::DesiredLinearState::FL_AX | IMC::DesiredLinearState::FL_AY | IMC::DesiredLinearState::FL_AZ;
+          }
           dispatch(m_desired_linear[type]);
         }
 
