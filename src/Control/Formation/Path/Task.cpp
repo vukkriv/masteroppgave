@@ -116,6 +116,12 @@ namespace Control
         Matrix v_ref;
         //Current reference body acceleration
         Matrix a_ref;
+
+        // if receiving first waypoint
+        bool first_WP;
+
+        double last_start_z;
+        double last_end_z;
       };
 
       static const std::string c_parcel_names[] = { "PID-SURGE", "PID-HEADING", "ERROR-SURGE", "ERROR-HEADING"};
@@ -511,6 +517,7 @@ namespace Control
           .description("Frequency of pos.data prints. Zero => Print on every update.");
 
           bind<IMC::DesiredZ>(this);
+          bind<IMC::DesiredSpeed>(this);
         }
 
         //! Consumer for DesiredSpeed message.
@@ -520,6 +527,7 @@ namespace Control
         {
           // overloaded.
           // Update desired speed
+          trace("DesiredSpeed= %f",dspeed->value);
           if (dspeed->value < m_args.refsim.max_speed)
           {
             m_reference_speed = dspeed->value;
@@ -527,10 +535,10 @@ namespace Control
           else
           {
             m_reference_speed = m_args.refsim.max_speed;
-            debug("Trying to set a speed above maximum speed. ");
+            war("Trying to set a speed above maximum speed, setting to max (%f)",m_args.refsim.max_speed);
           }
 
-          PathFormationController::consume(dspeed);
+          //PathFormationController::consume(dspeed);
         }
 
         void
@@ -653,6 +661,8 @@ namespace Control
           // Activate height controller
           enableControlLoops(IMC::CL_ALTITUDE);
           inf("Formation path controller activated.");
+
+          m_los.first_WP  = true; // A new path arrived. Tracking to first waypoint.
         }
 
         void
@@ -803,18 +813,36 @@ namespace Control
         setReferences(const IMC::EstimatedLocalState& el, const TrackingState& ts)
         {
 
+          if(m_los.last_start_z != ts.start.z){
+            if(m_los.last_end_z == ts.start.z){
+              m_los.first_WP = false;
+            }
+            else{
+              m_los.first_WP = true;
+            }
+          }
+
+          //Waypoint- handling
+          double start_z = ts.start.z;
+          double end_z = ts.end.z;
+
+
+          if(m_los.first_WP){
+            start_z = el.state->height - start_z;
+          }
+
           float desiredZstart = el.state->z;
           float desiredZend   = el.state->z;
           // Z ref handling
           if (m_dz.z_units == IMC::Z_HEIGHT)
           {
-            desiredZstart = el.state->height - ts.start.z;
-            desiredZend   = el.state->height - ts.end.z;
+            desiredZstart = el.state->height - start_z;
+            desiredZend   = el.state->height - end_z;
           }
           else if(m_dz.z_units == IMC::Z_ALTITUDE)
           {
-            desiredZstart = el.state->z + el.state->alt - ts.start.z;
-            desiredZend   = el.state->z + el.state->alt - ts.end.z;
+            desiredZstart = el.state->z + el.state->alt - start_z;
+            desiredZend   = el.state->z + el.state->alt - end_z;
           }
           else
           {
@@ -897,10 +925,21 @@ namespace Control
             m_los.a_ref(2) = 0;
           }
 
+
           m_refsim.setRefSpeed(m_los.v_ref(0));
           m_desired_linear[D_REFERENCE].vx = m_los.v_ref(0);
           m_desired_linear[D_REFERENCE].vy = m_los.v_ref(1);
           m_desired_linear[D_REFERENCE].vz = m_los.v_ref(2);
+          if (m_args.disable_heave)
+          {
+            m_desired_linear[D_REFERENCE].flags = IMC::DesiredLinearState::FL_VX | IMC::DesiredLinearState::FL_VX
+                                                | IMC::DesiredLinearState::FL_AX | IMC::DesiredLinearState::FL_AY;
+          }
+          else
+          {
+            m_desired_linear[D_REFERENCE].flags = IMC::DesiredLinearState::FL_VX | IMC::DesiredLinearState::FL_VX | IMC::DesiredLinearState::FL_VZ
+                                                | IMC::DesiredLinearState::FL_AX | IMC::DesiredLinearState::FL_AY | IMC::DesiredLinearState::FL_VZ;
+          }
           dispatch(m_desired_linear[D_REFERENCE]);
           spew("setReferences: reference linear state dispatched");
 
@@ -921,10 +960,15 @@ namespace Control
             trace("setReferences: desiredZend=[%f]",desiredZend);
             trace("setReferences: z=[%f]",el.state->z);
             trace("setReferences: height=[%f]",el.state->height);
+            trace("WPstart=[%f,%f,%f]",m_los.startWP(0),m_los.startWP(1),m_los.startWP(2));
+            trace("WPend=[%f,%f,%f]",m_los.endWP(0),m_los.endWP(1),m_los.endWP(2));
+            trace("m_los.first_WP=%d",m_los.first_WP);
 
             last_print = now;
           }
 
+          m_los.last_end_z   = end_z;
+          m_los.last_start_z = start_z;
         }
 
         void
@@ -938,7 +982,16 @@ namespace Control
           m_desired_linear[D_DESIRED].ax = m_refsim.getDesAcc();
           m_desired_linear[D_DESIRED].ay = m_los.a_ref(1);
           m_desired_linear[D_DESIRED].az = m_los.a_ref(2);
-
+          if (m_args.disable_heave)
+          {
+            m_desired_linear[D_DESIRED].flags = IMC::DesiredLinearState::FL_VX | IMC::DesiredLinearState::FL_VX
+                                              | IMC::DesiredLinearState::FL_AX | IMC::DesiredLinearState::FL_AY;
+          }
+          else
+          {
+            m_desired_linear[D_DESIRED].flags = IMC::DesiredLinearState::FL_VX | IMC::DesiredLinearState::FL_VY | IMC::DesiredLinearState::FL_VZ
+                                              | IMC::DesiredLinearState::FL_AX | IMC::DesiredLinearState::FL_AY | IMC::DesiredLinearState::FL_AZ;
+          }
           dispatch(m_desired_linear[D_DESIRED]);
           //Desired heading
           m_desired_heading[D_DESIRED].value = m_refsim.getDesHeading();
