@@ -932,12 +932,12 @@ namespace Control
           m_desired_linear[D_REFERENCE].vz = m_los.v_ref(2);
           if (m_args.disable_heave)
           {
-            m_desired_linear[D_REFERENCE].flags = IMC::DesiredLinearState::FL_VX | IMC::DesiredLinearState::FL_VX
+            m_desired_linear[D_REFERENCE].flags = IMC::DesiredLinearState::FL_VX | IMC::DesiredLinearState::FL_VY
                                                 | IMC::DesiredLinearState::FL_AX | IMC::DesiredLinearState::FL_AY;
           }
           else
           {
-            m_desired_linear[D_REFERENCE].flags = IMC::DesiredLinearState::FL_VX | IMC::DesiredLinearState::FL_VX | IMC::DesiredLinearState::FL_VZ
+            m_desired_linear[D_REFERENCE].flags = IMC::DesiredLinearState::FL_VX | IMC::DesiredLinearState::FL_VY | IMC::DesiredLinearState::FL_VZ
                                                 | IMC::DesiredLinearState::FL_AX | IMC::DesiredLinearState::FL_AY | IMC::DesiredLinearState::FL_VZ;
           }
           dispatch(m_desired_linear[D_REFERENCE]);
@@ -984,7 +984,7 @@ namespace Control
           m_desired_linear[D_DESIRED].az = m_los.a_ref(2);
           if (m_args.disable_heave)
           {
-            m_desired_linear[D_DESIRED].flags = IMC::DesiredLinearState::FL_VX | IMC::DesiredLinearState::FL_VX
+            m_desired_linear[D_DESIRED].flags = IMC::DesiredLinearState::FL_VX | IMC::DesiredLinearState::FL_VY
                                               | IMC::DesiredLinearState::FL_AX | IMC::DesiredLinearState::FL_AY;
           }
           else
