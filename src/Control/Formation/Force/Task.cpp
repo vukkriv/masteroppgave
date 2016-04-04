@@ -167,10 +167,10 @@ namespace Control
         //! Vehicle positions
         Matrix m_x;
 
-        //! Vehicle velocities
+        //! Vehicle BODY velocities
         Matrix m_v;
 
-        //! Vehicle accelerations
+        //! Vehicle BODY accelerations
         Matrix m_a;
 
         //! Desired mission velocity in CENTROID
@@ -825,27 +825,54 @@ namespace Control
         {
           double now = Clock::getSinceEpoch();
           static double last_print;
+          bool new_mission_linearstate;
+
+          //Desired linear state should only come from master only
+          //if receiving local message, it should have the correct entity (desired vs reference)
+          new_mission_linearstate = true;
+          if (   msg->getSource() == this->getSystemId()
+              && !isDesiredLinear(msg->getSourceEntity())      )
+            new_mission_linearstate = false;
+
           if (!m_args.print_frequency || !last_print
               || (now - last_print) > 1.0 / m_args.print_frequency)
           {
-            spew("Got DesiredLinearState from '%s'", resolveSystemId(msg->getSource()));
-            spew("DesiredSurge [%f]",msg->vx);
+            trace("Got DesiredLinearState from '%s'", resolveSystemId(msg->getSource()));
+            trace("DesiredSurge [%f]",msg->vx);
+            trace("DesiredHeave [%f]",msg->vz);
+            trace("new_mission_linearstate=%d",new_mission_linearstate);
             last_print = now;
           }
-          //Desired linear state should only come from master only
-          //if receiving local message, it should have the correct entity (desired vs reference)
-          if (   msg->getSource() == this->getSystemId()
-              && !isDesiredLinear(msg->getSourceEntity())      )
+          if (!new_mission_linearstate)
             return;
-
           //should contain the desired centroid velocity and acceleration
-          m_v_mission_centroid(0) = msg->vx;
-          m_v_mission_centroid(1) = msg->vy;
-          m_v_mission_centroid(2) = msg->vz;
 
-          m_a_mission_centroid(0) = msg->ax;
-          m_a_mission_centroid(1) = msg->ay;
-          m_a_mission_centroid(2) = msg->az;
+          m_v_mission_centroid(0) = 0;
+          if ((msg->flags & IMC::DesiredLinearState::FL_VX) != 0)
+            m_v_mission_centroid(0) = msg->vx;
+          m_v_mission_centroid(1) = 0;
+          if ((msg->flags & IMC::DesiredLinearState::FL_VY) != 0)
+            m_v_mission_centroid(1) = msg->vy;
+          m_v_mission_centroid(2) = 0;
+          if ((msg->flags & IMC::DesiredLinearState::FL_VZ) != 0)
+            m_v_mission_centroid(2) = msg->vz;
+
+          m_a_mission_centroid(0) = 0;
+          if ((msg->flags & IMC::DesiredLinearState::FL_AX) != 0)
+            m_a_mission_centroid(0) = msg->ax;
+          m_a_mission_centroid(1) = 0;
+          if ((msg->flags & IMC::DesiredLinearState::FL_AY) != 0)
+            m_a_mission_centroid(1) = msg->ay;
+          m_a_mission_centroid(2) = 0;
+          if ((msg->flags & IMC::DesiredLinearState::FL_AZ) != 0)
+            m_a_mission_centroid(2) = msg->az;
+
+          if (!m_args.print_frequency || !last_print
+              || (now - last_print) > 1.0 / m_args.print_frequency)
+          {
+            trace("m_v_mission_centroid=[%f,%f,%f]",m_v_mission_centroid(0),m_v_mission_centroid(1),m_v_mission_centroid(2));
+            trace("m_a_mission_centroid=[%f,%f,%f]",m_a_mission_centroid(0),m_a_mission_centroid(1),m_a_mission_centroid(2));
+          }
         }
 
         void
@@ -1119,11 +1146,11 @@ namespace Control
           Rni = RNedAgent();
 
           Matrix e_v_est = v_des - m_v;
-          Matrix e_a_est = a_des - m_a;
+          Matrix e_a_est = (a_des - m_a);
 
           F_i(0) = m_args.Kp(0) * e_v_est(0) + m_args.Kd(0) * e_a_est(0);
           F_i(1) = m_args.Kp(1) * e_v_est(1) + m_args.Kd(1) * e_a_est(1);
-          F_i(2) = m_args.Kp(2) * e_v_est(2) + m_args.Kd(2) * e_a_est(2);
+          F_i(2) = m_args.Kp(2) * e_v_est(2); //m_a(2)=g, a_des(2)=0
 
           if (F_i.norm_2() > m_args.max_norm_F)
           {
@@ -1177,6 +1204,11 @@ namespace Control
           // Check if we should abort
           checkFormation();
 
+
+          // Calculate internal feedback, alpha in AGENT body
+          // missionVelocity in CENTROID body
+          Matrix alpha = RAgentCentroid()*missionVelocity();
+
           // update formation based on current desired heading
           // NB: only master should change according to his desired heading?
           Matrix u = Matrix(3,1,0.0);
@@ -1187,11 +1219,8 @@ namespace Control
             // Set heave to zero if not controlling altitude
             if (!m_args.use_altitude)
               u(2) = 0;
+            alpha += transpose(RNedAgent())*u;
           }
-
-          // Calculate internal feedback, alpha in AGENT body
-          // missionVelocity in CENTROID body
-          Matrix alpha = transpose(RNedAgent())*u + RAgentCentroid()*missionVelocity();
 
           // Saturate and dispatch control output
           alpha = saturate(alpha, m_args.max_speed);
