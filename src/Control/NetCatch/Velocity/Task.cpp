@@ -61,11 +61,12 @@ namespace Control
         Matrix Ki;
         Matrix Kd;
 
-        double max_integral;
         double max_norm_F;
+        double max_integral;
 
         //! Frequency of controller
         double m_freq;
+        std::string centroid_els_entity_label;
       };
 
       static const std::string c_parcel_names[] = { "PID-X",   "PID-Y",   "PID-Z",
@@ -101,10 +102,9 @@ namespace Control
         Matrix Kd_path;
 
         //! Last messages received
-        IMC::DesiredVelocity m_v_des;
+        IMC::DesiredLinearState m_ls_des;
+        IMC::EstimatedLocalState m_local;
         IMC::DesiredHeading m_desired_heading;
-        IMC::EstimatedLocalState m_est_l_state;
-        IMC::Acceleration m_a_est;
 
         IMC::ControlParcel m_parcels[NUM_PARCELS];
 
@@ -162,15 +162,15 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Velocity Controller tuning parameter Kd");
 
-          param("Max Integral", m_args.max_integral)
-          .defaultValue("1.0")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Max integral value");
-
           param("Maximum Normalized Force", m_args.max_norm_F)
           .defaultValue("5.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Maximum Normalized Force of the Vehicle");
+
+          param("Max Integral", m_args.max_integral)
+          .defaultValue("20")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Max integral value");
 
           param("Disable Z flag", m_args.disable_Z)
           .defaultValue("false")
@@ -181,11 +181,15 @@ namespace Control
           .defaultValue("false").visibility(
           Tasks::Parameter::VISIBILITY_USER).description("Choose whether to control velocity in the current path frame");
 
+          param("EstimatedLocalState Centroid Label", m_args.centroid_els_entity_label)
+          .defaultValue("Formation Centroid")
+          .description("Entity label for the centroid EstimatedLocalState");
+
           // Bind incoming IMC messages
-          bind<IMC::DesiredVelocity>(this);
+          bind<IMC::DesiredLinearState>(this);
           bind<IMC::DesiredHeading>(this);
           bind<IMC::EstimatedLocalState>(this);
-          bind<IMC::Acceleration>(this);
+
         }
 
         //! Reserve entity identifiers.
@@ -238,10 +242,15 @@ namespace Control
 
 
         void
-        consume(const IMC::DesiredVelocity* msg)
+        consume(const IMC::DesiredLinearState* msg)
         {
-          m_v_des = *msg;
+          if (msg->getSource() != this->getSystemId() ||
+              resolveEntity(msg->getSourceEntity()).c_str() == m_args.centroid_els_entity_label)
+            return;
+          m_ls_des = *msg;
         }
+
+
 
         void
         consume(const IMC::DesiredHeading* msg)
@@ -260,24 +269,15 @@ namespace Control
                  resolveEntity(msg->getSourceEntity()).c_str(),
                  resolveSystemId(msg->getSource()));
            */
-
-          if (getSystemId() == msg->getSource())
-          {
-
-            //inf("-->consume copter est loc state");
-            m_est_l_state = *msg;
-          }
+          if (msg->getSource() != this->getSystemId() ||
+              resolveEntity(msg->getSourceEntity()).c_str() == m_args.centroid_els_entity_label)
+            return;
+          m_local = *msg;
         }
 
-        void
-        consume(const IMC::Acceleration* msg)
-        {
-          m_a_est = *msg;
-        }
-
-        //! Control velocity in NED frame
+        //! Control velocity in BODY frame, dispatch desired force in NED
         Matrix
-        vel_con(Matrix v_est, Matrix a_est, Matrix v_des)
+        vel_con(Matrix v_est, Matrix a_est, Matrix v_des, Matrix a_des)
         {
           static double startPrint = 0;
           if (Clock::get() - startPrint > 1)
@@ -288,85 +288,24 @@ namespace Control
           }
 
           Matrix e_v_est = v_des-v_est;
-          Matrix e_a_est = -a_est;
+          Matrix e_a_est = a_des-a_est;
 
           m_v_int_value = m_v_int_value + e_v_est*m_time_diff;
+
+          // Constrain
           if (m_v_int_value.norm_2() > m_args.max_integral)
             m_v_int_value = m_args.max_integral * m_v_int_value / m_v_int_value.norm_2();
 
-          Matrix F_des = Matrix(3,1,0.0);
-          Matrix p = Matrix(3,1,0.0);
-          Matrix i = Matrix(3,1,0.0);
-          Matrix d = Matrix(3,1,0.0);
+          Matrix F_i = Matrix(3,1,0.0);
+          F_i(0) = m_args.Kp(0)*e_v_est(0) + m_args.Ki(0)*m_v_int_value(0) + m_args.Kd(0)*e_a_est(0);
+          F_i(1) = m_args.Kp(1)*e_v_est(1) + m_args.Ki(1)*m_v_int_value(1) + m_args.Kd(1)*e_a_est(1);
+          F_i(2) = m_args.Kp(2)*e_v_est(2) + m_args.Ki(2)*m_v_int_value(2) + m_args.Kd(2)*e_a_est(2);
 
-          if (m_args.disable_path_control)
+          if (F_i.norm_2() > m_args.max_norm_F)
           {
-            p = Kp*e_v_est;
-            i = Ki*m_v_int_value;
-            d = Kd*e_a_est;
-            F_des = p + i + d;
+            F_i = sqrt(pow(m_args.max_norm_F,2)) * F_i/F_i.norm_2();
           }
-          else
-          {
-            Matrix F_des_path = Matrix(3, 1, 0.0);
-            Matrix Rpn = Rzyx(0,0,m_desired_heading.value);
-            e_v_est = Rpn*e_v_est;
-            e_a_est = Rpn*e_a_est;
-            m_v_int_value = Rpn*m_v_int_value;
-
-            p = Kp_path*e_v_est;
-            i = Ki_path*m_v_int_value;
-            d = Kd_path*e_a_est;
-            F_des_path = p + i + d;
-
-            F_des = transpose(Rpn)*F_des_path;
-          }
-
-          IMC::ControlParcel parcel_pid_x = m_parcels[PC_PID_X];
-          IMC::ControlParcel parcel_pid_y = m_parcels[PC_PID_Y];
-          IMC::ControlParcel parcel_pid_z = m_parcels[PC_PID_Z];
-          parcel_pid_x.p = p(0);
-          parcel_pid_y.p = p(1);
-          parcel_pid_z.p = p(2);
-
-          parcel_pid_x.d = d(0);
-          parcel_pid_y.d = d(1);
-          parcel_pid_z.d = d(2);
-
-          parcel_pid_x.i = i(0);
-          parcel_pid_y.i = i(1);
-          parcel_pid_z.i = i(2);
-
-          dispatch(parcel_pid_x);
-          dispatch(parcel_pid_y);
-          dispatch(parcel_pid_z);
-
-          IMC::ControlParcel errors_x = m_parcels[PC_ERROR_X];
-          IMC::ControlParcel errors_y = m_parcels[PC_ERROR_Y];
-          IMC::ControlParcel errors_z = m_parcels[PC_ERROR_Z];
-
-          errors_x.p = e_v_est(0);
-          errors_y.p = e_v_est(1);
-          errors_z.p = e_v_est(2);
-
-          errors_x.d = e_a_est(0);
-          errors_y.d = e_a_est(1);
-          errors_z.d = e_a_est(2);
-
-          errors_x.i = m_v_int_value(0);
-          errors_y.i = m_v_int_value(1);
-          errors_z.i = m_v_int_value(2);
-
-          dispatch(errors_x);
-          dispatch(errors_y);
-          dispatch(errors_z);
-
-
-          if (F_des.norm_2() > m_args.max_norm_F)
-          {
-            F_des = sqrt(pow(m_args.max_norm_F,2)) * F_des/F_des.norm_2();
-          }
-          return F_des;
+          return RNedCopter()*F_i;
         }
 
         //! Dispatch desired force
@@ -411,27 +350,37 @@ namespace Control
           m_time_end = Clock::getMsec();
 
           Matrix v_est = Matrix(3,1,0);
-          v_est(0) = m_est_l_state.vx;
-          v_est(1) = m_est_l_state.vy;
-          v_est(2) = m_est_l_state.vz;
+          v_est(0) = m_local.state->u;
+          v_est(1) = m_local.state->v;
+          v_est(2) = m_local.state->w;
 
           Matrix a_est = Matrix(3,1,0);
-          a_est(0) = m_a_est.x;
-          a_est(1) = m_a_est.y;
-          a_est(2) = m_a_est.z;
+          a_est(0) = m_local.acc->x;
+          a_est(1) = m_local.acc->y;
+          a_est(2) = m_local.acc->z;
 
           Matrix v_des = Matrix(3,1,0);
-          v_des(0) = m_v_des.u;
-          v_des(1) = m_v_des.v;
-          v_des(2) = m_v_des.w;
+          v_des(0) = m_ls_des.vx;
+          v_des(1) = m_ls_des.vy;
+          v_des(2) = m_ls_des.vz;
 
-          Matrix F_des   = vel_con(v_est,a_est,v_des);
+          Matrix a_des = Matrix(3,1,0);
+          a_des(0) = m_ls_des.ax;
+          a_des(1) = m_ls_des.ay;
+          a_des(2) = m_ls_des.az;
+
+          Matrix F_des   = vel_con(v_est,a_est,v_des,a_des);
 
           sendDesiredForce(F_des);
 
           //spew("Frequency: %1.1f", 1000.0/m_time_diff);
         }
 
+        Matrix
+        RNedCopter() const
+        {
+          return Rzyx(m_local.state->phi,m_local.state->theta,m_local.state->psi);
+        }
         //! @return  Rotation matrix.
         Matrix Rzyx(double phi, double theta, double psi) const
         {
