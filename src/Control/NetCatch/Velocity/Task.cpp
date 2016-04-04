@@ -101,9 +101,10 @@ namespace Control
         Matrix Ki_path;
         Matrix Kd_path;
 
-        //! Last EstimatedLocalState received
+        //! Last messages received
         IMC::DesiredLinearState m_ls_des;
         IMC::EstimatedLocalState m_local;
+        IMC::DesiredHeading m_desired_heading;
 
         IMC::ControlParcel m_parcels[NUM_PARCELS];
 
