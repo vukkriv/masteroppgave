@@ -1217,10 +1217,7 @@ namespace Control
         Matrix
         RNedCentroid() const
         {
-          if (m_N > 1)
-            return Rz(m_curr_heading);
-          else
-            return RNedAgent();
+          return Rz(m_curr_heading);
         }
 
         //! R^(n)_(agent)
