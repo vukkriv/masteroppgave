@@ -117,6 +117,12 @@ namespace Control
         Matrix end_NED;
       };
 
+      struct ControlParam
+      {
+        Matrix Kp;
+        Matrix Ki;
+        Matrix Kd;
+      };
       struct Vehicles
       {
         unsigned int no_vehicles;
@@ -157,6 +163,7 @@ namespace Control
       {
         //! Task arguments.
         Arguments m_args;
+
         //! Current state
         IMC::NetRecoveryState::NetRecoveryLevelEnum m_curr_state;
 
@@ -177,6 +184,7 @@ namespace Control
 
         VirtualRunway m_runway;
         Vehicles m_vehicles;
+        ControlParam m_control;
 
         //! Localization origin (WGS-84)
         fp64_t m_ref_lat, m_ref_lon;
@@ -336,14 +344,13 @@ namespace Control
           param("Max pos y approach", m_args.max_py_app).visibility(
               Tasks::Parameter::VISIBILITY_USER).defaultValue("1");
 
-          param("Approach along-track", m_args.max_px_app)
+          param("Max pos x approach", m_args.max_px_app)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .defaultValue("100.0")
           .units(Units::Meter)
           .description("Desired fixed-wing point to start approach measured along-track from the start point");
 
-          param("Collision along-track", m_args.m_coll_r)
+          param("Desired collision radius", m_args.m_coll_r)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .defaultValue("100.0")
@@ -416,20 +423,20 @@ namespace Control
         void
         onUpdateParameters(void)
         {
-          Kp = Matrix(3);
-          Ki = Matrix(3);
-          Kd = Matrix(3);
-          Kp(0,0) = m_args.Kp(0);
-          Kp(1,1) = m_args.Kp(1);
-          Kp(2,2) = m_args.Kp(2);
+          m_control.Kp = Matrix(3);
+          m_control.Ki = Matrix(3);
+          m_control.Kd = Matrix(3);
+          m_control.Kp(0,0) = m_args.Kp(0);
+          m_control.Kp(1,1) = m_args.Kp(1);
+          m_control.Kp(2,2) = m_args.Kp(2);
 
-          Ki(0,0) = m_args.Ki(0);
-          Ki(1,1) = m_args.Ki(1);
-          Ki(2,2) = m_args.Ki(2);
+          m_control.Ki(0,0) = m_args.Ki(0);
+          m_control.Ki(1,1) = m_args.Ki(1);
+          m_control.Ki(2,2) = m_args.Ki(2);
 
-          Kd(0,0) = m_args.Kd(0);
-          Kd(1,1) = m_args.Kd(1);
-          Kd(2,2) = m_args.Kd(2);
+          m_control.Kd(0,0) = m_args.Kd(0);
+          m_control.Kd(1,1) = m_args.Kd(1);
+          m_control.Kd(2,2) = m_args.Kd(2);
         }
 
         void
@@ -1137,9 +1144,9 @@ namespace Control
               || m_curr_state == IMC::NetRecoveryState::NR_APPROACH
               || m_curr_state == IMC::NetRecoveryState::NR_END)
           {
-            p = Kp*e_p_path;
-            d = Kd*e_v_path;
-            i = Ki*m_p_int_value;
+            p = m_control.Kp*e_p_path;
+            d = m_control.Kd*e_v_path;
+            i = m_control.Ki*m_p_int_value;
 
             v_path = p + i + d;
 
@@ -1156,9 +1163,9 @@ namespace Control
 
             Matrix v_temp = Matrix(3,1,0.0);
             Matrix v_path_yz = Matrix(2, 1, 0.0);
-            p = Kp*e_p_path;
-            d = Kd*e_v_path;
-            i = Ki*m_p_int_value;
+            p = m_control.Kp*e_p_path;
+            d = m_control.Kd*e_v_path;
+            i = m_control.Ki*m_p_int_value;
             p(0) = 0;
             d(0) = 0;
             i(0) = 0;
