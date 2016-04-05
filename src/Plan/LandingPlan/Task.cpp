@@ -726,10 +726,15 @@ namespace Plan
             return false;
           }
           double theta0 = std::atan2(Xs(1,0)-Ycs1,Xs(0,0)-Xcs1);
-          double theta1 = std::atan2(Pchi1(1,0)-Ycs1,Pchi(0,0)-Xcs1);
+          double theta1 = std::atan2(Pchi1(1,0)-Ycs1,Pchi1(0,0)-Xcs1);
+          double sLtheta1 = 0;
+          arcAngle(theta0,theta1,RightS1,sLtheta1);
 
           double theta01 = std::atan2(PN1(1,0)-Ycf1,PN1(0,0)-Xcf1);
           double theta11 = std::atan2(Xf(1,0)-Ycf1,Xf(0,0)-Xcf1);
+          double fLtheta1 = 0;
+          arcAngle(theta01,theta11,RightF1,fLtheta1);
+          double LengthPath1 = m_landArg.Rs*sLtheta1 + std::sqrt(std::pow(Pchi1(0,0)-PN1(0,0),2)+std::pow(Pchi1(1,0)-PN1(1,0),2)) + m_landArg.Rf*fLtheta1;
 
           //! LR
           Matrix OCS2 = Matrix(2,1,0.0);
@@ -753,6 +758,17 @@ namespace Plan
             war("Dubins Path does not exist from start position to end position");
             return false;
           }
+          theta0 = std::atan2(Xs(1,0)-Ycs2,Xs(0,0)-Xcs2);
+          theta1 = std::atan2(Pchi2(1,0)-Ycs2,Pchi2(0,0)-Xcs2);
+          double sLtheta2 = 0;
+          arcAngle(theta0,theta1,RightS2,sLtheta2);
+
+          theta01 = std::atan2(PN2(1,0)-Ycf2,PN2(0,0)-Xcf2);
+          theta11 = std::atan2(Xf(1,0)-Ycf2,Xf(0,0)-Xcf2);
+          double fLtheta2 = 0;
+          arcAngle(theta01,theta11,RightF2,fLtheta2);
+          double LengthPath2 = m_landArg.Rs*sLtheta2 + std::sqrt(std::pow(Pchi2(0,0)-PN2(0,0),2)+std::pow(Pchi2(1,0)-PN2(1,0),2)) + m_landArg.Rf*fLtheta2;
+
           //! RL
           Matrix OCS3 = Matrix(2,1,0.0);
           bool RightS3 = false;
@@ -775,6 +791,17 @@ namespace Plan
             war("Dubins Path does not exist from start position to end position");
             return false;
           }
+          theta0 = std::atan2(Xs(1,0)-Ycs3,Xs(0,0)-Xcs3);
+          theta1 = std::atan2(Pchi3(1,0)-Ycs3,Pchi3(0,0)-Xcs3);
+          double sLtheta3 = 0;
+          arcAngle(theta0,theta1,RightS3,sLtheta3);
+
+          theta01 = std::atan2(PN3(1,0)-Ycf3,PN3(0,0)-Xcf3);
+          theta11 = std::atan2(Xf(1,0)-Ycf3,Xf(0,0)-Xcf3);
+          double fLtheta3 = 0;
+          arcAngle(theta01,theta11,RightF3,fLtheta3);
+          double LengthPath3 = m_landArg.Rs*sLtheta3 + std::sqrt(std::pow(Pchi3(0,0)-PN3(0,0),2)+std::pow(Pchi3(1,0)-PN3(1,0),2)) + m_landArg.Rf*fLtheta3;
+
           //! RR
           Matrix OCS4 = Matrix(2,1,0.0);
           bool RightS4 = false;
@@ -796,6 +823,33 @@ namespace Plan
           {
             war("Dubins Path does not exist from start position to end position");
             return false;
+          }
+          theta0 = std::atan2(Xs(1,0)-Ycs4,Xs(0,0)-Xcs4);
+          theta1 = std::atan2(Pchi4(1,0)-Ycs4,Pchi4(0,0)-Xcs4);
+          double sLtheta4 = 0;
+          arcAngle(theta0,theta1,RightS4,sLtheta4);
+
+          theta01 = std::atan2(PN4(1,0)-Ycf4,PN4(0,0)-Xcf4);
+          theta11 = std::atan2(Xf(1,0)-Ycf4,Xf(0,0)-Xcf4);
+          double fLtheta4 = 0;
+          arcAngle(theta01,theta11,RightF4,fLtheta4);
+          double LengthPath4 = m_landArg.Rs*sLtheta4 + std::sqrt(std::pow(Pchi4(0,0)-PN4(0,0),2)+std::pow(Pchi4(1,0)-PN4(1,0),2)) + m_landArg.Rf*fLtheta4;
+
+          Matrix LengthPathV = Matrix(4,1,0.0);
+          LengthPathV(0,0) = LengthPath1;
+          LengthPathV(1,0) = LengthPath2;
+          LengthPathV(2,0) = LengthPath3;
+          LengthPathV(3,0) = LengthPath4;
+          double currShortest = LengthPath1;
+          int currIndex = 0;
+          //! Find the shortest path
+          for (int i=1;i<4;i++)
+          {
+            if (currShortest>LengthPathV(i,0))
+            {
+              currShortest = LengthPathV(i,0);
+              currIndex = i;
+            }
           }
         }
         else
@@ -1013,28 +1067,28 @@ namespace Plan
 
       //! Return the the turning arc given a turning direction
       void
-      calculateTurningArc(const double theta1,const double theta0,const bool clockwise,const bool startcircle,Matrix &theta)
+      arcAngle(const double theta1,const double theta0,const bool Right,double &theta)
       {
-        if (!clockwise)
+        if (Right)
           {
             if(Angles::normalizeRadian(theta1-theta0)<=0)
             {
-              calculateTurningArcAngle(-std::abs(Angles::normalizeRadian(theta1-theta0)),false,theta);
+              theta = std::abs(Angles::normalizeRadian(theta1-theta0));
             }
             else
             {
-              calculateTurningArcAngle(-(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0))),false,theta);
+              theta = 2*PI-std::abs(Angles::normalizeRadian(theta1-theta0));
             }
           }
-          else
+        else
           {
             if (Angles::normalizeRadian(theta1-theta0)>=0)
             {
-              calculateTurningArcAngle(std::abs(Angles::normalizeRadian(theta1-theta0)),false,theta);
+              theta = std::abs(Angles::normalizeRadian(theta1-theta0));
             }
             else
             {
-              calculateTurningArcAngle(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0)),false,theta);
+              theta = 2*PI-std::abs(Angles::normalizeRadian(theta1-theta0));
             }
           }
       }
