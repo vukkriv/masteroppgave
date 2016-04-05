@@ -658,6 +658,11 @@ namespace Plan
         double Ycf;
         //! Radius of second end turning circle
         double Rsec;
+        //! Exit tangent point on start circle
+        Matrix Pchi = Matrix(2,1,0.0);
+        //! Entry tangent point on finish circle
+        Matrix PN = Matrix(2,1,0.0);
+
         inf("Start circle %d, Start direction %d Finish circle %d",m_landArg.rigthStartTurningCircle,m_landArg.rightStartTurningDirection,m_landArg.rightFinishTurningCircle);
 
         if (m_landArg.automatic)
@@ -737,8 +742,15 @@ namespace Plan
           OCF(0,0) = Xcf;
           OCF(1,0) = Ycf;
           inf("Created finish turn circle");
+          if (!dubinsParameteres(OCS,OCF,m_landArg.Rs,m_landArg.Rf,RightS,RightF,Pchi,PN))
+          {
+            war("Dubins Path does not exist from start position to end position");
+            return false;
+          }
         }
 
+
+/*
         //! Calculate radius of second end turning circle
         Rsec = std::abs(m_landArg.Rf-m_landArg.Rs);
 
@@ -787,6 +799,8 @@ namespace Plan
         PN(0,0) = Xcf+m_landArg.Rf*cos(thetaF);
         PN(1,0) = Ycf+m_landArg.Rf*sin(thetaF);
         inf("Created entry tangent");
+        */
+        ///////////////////// Construction phase of the function ////////////////////////////////
         //! Define turning arc
         std::vector<Matrix> arc;
         //! Declare angle array
@@ -891,12 +905,12 @@ namespace Plan
         //! Second
         double thetaF = turn(TurnF,alpha,beta);
         //! Exit tangent point for first circle
-        Pchi = Matrix(2,1,0.0);
+        //Pchi = Matrix(2,1,0.0);
         Pchi(0,0) = Xcs+m_landArg.Rs*cos(thetaS);
         Pchi(1,0) = Ycs+m_landArg.Rs*sin(thetaS);
         inf("Created exit tangent");
         //! Entry tangent point
-        PN = Matrix(2,1,0.0);
+        //PN = Matrix(2,1,0.0);
         PN(0,0) = Xcf+m_landArg.Rf*cos(thetaF);
         PN(1,0) = Ycf+m_landArg.Rf*sin(thetaF);
         inf("Created entry tangent");
