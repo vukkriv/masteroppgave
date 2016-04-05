@@ -702,6 +702,101 @@ namespace Plan
           OCF(0,0) = Xcf;
           OCF(1,0) = Ycf;
           inf("Created finish turn circle");
+
+          //! LL
+          Matrix OCS1 = Matrix(2,1,0.0);
+          bool RightS1 = true;
+          double Xcs1 = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)+PI/2);
+          double Ycs1 = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)+PI/2);
+
+          Matrix OCF1 = Matrix(2,1,0.0);
+          bool RightF1 = true;
+          double Xcf1 = Xf(0,0)-m_landArg.Rf*cos(Xf(3,0)+PI/2);
+          double Ycf1 = Xf(1,0)-m_landArg.Rf*sin(Xf(3,0)+PI/2);
+
+          OCS1(0,0) = Xcs1;
+          OCS1(1,0) = Ycs1;
+          OCF1(0,0) = Xcf1;
+          OCF1(1,0) = Ycf1;
+          Matrix Pchi1 = Matrix(2,1,0.0);
+          Matrix PN1 = Matrix(2,1,0.0);
+          if (!dubinsParameteres(OCS1,OCF1,m_landArg.Rs,m_landArg.Rf,RightS1,RightF1,Pchi1,PN1))
+          {
+            war("Dubins Path does not exist from start position to end position");
+            return false;
+          }
+          double theta0 = std::atan2(Xs(1,0)-Ycs1,Xs(0,0)-Xcs1);
+          double theta1 = std::atan2(Pchi1(1,0)-Ycs1,Pchi(0,0)-Xcs1);
+
+          double theta01 = std::atan2(PN1(1,0)-Ycf1,PN1(0,0)-Xcf1);
+          double theta11 = std::atan2(Xf(1,0)-Ycf1,Xf(0,0)-Xcf1);
+
+          //! LR
+          Matrix OCS2 = Matrix(2,1,0.0);
+          bool RightS2 = true;
+          double Xcs2 = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)+PI/2);
+          double Ycs2 = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)+PI/2);
+
+          Matrix OCF2 = Matrix(2,1,0.0);
+          bool RightF2 = false;
+          double Xcf2 = Xf(0,0)-m_landArg.Rf*cos(Xf(3,0)-PI/2);
+          double Ycf2 = Xf(1,0)-m_landArg.Rf*sin(Xf(3,0)-PI/2);
+
+          OCS2(0,0) = Xcs2;
+          OCS2(1,0) = Ycs2;
+          OCF2(0,0) = Xcf2;
+          OCF2(1,0) = Ycf2;
+          Matrix Pchi2 = Matrix(2,1,0.0);
+          Matrix PN2 = Matrix(2,1,0.0);
+          if (!dubinsParameteres(OCS2,OCF2,m_landArg.Rs,m_landArg.Rf,RightS2,RightF2,Pchi2,PN2))
+          {
+            war("Dubins Path does not exist from start position to end position");
+            return false;
+          }
+          //! RL
+          Matrix OCS3 = Matrix(2,1,0.0);
+          bool RightS3 = false;
+          double Xcs3 = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)-PI/2);
+          double Ycs3 = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)-PI/2);
+
+          Matrix OCF3 = Matrix(2,1,0.0);
+          bool RightF3 = true;
+          double Xcf3 = Xf(0,0)-m_landArg.Rf*cos(Xf(3,0)+PI/2);
+          double Ycf3 = Xf(1,0)-m_landArg.Rf*sin(Xf(3,0)+PI/2);
+
+          OCS3(0,0) = Xcs3;
+          OCS3(1,0) = Ycs3;
+          OCF3(0,0) = Xcf3;
+          OCF3(1,0) = Ycf3;
+          Matrix Pchi3 = Matrix(2,1,0.0);
+          Matrix PN3 = Matrix(2,1,0.0);
+          if (!dubinsParameteres(OCS3,OCF3,m_landArg.Rs,m_landArg.Rf,RightS3,RightF3,Pchi3,PN3))
+          {
+            war("Dubins Path does not exist from start position to end position");
+            return false;
+          }
+          //! RR
+          Matrix OCS4 = Matrix(2,1,0.0);
+          bool RightS4 = false;
+          double Xcs4 = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)-PI/2);
+          double Ycs4 = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)-PI/2);
+
+          Matrix OCF4 = Matrix(2,1,0.0);
+          bool RightF4 = false;
+          double Xcf4 = Xf(0,0)-m_landArg.Rf*cos(Xf(3,0)-PI/2);
+          double Ycf4 = Xf(1,0)-m_landArg.Rf*sin(Xf(3,0)-PI/2);
+
+          OCS4(0,0) = Xcs4;
+          OCS4(1,0) = Ycs4;
+          OCF4(0,0) = Xcf4;
+          OCF4(1,0) = Ycf4;
+          Matrix Pchi4 = Matrix(2,1,0.0);
+          Matrix PN4 = Matrix(2,1,0.0);
+          if (!dubinsParameteres(OCS4,OCF4,m_landArg.Rs,m_landArg.Rf,RightS4,RightF4,Pchi4,PN4))
+          {
+            war("Dubins Path does not exist from start position to end position");
+            return false;
+          }
         }
         else
         {
