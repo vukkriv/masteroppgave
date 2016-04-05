@@ -856,6 +856,52 @@ namespace Plan
 
       }
 
+      //! Return the parameters in Dubins Path
+      bool
+      dubinsParameteres(Matrix Ocs,Matrix Ocf,double Rs,double Rf,bool TurnS,bool TurnF,Matrix& Pchi,Matrix& PN)
+      {
+        double Xcs = Ocs(0,0);
+        double Ycs = Ocs(1,0);
+        double Xcf = Ocf(0,0);
+        double Ycf = Ocf(1,0);
+
+        //! Calculate the line between Ocs and Ofs
+        double cbx = Xcs;
+        double cax = Xcf - cbx;
+        double cby = Ycs;
+        double cay = Ycf - cby;
+
+        //! Calculate the length of c
+        double dc = std::sqrt(std::pow(cax,2)+std::pow(cay,2));
+        //! Check that Dubins path exists
+        if (sign(Rf-Rs)*(Rf-Rs)>dc)
+        {
+          war("Dubins Path does not exist from start position to end position");
+          return false;
+        }
+        //! Calculate alpha
+        double alpha = std::asin((m_landArg.Rf-m_landArg.Rs)/dc);
+
+        //! Calculate beta
+        double beta = std::atan2(Ycf-Ycs,Xcf-Xcs);
+
+        //! Define tangent points
+        //! First
+        double thetaS = turn(TurnS,alpha,beta);
+        //! Second
+        double thetaF = turn(TurnF,alpha,beta);
+        //! Exit tangent point for first circle
+        Pchi = Matrix(2,1,0.0);
+        Pchi(0,0) = Xcs+m_landArg.Rs*cos(thetaS);
+        Pchi(1,0) = Ycs+m_landArg.Rs*sin(thetaS);
+        inf("Created exit tangent");
+        //! Entry tangent point
+        PN = Matrix(2,1,0.0);
+        PN(0,0) = Xcf+m_landArg.Rf*cos(thetaF);
+        PN(1,0) = Ycf+m_landArg.Rf*sin(thetaF);
+        inf("Created entry tangent");
+      }
+
       //! Return the the turning arc given a turning direction
       void
       calculateTurningArc(const double theta1,const double theta0,const bool clockwise,const bool startcircle,Matrix &theta)
