@@ -117,7 +117,7 @@ namespace Plan
       //! Automatic generation of start and finish circle
       bool automatic;
       //! Right start turning circle
-      bool rigthStartTurningCircle;
+      //bool rigthStartTurningCircle;
       //! Right start turning direction
       bool rightStartTurningDirection;
       //! Right finish turning circle
@@ -327,7 +327,7 @@ namespace Plan
       void
       readTupleList(TupleList tList)
       {
-        m_landArg.rigthStartTurningCircle = (tList.get("right_start_turning_circle") == "true" ) ? true : false;
+        //m_landArg.rigthStartTurningCircle = (tList.get("right_start_turning_circle") == "true" ) ? true : false;
         m_landArg.rightStartTurningDirection = (tList.get("right_start_turning_direction") == "true") ? true : false;
         m_landArg.rightFinishTurningCircle = (tList.get("right_finish_turning_circle") == "true") ? true : false;
         m_landArg.net_lat = Angles::radians(tList.get("land_lat",63.629409));
@@ -366,7 +366,7 @@ namespace Plan
         inf("Rs %f",m_landArg.Rs);
         inf("Rf %f",m_landArg.Rf);
         inf("Automatic %d",m_landArg.automatic);
-        inf("Right start circle %d",m_landArg.rigthStartTurningCircle);
+        //inf("Right start circle %d",m_landArg.rigthStartTurningCircle);
         inf("Right start dir %d",m_landArg.rightStartTurningDirection);
         inf("Right finish %d",m_landArg.rightFinishTurningCircle);
         inf("WPA %d",m_landArg.RightWPa);
@@ -663,7 +663,7 @@ namespace Plan
         //! Entry tangent point on finish circle
         Matrix PN = Matrix(2,1,0.0);
 
-        inf("Start circle %d, Start direction %d Finish circle %d",m_landArg.rigthStartTurningCircle,m_landArg.rightStartTurningDirection,m_landArg.rightFinishTurningCircle);
+        //inf("Start circle %d, Start direction %d Finish circle %d",m_landArg.rigthStartTurningCircle,m_landArg.rightStartTurningDirection,m_landArg.rightFinishTurningCircle);
 
         if (m_landArg.automatic)
         {
@@ -926,9 +926,9 @@ namespace Plan
         else
         {
           inf("Creating a user specified path");
-          inf("Start circle %d, Start direction %d Finish circle %d",m_landArg.rigthStartTurningCircle,m_landArg.rightStartTurningDirection,m_landArg.rightFinishTurningCircle);
+          //inf("Start circle %d, Start direction %d Finish circle %d",m_landArg.rigthStartTurningCircle,m_landArg.rightStartTurningDirection,m_landArg.rightFinishTurningCircle);
           //! Define start turning circle center (Ocs)
-          if (m_landArg.rigthStartTurningCircle)
+          if (m_landArg.rightStartTurningDirection)
           {
 
             Xcs = Xs(0,0)-m_landArg.Rs*std::cos(Xs(3,0)+PI/2);
@@ -948,16 +948,15 @@ namespace Plan
 
           if (m_landArg.rightFinishTurningCircle)
           {
-            RightF = true;
             Xcf = Xf(0,0)-m_landArg.Rf*std::cos(Xf(3,0)+PI/2);
             Ycf = Xf(1,0)-m_landArg.Rf*std::sin(Xf(3,0)+PI/2);
           }
           else
           {
-            RightF = false;
             Xcf = Xf(0,0)-m_landArg.Rf*std::cos(Xf(3,0)-PI/2);
             Ycf = Xf(1,0)-m_landArg.Rf*std::sin(Xf(3,0)-PI/2);
           }
+          RightF = m_landArg.rightFinishTurningCircle;
 
           OCF(0,0) = Xcf;
           OCF(1,0) = Ycf;
@@ -1205,11 +1204,16 @@ namespace Plan
         {
           step = theta_limit;
         }
-
+        inf("Step limit %f",theta_limit);
         for (unsigned i=0;i<N;i++)
         {
           theta(0,i)=i*step;
         }
+        if (N==1)
+        {
+          theta(0,0) = step;
+        }
+        inf("Last theta %f and size theta %d N= %d",theta(0,N-1),theta.columns(),N);
       }
       //! Return the sign of a number. 0 is considered positive
       int
@@ -1343,6 +1347,7 @@ namespace Plan
 
         double thetaH0 = std::atan2(WPS1(1,0)-OF(1,0),WPS1(0,0)-OF(0,0));
         double thetaH1 = std::atan2(WP4(1,0)-OF(1,0),WP4(0,0)-OF(0,0));
+        inf("Start angle %f Finish angle %f",thetaH0,thetaH1);
         std::vector<Matrix> arc;
         if (RightF)
         {
