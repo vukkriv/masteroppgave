@@ -669,7 +669,7 @@ namespace Plan
         {
           inf("Creating a plan automatic");
           //! Define start turning circle center (Ocs)
-          if (std::atan2(Xs(1,0)-Xf(1,0),Xs(0,0)-Xf(0,0))<0)
+          /*if (std::atan2(Xs(1,0)-Xf(1,0),Xs(0,0)-Xf(0,0))<0)
           {
             RightS = false;
             Xcs = Xs(0,0)-m_landArg.Rs*std::cos(Xs(3,0)-PI/2);
@@ -702,7 +702,7 @@ namespace Plan
           OCF(0,0) = Xcf;
           OCF(1,0) = Ycf;
           inf("Created finish turn circle");
-
+*/
           //! LL
           Matrix OCS1 = Matrix(2,1,0.0);
           bool RightS1 = true;
@@ -729,11 +729,13 @@ namespace Plan
           double theta1 = std::atan2(Pchi1(1,0)-Ycs1,Pchi1(0,0)-Xcs1);
           double sLtheta1 = 0;
           arcAngle(theta0,theta1,RightS1,sLtheta1);
+          inf("Arc angle start1 %f",sLtheta1);
 
           double theta01 = std::atan2(PN1(1,0)-Ycf1,PN1(0,0)-Xcf1);
           double theta11 = std::atan2(Xf(1,0)-Ycf1,Xf(0,0)-Xcf1);
           double fLtheta1 = 0;
           arcAngle(theta01,theta11,RightF1,fLtheta1);
+          inf("Arc angle finish1%f",fLtheta1);
           double LengthPath1 = m_landArg.Rs*sLtheta1 + std::sqrt(std::pow(Pchi1(0,0)-PN1(0,0),2)+std::pow(Pchi1(1,0)-PN1(1,0),2)) + m_landArg.Rf*fLtheta1;
 
           //! LR
@@ -762,11 +764,13 @@ namespace Plan
           theta1 = std::atan2(Pchi2(1,0)-Ycs2,Pchi2(0,0)-Xcs2);
           double sLtheta2 = 0;
           arcAngle(theta0,theta1,RightS2,sLtheta2);
+          inf("Arc angle start2 %f",sLtheta2);
 
           theta01 = std::atan2(PN2(1,0)-Ycf2,PN2(0,0)-Xcf2);
           theta11 = std::atan2(Xf(1,0)-Ycf2,Xf(0,0)-Xcf2);
           double fLtheta2 = 0;
           arcAngle(theta01,theta11,RightF2,fLtheta2);
+          inf("Arc angle finish2 %f",fLtheta2);
           double LengthPath2 = m_landArg.Rs*sLtheta2 + std::sqrt(std::pow(Pchi2(0,0)-PN2(0,0),2)+std::pow(Pchi2(1,0)-PN2(1,0),2)) + m_landArg.Rf*fLtheta2;
 
           //! RL
@@ -795,11 +799,13 @@ namespace Plan
           theta1 = std::atan2(Pchi3(1,0)-Ycs3,Pchi3(0,0)-Xcs3);
           double sLtheta3 = 0;
           arcAngle(theta0,theta1,RightS3,sLtheta3);
+          inf("Arc angle start3 %f",sLtheta3);
 
           theta01 = std::atan2(PN3(1,0)-Ycf3,PN3(0,0)-Xcf3);
           theta11 = std::atan2(Xf(1,0)-Ycf3,Xf(0,0)-Xcf3);
           double fLtheta3 = 0;
           arcAngle(theta01,theta11,RightF3,fLtheta3);
+          inf("Arc angle finish3 %f",fLtheta3);
           double LengthPath3 = m_landArg.Rs*sLtheta3 + std::sqrt(std::pow(Pchi3(0,0)-PN3(0,0),2)+std::pow(Pchi3(1,0)-PN3(1,0),2)) + m_landArg.Rf*fLtheta3;
 
           //! RR
@@ -828,11 +834,13 @@ namespace Plan
           theta1 = std::atan2(Pchi4(1,0)-Ycs4,Pchi4(0,0)-Xcs4);
           double sLtheta4 = 0;
           arcAngle(theta0,theta1,RightS4,sLtheta4);
+          inf("Arc angle start4 %f",sLtheta4);
 
           theta01 = std::atan2(PN4(1,0)-Ycf4,PN4(0,0)-Xcf4);
           theta11 = std::atan2(Xf(1,0)-Ycf4,Xf(0,0)-Xcf4);
           double fLtheta4 = 0;
           arcAngle(theta01,theta11,RightF4,fLtheta4);
+          inf("Arc angle finish4 %f",fLtheta4);
           double LengthPath4 = m_landArg.Rs*sLtheta4 + std::sqrt(std::pow(Pchi4(0,0)-PN4(0,0),2)+std::pow(Pchi4(1,0)-PN4(1,0),2)) + m_landArg.Rf*fLtheta4;
 
           Matrix LengthPathV = Matrix(4,1,0.0);
@@ -843,8 +851,11 @@ namespace Plan
           double currShortest = LengthPath1;
           int currIndex = 0;
           //! Find the shortest path
+          inf("Path length in the order of LL LR RL RR");
+          inf("Path length: %f",currShortest);
           for (int i=1;i<4;i++)
           {
+            inf("Path length: %f",LengthPathV(i,0));
             if (currShortest>LengthPathV(i,0))
             {
               currShortest = LengthPathV(i,0);
@@ -865,6 +876,7 @@ namespace Plan
               PN = PN1;
               RightS = RightS1;
               RightF = RightF1;
+              inf("Calculated that LL is the shortest path");
               break;
             case 1:
               Xcs = Xcs2;
@@ -877,6 +889,7 @@ namespace Plan
               PN = PN2;
               RightS = RightS2;
               RightF = RightF2;
+              inf("Calculated that LR is the shortest path");
               break;
             case 2:
               Xcs = Xcs3;
@@ -889,6 +902,7 @@ namespace Plan
               PN = PN3;
               RightS = RightS3;
               RightF = RightF3;
+              inf("Calculated that RL is the shortest path");
               break;
             case 3:
               Xcs = Xcs4;
@@ -901,6 +915,7 @@ namespace Plan
               PN = PN4;
               RightS = RightS4;
               RightF = RightF4;
+              inf("Calculated that RR is the shortest path");
               break;
           }
 
@@ -1124,7 +1139,7 @@ namespace Plan
 
       //! Return the the turning arc given a turning direction
       void
-      arcAngle(const double theta1,const double theta0,const bool Right,double &theta)
+      arcAngle(const double theta0,const double theta1,const bool Right,double &theta)
       {
         if (Right)
           {
