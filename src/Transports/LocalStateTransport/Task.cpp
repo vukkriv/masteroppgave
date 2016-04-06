@@ -36,13 +36,6 @@ namespace Transports
 
     struct Arguments
     {
-        double ref_lat;
-        //! Reference longitude
-        double ref_lon;
-        //! Reference height (above elipsoid)
-        double ref_hae;
-
-        bool use_static_ref;
     };
 
     struct Task: public DUNE::Tasks::Task
@@ -54,61 +47,31 @@ namespace Transports
       fp64_t m_ref_lat, m_ref_lon;
       fp32_t m_ref_hae;
       bool m_ref_valid;
-      
-      IMC::EstimatedLocalState m_state;    
+      bool m_use_fallback;
+
+      IMC::EstimatedLocalState m_elstate;
+      IMC::EstimatedState m_estate;
+      IMC::Acceleration m_acc;
 
 
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Task(name, ctx)
+        DUNE::Tasks::Task(name, ctx),
+        m_use_fallback(true)
       {
-          param("Latitude", m_args.ref_lat)
-          .defaultValue("-999.0")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .units(Units::Degree)
-          .description("Reference Latitude");
-
-          param("Longitude", m_args.ref_lon)
-          .defaultValue("0.0")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .units(Units::Degree)
-          .description("Reference Longitude");
-
-          param("Height", m_args.ref_hae)
-          .defaultValue("0.0")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .units(Units::Meter)
-          .description("Reference Height (above elipsoid)");
-
-          param("Use Static Reference", m_args.use_static_ref)
-          .defaultValue("true")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Static reference LLH is set from config file");
-
-          // Bind to incoming IMC messages
-          bind<IMC::EstimatedState>(this);
+        // Bind to incoming IMC messages
+        bind<IMC::EstimatedState>(this);
+        bind<IMC::Acceleration>(this);
+        bind<IMC::CoordConfig>(this);
       }
 
       //! Update internal state with new parameter values.
       void
       onUpdateParameters(void)
       {
-		inf("New reference position.");
 
-		// Check validity
-		if (std::abs(m_args.ref_lat) > 90)
-		  throw DUNE::Exception("Unvalid reference latitude!");
-		if (std::abs(m_args.ref_lon) > 180)
-		  throw DUNE::Exception("Unvalid reference longitude!");
-
-		m_ref_lat = Angles::radians(m_args.ref_lat);
-		m_ref_lon = Angles::radians(m_args.ref_lon);
-		m_ref_hae = m_args.ref_hae;
-		m_ref_valid = true;
-        inf("Ref. LLH set from ini: [Lat = %f, Lon = %f, Height = %.1f]",
-            Angles::degrees(m_ref_lat), Angles::degrees(m_ref_lon), m_ref_hae);
       }
 
       //! Reserve entity identifiers.
@@ -142,75 +105,100 @@ namespace Transports
       }
 
       void
-      consume(const IMC::EstimatedState* msg)
+      consume(const IMC::CoordConfig* config)
       {
-  	    //Message should be from this vehicle
-	     if ( msg->getSource() != getSystemId() )
-		    return;
+        m_use_fallback = config->use_fallback;
+        if (m_use_fallback)
+        {
+          if (config->lat == -999) // Reference not set; return
+            return;
 
-	     spew("Got Estimated State from system '%s' and entity '%s'.",
-		   resolveSystemId(msg->getSource()),
-		   resolveEntity(msg->getSourceEntity()).c_str());
+          // Check validity
+          if (std::abs(config->lat) > 90)
+            throw DUNE::Exception("Unvalid reference latitude!");
+          if (std::abs(config->lon) > 180)
+            throw DUNE::Exception("Unvalid reference longitude!");
 
-		if (m_args.use_static_ref)
-		{
-		 m_state.lat    = m_ref_lat;
-		 m_state.lon    = m_ref_lon;
-		 m_state.height = m_ref_hae;
-		 WGS84::displacement(m_ref_lat, m_ref_lon, m_ref_hae,
-							 msg->lat, msg->lon, msg->height,
-							 &m_state.x, &m_state.y, &m_state.z);
-		 // Add displacement from agent reference
-		 m_state.x += msg->x;
-		 m_state.y += msg->y;
-		 m_state.z += msg->z;
-
-		 m_state.ref    = IMC::EstimatedLocalState::REF_FIXED;
-		 spew("Fixed reference on EstimatedState");
-		}
-		else
-		{
-		 m_state.lat    = msg->lat;
-		 m_state.lon    = msg->lon;
-		 m_state.height = msg->height;
-		 m_state.x = msg->x;
-		 m_state.y = msg->y;
-		 m_state.z = msg->z;
-		 m_state.ref = IMC::EstimatedLocalState::REF_MOVING;
-		}
-
-        m_state.u = msg->u;
-        m_state.v = msg->v;
-        m_state.w = msg->w;
-
-        m_state.phi   = msg->phi;
-        m_state.theta = msg->theta;
-        m_state.psi   = msg->psi;
-
-        m_state.p = msg->p;
-        m_state.q = msg->q;
-        m_state.r = msg->r;
-
-        // Set time stamp
-        m_state.ots = msg->getTimeStamp();
-
-        // Set velocity
-        m_state.vx = msg->vx;
-        m_state.vy = msg->vy;
-        m_state.vz = msg->vz;
-
-        //the following are not neccesary anymore?
-        m_state.source = IMC::EstimatedLocalState::SRC_GPS;
-        m_state.ref = IMC::EstimatedLocalState::REF_FIXED;
-
-        // Keep source entity and source ID
-        //m_state.setSource(msg->getSource());
-        //m_state.setSourceEntity(msg->getSourceEntity());
-        //dispatch(m_state, DF_KEEP_SRC_EID);
-        dispatch(m_state);
-        spew("Sent Estimated Local State");        
+          m_ref_lat = config->lat;
+          m_ref_lon = config->lon;
+          m_ref_hae = config->height;
+          m_ref_valid = true;
+          debug("Ref. LLH set from ini: [Lat = %f, Lon = %f, Height = %.1f]",
+              Angles::degrees(m_ref_lat), Angles::degrees(m_ref_lon), m_ref_hae);
+        }
       }
 
+      void
+      consume(const IMC::EstimatedState* msg)
+      {
+        //Message should be from this vehicle
+        if ( msg->getSource() != getSystemId() )
+        return;
+
+        if (!m_ref_valid && m_use_fallback)
+        {
+         war("Ignored ESTATE; valid reference LLH not set!");
+         return;
+        }
+
+        spew("Got Estimated State from system '%s' and entity '%s'.",
+        resolveSystemId(msg->getSource()),
+        resolveEntity(msg->getSourceEntity()).c_str());
+        if (m_use_fallback)
+        {
+         m_estate.lat    = m_ref_lat;
+         m_estate.lon    = m_ref_lon;
+         m_estate.height = m_ref_hae;
+         WGS84::displacement(m_ref_lat, m_ref_lon, m_ref_hae,
+                             msg->lat, msg->lon, msg->height,
+                             &m_estate.x, &m_estate.y, &m_estate.z);
+         // Add displacement from agent reference
+         m_estate.x += msg->x;
+         m_estate.y += msg->y;
+         m_estate.z += msg->z;
+        }
+        else
+        {
+         m_estate.lat    = msg->lat;
+         m_estate.lon    = msg->lon;
+         m_estate.height = msg->height;
+         m_estate.x = msg->x;
+         m_estate.y = msg->y;
+         m_estate.z = msg->z;
+        }
+
+        m_estate.vx = msg->vx;
+        m_estate.vy = msg->vy;
+        m_estate.vz = msg->vz;
+
+        m_estate.u = msg->u;
+        m_estate.v = msg->v;
+        m_estate.w = msg->w;
+
+        m_estate.phi   = msg->phi;
+        m_estate.theta = msg->theta;
+        m_estate.psi   = msg->psi;
+
+        m_estate.p = msg->p;
+        m_estate.q = msg->q;
+        m_estate.r = msg->r;
+
+        // Set time stamp
+        m_elstate.ots = msg->getTimeStamp();
+        m_elstate.state.set(m_estate);
+        m_elstate.acc.set(m_acc);
+
+        dispatch(m_elstate);
+        spew("Sent Estimated Local State");
+      }
+
+      void
+      consume(const IMC::Acceleration* msg)
+      {
+        m_acc.x = msg->x;
+        m_acc.y = msg->y;
+        m_acc.z = msg->z;
+      }
       //! Main loop.
       void
       onMain(void)
