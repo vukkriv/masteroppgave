@@ -851,6 +851,62 @@ namespace Plan
               currIndex = i;
             }
           }
+          //! Extract shortest path parameters
+          switch (currIndex)
+          {
+            case 0:
+              Xcs = Xcs1;
+              Ycs = Ycs1;
+              OCS = OCS1;
+              Xcf = Xcf1;
+              Ycf = Ycf1;
+              OCF = OCF1;
+              Pchi = Pchi1;
+              PN = PN1;
+              RightS = RightS1;
+              RightF = RightF1;
+              break;
+            case 1:
+              Xcs = Xcs2;
+              Ycs = Ycs2;
+              OCS = OCS2;
+              Xcf = Xcf2;
+              Ycf = Ycf2;
+              OCF = OCF2;
+              Pchi = Pchi2;
+              PN = PN2;
+              RightS = RightS2;
+              RightF = RightF2;
+              break;
+            case 2:
+              Xcs = Xcs3;
+              Ycs = Ycs3;
+              OCS = OCS3;
+              Xcf = Xcf3;
+              Ycf = Ycf3;
+              OCF = OCF3;
+              Pchi = Pchi3;
+              PN = PN3;
+              RightS = RightS3;
+              RightF = RightF3;
+              break;
+            case 3:
+              Xcs = Xcs4;
+              Ycs = Ycs4;
+              OCS = OCS4;
+              Xcf = Xcf4;
+              Ycf = Ycf4;
+              OCF = OCF4;
+              Pchi = Pchi4;
+              PN = PN4;
+              RightS = RightS4;
+              RightF = RightF4;
+              break;
+          }
+
+
+
+
         }
         else
         {
@@ -1063,6 +1119,7 @@ namespace Plan
         PN(0,0) = Xcf+m_landArg.Rf*cos(thetaF);
         PN(1,0) = Ycf+m_landArg.Rf*sin(thetaF);
         inf("Created entry tangent");
+        return true;
       }
 
       //! Return the the turning arc given a turning direction
