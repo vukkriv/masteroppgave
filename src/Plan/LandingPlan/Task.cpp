@@ -116,11 +116,9 @@ namespace Plan
       //! Advance options
       //! Automatic generation of start and finish circle
       bool automatic;
-      //! Right start turning circle
-      //bool rigthStartTurningCircle;
       //! Right start turning direction
       bool rightStartTurningDirection;
-      //! Right finish turning circle
+      //! Right finish turning direction
       bool rightFinishTurningCircle;
 
     };
@@ -327,7 +325,6 @@ namespace Plan
       void
       readTupleList(TupleList tList)
       {
-        //m_landArg.rigthStartTurningCircle = (tList.get("right_start_turning_circle") == "true" ) ? true : false;
         m_landArg.rightStartTurningDirection = (tList.get("right_start_turning_direction") == "true") ? true : false;
         m_landArg.rightFinishTurningCircle = (tList.get("right_finish_turning_circle") == "true") ? true : false;
         m_landArg.net_lat = Angles::radians(tList.get("land_lat",63.629409));
@@ -366,7 +363,6 @@ namespace Plan
         inf("Rs %f",m_landArg.Rs);
         inf("Rf %f",m_landArg.Rf);
         inf("Automatic %d",m_landArg.automatic);
-        //inf("Right start circle %d",m_landArg.rigthStartTurningCircle);
         inf("Right start dir %d",m_landArg.rightStartTurningDirection);
         inf("Right finish %d",m_landArg.rightFinishTurningCircle);
         inf("WPA %d",m_landArg.RightWPa);
@@ -663,47 +659,12 @@ namespace Plan
         //! Entry tangent point on finish circle
         Matrix PN = Matrix(2,1,0.0);
 
-        //inf("Start circle %d, Start direction %d Finish circle %d",m_landArg.rigthStartTurningCircle,m_landArg.rightStartTurningDirection,m_landArg.rightFinishTurningCircle);
-
         if (m_landArg.automatic)
         {
           inf("Creating a plan automatic");
-          //! Define start turning circle center (Ocs)
-          /*if (std::atan2(Xs(1,0)-Xf(1,0),Xs(0,0)-Xf(0,0))<0)
-          {
-            RightS = false;
-            Xcs = Xs(0,0)-m_landArg.Rs*std::cos(Xs(3,0)-PI/2);
-            Ycs = Xs(1,0)-m_landArg.Rs*std::sin(Xs(3,0)-PI/2);
-          }
-          else
-          {
-            RightS = true;
-            Xcs = Xs(0,0)-m_landArg.Rs*std::cos(Xs(3,0)+PI/2);
-            Ycs = Xs(1,0)-m_landArg.Rs*std::sin(Xs(3,0)+PI/2);
-          }
-          OCS(0,0) = Xcs;
-          OCS(1,0) = Ycs;
-          inf("Created start turn circle");
-          //! Define end turning circle center (Ofs)
+          //! Creating plan alternatives
 
-          if (std::atan2(Xs(1,0)-Xf(1,0),Xs(0,0)-Xf(0,0))<0)
-          {
-            RightF = false;
-            Xcf = Xf(0,0)-m_landArg.Rf*std::cos(Xf(3,0)-PI/2);
-            Ycf = Xf(1,0)-m_landArg.Rf*std::sin(Xf(3,0)-PI/2);
-          }
-          else
-          {
-            RightF = true;
-            Xcf = Xf(0,0)-m_landArg.Rf*std::cos(Xf(3,0)+PI/2);
-            Ycf = Xf(1,0)-m_landArg.Rf*std::sin(Xf(3,0)+PI/2);
-          }
-
-          OCF(0,0) = Xcf;
-          OCF(1,0) = Ycf;
-          inf("Created finish turn circle");
-*/
-          //! LL
+          //! Counter clockwise, counter clockwise
           Matrix OCS1 = Matrix(2,1,0.0);
           bool RightS1 = true;
           double Xcs1 = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)+PI/2);
@@ -738,7 +699,7 @@ namespace Plan
           inf("Arc angle finish1%f",fLtheta1);
           double LengthPath1 = m_landArg.Rs*sLtheta1 + std::sqrt(std::pow(Pchi1(0,0)-PN1(0,0),2)+std::pow(Pchi1(1,0)-PN1(1,0),2)) + m_landArg.Rf*fLtheta1;
 
-          //! LR
+          //! counter clockwise, clockwise
           Matrix OCS2 = Matrix(2,1,0.0);
           bool RightS2 = true;
           double Xcs2 = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)+PI/2);
@@ -773,7 +734,7 @@ namespace Plan
           inf("Arc angle finish2 %f",fLtheta2);
           double LengthPath2 = m_landArg.Rs*sLtheta2 + std::sqrt(std::pow(Pchi2(0,0)-PN2(0,0),2)+std::pow(Pchi2(1,0)-PN2(1,0),2)) + m_landArg.Rf*fLtheta2;
 
-          //! RL
+          //! Clockwise, counter clockwise
           Matrix OCS3 = Matrix(2,1,0.0);
           bool RightS3 = false;
           double Xcs3 = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)-PI/2);
@@ -808,7 +769,7 @@ namespace Plan
           inf("Arc angle finish3 %f",fLtheta3);
           double LengthPath3 = m_landArg.Rs*sLtheta3 + std::sqrt(std::pow(Pchi3(0,0)-PN3(0,0),2)+std::pow(Pchi3(1,0)-PN3(1,0),2)) + m_landArg.Rf*fLtheta3;
 
-          //! RR
+          //! Clockwise, clockwise
           Matrix OCS4 = Matrix(2,1,0.0);
           bool RightS4 = false;
           double Xcs4 = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)-PI/2);
@@ -851,7 +812,6 @@ namespace Plan
           double currShortest = LengthPath1;
           int currIndex = 0;
           //! Find the shortest path
-          inf("Path length in the order of LL LR RL RR");
           inf("Path length: %f",currShortest);
           for (int i=1;i<4;i++)
           {
@@ -876,7 +836,7 @@ namespace Plan
               PN = PN1;
               RightS = RightS1;
               RightF = RightF1;
-              inf("Calculated that LL is the shortest path");
+              inf("Calculated that counter clockwise, counter clocwise is the shortest path");
               break;
             case 1:
               Xcs = Xcs2;
@@ -889,7 +849,7 @@ namespace Plan
               PN = PN2;
               RightS = RightS2;
               RightF = RightF2;
-              inf("Calculated that LR is the shortest path");
+              inf("Calculated that counter clockwise, clockwise is the shortest path");
               break;
             case 2:
               Xcs = Xcs3;
@@ -902,7 +862,7 @@ namespace Plan
               PN = PN3;
               RightS = RightS3;
               RightF = RightF3;
-              inf("Calculated that RL is the shortest path");
+              inf("Calculated that clockwise, counter clockwise is the shortest path");
               break;
             case 3:
               Xcs = Xcs4;
@@ -915,7 +875,7 @@ namespace Plan
               PN = PN4;
               RightS = RightS4;
               RightF = RightF4;
-              inf("Calculated that RR is the shortest path");
+              inf("Calculated that clockwise, clockwise is the shortest path");
               break;
           }
 
@@ -968,57 +928,6 @@ namespace Plan
           }
         }
 
-
-/*
-        //! Calculate radius of second end turning circle
-        Rsec = std::abs(m_landArg.Rf-m_landArg.Rs);
-
-        //! Calculate the line between Ocs and Ofs
-        double cbx = Xcs;
-        double cax = Xcf - cbx;
-        double cby = Ycs;
-        double cay = Ycf - cby;
-
-        //! Calculate the length of c
-        double dc = std::sqrt(std::pow(cax,2)+std::pow(cay,2));
-        //! Check that Dubins path exists
-        if (Rsec>dc)
-        {
-          war("Dubins Path does not exist from start position to end position");
-          return false;
-        }
-        //! Calculate distance from start pose to end pose
-        double dXsXf = sqrt(std::pow(Xs(0,0)-Xf(0,0),2)+std::pow(Xs(1,0)-Xf(1,0),2));
-
-        //! Check if the start pose and end pose is to close
-        if (dXsXf<2*m_landArg.Rf && m_landArg.automatic)
-        {
-          war("The start pose and end pose are to close.");
-          return false;
-        }
-        inf("Starting to create Dubins path");
-        //! Calculate alpha
-        double alpha = std::asin((m_landArg.Rf-m_landArg.Rs)/dc);
-
-        //! Calculate beta
-        double beta = std::atan2(Ycf-Ycs,Xcf-Xcs);
-
-        //! Define tangent points
-        //! First
-        double thetaS = turn(RightS,alpha,beta);
-        //! Second
-        double thetaF = turn(RightF,alpha,beta);
-        //! Exit tangent point for first circle
-        Matrix Pchi = Matrix(2,1,0.0);
-        Pchi(0,0) = Xcs+m_landArg.Rs*cos(thetaS);
-        Pchi(1,0) = Ycs+m_landArg.Rs*sin(thetaS);
-        inf("Created exit tangent");
-        //! Entry tangent point
-        Matrix PN = Matrix(2,1,0.0);
-        PN(0,0) = Xcf+m_landArg.Rf*cos(thetaF);
-        PN(1,0) = Ycf+m_landArg.Rf*sin(thetaF);
-        inf("Created entry tangent");
-        */
         ///////////////////// Construction phase of the function ////////////////////////////////
         //! Define turning arc
         std::vector<Matrix> arc;
