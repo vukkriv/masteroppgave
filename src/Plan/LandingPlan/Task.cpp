@@ -453,7 +453,7 @@ namespace Plan
         Xs(3,0) = m_estate.psi;
 
         //! Direction of end turn
-        bool RightF;
+        bool CounterClockwiseF;
         //! Center of end turning circle
         Matrix OCF = Matrix(2,1,0.0);
         //! End pose in dubins path
@@ -488,7 +488,7 @@ namespace Plan
         Xs(2,0) = 0.0;
         //! Calculated path
 
-        if (!dubinsPath(Xs,Xf,path,RightF,OCF))
+        if (!dubinsPath(Xs,Xf,path,CounterClockwiseF,OCF))
         {
           //! Need an extra WP
           Xf(0,0) = m_landArg.WPa(0,0);
@@ -501,7 +501,7 @@ namespace Plan
           //Coordinates::WGS84::displace(m_landArg.WPa(0,0),m_landArg.WPa(1,0),&wa_lat,&wa_lon);
           //Coordinates::WGS84::displacement(m_estate.lat,m_estate.lon,m_estate.height,wa_lat,wa_lon,wa_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
           inf("Attempt to create new dubins path with XF: x= %f y=%f z=%f psi=%f",Xf(0,0),Xf(1,0),Xf(2,0),Xf(3,0));
-          if (!dubinsPath(Xs,Xf,path,RightF,OCF))
+          if (!dubinsPath(Xs,Xf,path,CounterClockwiseF,OCF))
           {
             err("Could not generate a landing path: Abort");
             return false;
@@ -511,7 +511,7 @@ namespace Plan
           //Coordinates::WGS84::displacement(m_estate.lat,m_estate.lon,m_estate.height,w4_lat,w4_lon,w4_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
           Xf(3,0) = Angles::normalizeRadian(m_landArg.netHeading-PI);
           inf("Attempt a new way toward the landing approach");
-          if (!dubinsPath(Xst,Xf,path,RightF,OCF))
+          if (!dubinsPath(Xst,Xf,path,CounterClockwiseF,OCF))
           {
             err("Could not generate a landing path: Abort");
             return false;
@@ -526,9 +526,9 @@ namespace Plan
           m_landArg.gamma_d = -m_landArg.gamma_d;
         }
         glideSlope(Xs,Xf,m_landArg.gamma_d,correctHeight,path);
-        glideSpiral(OCF,RightF,Xf(2,0),correctHeight,m_landArg.gamma_d,path);
+        glideSpiral(OCF,CounterClockwiseF,Xf(2,0),correctHeight,m_landArg.gamma_d,path);
         m_landArg.OCF = OCF;
-        m_landArg.clockwise = !RightF;
+        m_landArg.clockwise = !CounterClockwiseF;
         m_landArg.OCFz = Xf(2,0);
         inf("Reach correct height %f from the height %f",path[path.size()-1](2,0),Xs(2,0));
         inf("WP4 = h-z %f",m_landArg.net_WGS84_height-m_landArg.WP4(2,0));
@@ -640,10 +640,10 @@ namespace Plan
       }
       //! Construct Dubins Path between two waypoints with given heading
       bool
-      dubinsPath(const Matrix Xs,const Matrix Xf, std::vector<Matrix>& Path,bool &RightF,Matrix &OCF)
+      dubinsPath(const Matrix Xs,const Matrix Xf, std::vector<Matrix>& Path,bool &CounterClockwiseF,Matrix &OCF)
       {
         //! Define start turning direction
-        bool RightS;
+        bool CounterClockwiseS;
         //! Declare parameters
         //! Start circle center
         double Xcs;
@@ -666,12 +666,12 @@ namespace Plan
 
           //! Counter clockwise, counter clockwise
           Matrix OCS1 = Matrix(2,1,0.0);
-          bool RightS1 = true;
+          bool CounterClockwiseS1 = true;
           double Xcs1 = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)+PI/2);
           double Ycs1 = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)+PI/2);
 
           Matrix OCF1 = Matrix(2,1,0.0);
-          bool RightF1 = true;
+          bool CounterClockwiseF1 = true;
           double Xcf1 = Xf(0,0)-m_landArg.Rf*cos(Xf(3,0)+PI/2);
           double Ycf1 = Xf(1,0)-m_landArg.Rf*sin(Xf(3,0)+PI/2);
 
@@ -681,7 +681,7 @@ namespace Plan
           OCF1(1,0) = Ycf1;
           Matrix Pchi1 = Matrix(2,1,0.0);
           Matrix PN1 = Matrix(2,1,0.0);
-          if (!dubinsParameteres(OCS1,OCF1,m_landArg.Rs,m_landArg.Rf,RightS1,RightF1,Pchi1,PN1))
+          if (!dubinsParameteres(OCS1,OCF1,m_landArg.Rs,m_landArg.Rf,CounterClockwiseS1,CounterClockwiseF1,Pchi1,PN1))
           {
             war("Dubins Path does not exist from start position to end position");
             return false;
@@ -689,24 +689,24 @@ namespace Plan
           double theta0 = std::atan2(Xs(1,0)-Ycs1,Xs(0,0)-Xcs1);
           double theta1 = std::atan2(Pchi1(1,0)-Ycs1,Pchi1(0,0)-Xcs1);
           double sLtheta1 = 0;
-          arcAngle(theta0,theta1,RightS1,sLtheta1);
+          arcAngle(theta0,theta1,CounterClockwiseS1,sLtheta1);
           inf("Arc angle start1 %f",sLtheta1);
 
           double theta01 = std::atan2(PN1(1,0)-Ycf1,PN1(0,0)-Xcf1);
           double theta11 = std::atan2(Xf(1,0)-Ycf1,Xf(0,0)-Xcf1);
           double fLtheta1 = 0;
-          arcAngle(theta01,theta11,RightF1,fLtheta1);
+          arcAngle(theta01,theta11,CounterClockwiseF1,fLtheta1);
           inf("Arc angle finish1%f",fLtheta1);
           double LengthPath1 = m_landArg.Rs*sLtheta1 + std::sqrt(std::pow(Pchi1(0,0)-PN1(0,0),2)+std::pow(Pchi1(1,0)-PN1(1,0),2)) + m_landArg.Rf*fLtheta1;
 
           //! counter clockwise, clockwise
           Matrix OCS2 = Matrix(2,1,0.0);
-          bool RightS2 = true;
+          bool CounterClockwiseS2 = true;
           double Xcs2 = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)+PI/2);
           double Ycs2 = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)+PI/2);
 
           Matrix OCF2 = Matrix(2,1,0.0);
-          bool RightF2 = false;
+          bool CounterClockwiseF2 = false;
           double Xcf2 = Xf(0,0)-m_landArg.Rf*cos(Xf(3,0)-PI/2);
           double Ycf2 = Xf(1,0)-m_landArg.Rf*sin(Xf(3,0)-PI/2);
 
@@ -716,7 +716,7 @@ namespace Plan
           OCF2(1,0) = Ycf2;
           Matrix Pchi2 = Matrix(2,1,0.0);
           Matrix PN2 = Matrix(2,1,0.0);
-          if (!dubinsParameteres(OCS2,OCF2,m_landArg.Rs,m_landArg.Rf,RightS2,RightF2,Pchi2,PN2))
+          if (!dubinsParameteres(OCS2,OCF2,m_landArg.Rs,m_landArg.Rf,CounterClockwiseS2,CounterClockwiseF2,Pchi2,PN2))
           {
             war("Dubins Path does not exist from start position to end position");
             return false;
@@ -724,24 +724,24 @@ namespace Plan
           theta0 = std::atan2(Xs(1,0)-Ycs2,Xs(0,0)-Xcs2);
           theta1 = std::atan2(Pchi2(1,0)-Ycs2,Pchi2(0,0)-Xcs2);
           double sLtheta2 = 0;
-          arcAngle(theta0,theta1,RightS2,sLtheta2);
+          arcAngle(theta0,theta1,CounterClockwiseS2,sLtheta2);
           inf("Arc angle start2 %f",sLtheta2);
 
           theta01 = std::atan2(PN2(1,0)-Ycf2,PN2(0,0)-Xcf2);
           theta11 = std::atan2(Xf(1,0)-Ycf2,Xf(0,0)-Xcf2);
           double fLtheta2 = 0;
-          arcAngle(theta01,theta11,RightF2,fLtheta2);
+          arcAngle(theta01,theta11,CounterClockwiseF2,fLtheta2);
           inf("Arc angle finish2 %f",fLtheta2);
           double LengthPath2 = m_landArg.Rs*sLtheta2 + std::sqrt(std::pow(Pchi2(0,0)-PN2(0,0),2)+std::pow(Pchi2(1,0)-PN2(1,0),2)) + m_landArg.Rf*fLtheta2;
 
           //! Clockwise, counter clockwise
           Matrix OCS3 = Matrix(2,1,0.0);
-          bool RightS3 = false;
+          bool CounterClockwiseS3 = false;
           double Xcs3 = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)-PI/2);
           double Ycs3 = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)-PI/2);
 
           Matrix OCF3 = Matrix(2,1,0.0);
-          bool RightF3 = true;
+          bool CounterClockwiseF3 = true;
           double Xcf3 = Xf(0,0)-m_landArg.Rf*cos(Xf(3,0)+PI/2);
           double Ycf3 = Xf(1,0)-m_landArg.Rf*sin(Xf(3,0)+PI/2);
 
@@ -751,7 +751,7 @@ namespace Plan
           OCF3(1,0) = Ycf3;
           Matrix Pchi3 = Matrix(2,1,0.0);
           Matrix PN3 = Matrix(2,1,0.0);
-          if (!dubinsParameteres(OCS3,OCF3,m_landArg.Rs,m_landArg.Rf,RightS3,RightF3,Pchi3,PN3))
+          if (!dubinsParameteres(OCS3,OCF3,m_landArg.Rs,m_landArg.Rf,CounterClockwiseS3,CounterClockwiseF3,Pchi3,PN3))
           {
             war("Dubins Path does not exist from start position to end position");
             return false;
@@ -759,24 +759,24 @@ namespace Plan
           theta0 = std::atan2(Xs(1,0)-Ycs3,Xs(0,0)-Xcs3);
           theta1 = std::atan2(Pchi3(1,0)-Ycs3,Pchi3(0,0)-Xcs3);
           double sLtheta3 = 0;
-          arcAngle(theta0,theta1,RightS3,sLtheta3);
+          arcAngle(theta0,theta1,CounterClockwiseS3,sLtheta3);
           inf("Arc angle start3 %f",sLtheta3);
 
           theta01 = std::atan2(PN3(1,0)-Ycf3,PN3(0,0)-Xcf3);
           theta11 = std::atan2(Xf(1,0)-Ycf3,Xf(0,0)-Xcf3);
           double fLtheta3 = 0;
-          arcAngle(theta01,theta11,RightF3,fLtheta3);
+          arcAngle(theta01,theta11,CounterClockwiseF3,fLtheta3);
           inf("Arc angle finish3 %f",fLtheta3);
           double LengthPath3 = m_landArg.Rs*sLtheta3 + std::sqrt(std::pow(Pchi3(0,0)-PN3(0,0),2)+std::pow(Pchi3(1,0)-PN3(1,0),2)) + m_landArg.Rf*fLtheta3;
 
           //! Clockwise, clockwise
           Matrix OCS4 = Matrix(2,1,0.0);
-          bool RightS4 = false;
+          bool CounterClockwiseS4 = false;
           double Xcs4 = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)-PI/2);
           double Ycs4 = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)-PI/2);
 
           Matrix OCF4 = Matrix(2,1,0.0);
-          bool RightF4 = false;
+          bool CounterClockwiseF4 = false;
           double Xcf4 = Xf(0,0)-m_landArg.Rf*cos(Xf(3,0)-PI/2);
           double Ycf4 = Xf(1,0)-m_landArg.Rf*sin(Xf(3,0)-PI/2);
 
@@ -786,7 +786,7 @@ namespace Plan
           OCF4(1,0) = Ycf4;
           Matrix Pchi4 = Matrix(2,1,0.0);
           Matrix PN4 = Matrix(2,1,0.0);
-          if (!dubinsParameteres(OCS4,OCF4,m_landArg.Rs,m_landArg.Rf,RightS4,RightF4,Pchi4,PN4))
+          if (!dubinsParameteres(OCS4,OCF4,m_landArg.Rs,m_landArg.Rf,CounterClockwiseS4,CounterClockwiseF4,Pchi4,PN4))
           {
             war("Dubins Path does not exist from start position to end position");
             return false;
@@ -794,13 +794,13 @@ namespace Plan
           theta0 = std::atan2(Xs(1,0)-Ycs4,Xs(0,0)-Xcs4);
           theta1 = std::atan2(Pchi4(1,0)-Ycs4,Pchi4(0,0)-Xcs4);
           double sLtheta4 = 0;
-          arcAngle(theta0,theta1,RightS4,sLtheta4);
+          arcAngle(theta0,theta1,CounterClockwiseS4,sLtheta4);
           inf("Arc angle start4 %f",sLtheta4);
 
           theta01 = std::atan2(PN4(1,0)-Ycf4,PN4(0,0)-Xcf4);
           theta11 = std::atan2(Xf(1,0)-Ycf4,Xf(0,0)-Xcf4);
           double fLtheta4 = 0;
-          arcAngle(theta01,theta11,RightF4,fLtheta4);
+          arcAngle(theta01,theta11,CounterClockwiseF4,fLtheta4);
           inf("Arc angle finish4 %f",fLtheta4);
           double LengthPath4 = m_landArg.Rs*sLtheta4 + std::sqrt(std::pow(Pchi4(0,0)-PN4(0,0),2)+std::pow(Pchi4(1,0)-PN4(1,0),2)) + m_landArg.Rf*fLtheta4;
 
@@ -834,8 +834,8 @@ namespace Plan
               OCF = OCF1;
               Pchi = Pchi1;
               PN = PN1;
-              RightS = RightS1;
-              RightF = RightF1;
+              CounterClockwiseS = CounterClockwiseS1;
+              CounterClockwiseF = CounterClockwiseF1;
               inf("Calculated that counter clockwise, counter clocwise is the shortest path");
               break;
             case 1:
@@ -847,8 +847,8 @@ namespace Plan
               OCF = OCF2;
               Pchi = Pchi2;
               PN = PN2;
-              RightS = RightS2;
-              RightF = RightF2;
+              CounterClockwiseS = CounterClockwiseS2;
+              CounterClockwiseF = CounterClockwiseF2;
               inf("Calculated that counter clockwise, clockwise is the shortest path");
               break;
             case 2:
@@ -860,8 +860,8 @@ namespace Plan
               OCF = OCF3;
               Pchi = Pchi3;
               PN = PN3;
-              RightS = RightS3;
-              RightF = RightF3;
+              CounterClockwiseS = CounterClockwiseS3;
+              CounterClockwiseF = CounterClockwiseF3;
               inf("Calculated that clockwise, counter clockwise is the shortest path");
               break;
             case 3:
@@ -873,8 +873,8 @@ namespace Plan
               OCF = OCF4;
               Pchi = Pchi4;
               PN = PN4;
-              RightS = RightS4;
-              RightF = RightF4;
+              CounterClockwiseS = CounterClockwiseS4;
+              CounterClockwiseF = CounterClockwiseF4;
               inf("Calculated that clockwise, clockwise is the shortest path");
               break;
           }
@@ -900,7 +900,7 @@ namespace Plan
             Xcs = Xs(0,0)-m_landArg.Rs*std::cos(Xs(3,0)-PI/2);
             Ycs = Xs(1,0)-m_landArg.Rs*std::sin(Xs(3,0)-PI/2);
           }
-          RightS = m_landArg.rightStartTurningDirection;
+          CounterClockwiseS = m_landArg.rightStartTurningDirection;
           OCS(0,0) = Xcs;
           OCS(1,0) = Ycs;
           inf("Created start turn circle");
@@ -916,12 +916,12 @@ namespace Plan
             Xcf = Xf(0,0)-m_landArg.Rf*std::cos(Xf(3,0)-PI/2);
             Ycf = Xf(1,0)-m_landArg.Rf*std::sin(Xf(3,0)-PI/2);
           }
-          RightF = m_landArg.rightFinishTurningCircle;
+          CounterClockwiseF = m_landArg.rightFinishTurningCircle;
 
           OCF(0,0) = Xcf;
           OCF(1,0) = Ycf;
           inf("Created finish turn circle");
-          if (!dubinsParameteres(OCS,OCF,m_landArg.Rs,m_landArg.Rf,RightS,RightF,Pchi,PN))
+          if (!dubinsParameteres(OCS,OCF,m_landArg.Rs,m_landArg.Rf,CounterClockwiseS,CounterClockwiseF,Pchi,PN))
           {
             war("Dubins Path does not exist from start position to end position");
             return false;
@@ -937,7 +937,7 @@ namespace Plan
         inf("Starting to construct first arc");
         double theta0 = std::atan2(Xs(1,0)-Ycs,Xs(0,0)-Xcs);
         double theta1 = std::atan2(Pchi(1,0)-Ycs,Pchi(0,0)-Xcs);
-        if (RightS)
+        if (CounterClockwiseS)
         {
           if (Angles::normalizeRadian(theta1-theta0)<=0)
           {
@@ -968,7 +968,7 @@ namespace Plan
         theta1 = std::atan2(Xf(1,0)-Ycf,Xf(0,0)-Xcf);
         //! Declare angle array
         Matrix thetaTF =Matrix(1,m_Nf,0.0);
-        if (RightF)
+        if (CounterClockwiseF)
         {
           if(Angles::normalizeRadian(theta1-theta0)<=0)
           {
@@ -1192,7 +1192,7 @@ namespace Plan
       }
       //! Create a spiral path towards the desired height dHeight
       void
-      glideSpiral(const Matrix OF,const bool RightF,const double dHeight,bool &correctHeigth, double descentAngle,std::vector<Matrix> &Path)
+      glideSpiral(const Matrix OF,const bool CounterClockwiseF,const double dHeight,bool &correctHeigth, double descentAngle,std::vector<Matrix> &Path)
       {
         if(correctHeigth)
         {
@@ -1201,7 +1201,7 @@ namespace Plan
         double theta0 = std::atan2(Path[Path.size()-1](1,0)-OF(1,0),Path[Path.size()-1](0,0)-OF(0,0));
         Matrix WP4 = Path.back();
         Matrix theta = Matrix(1,m_Nf);
-        if (RightF)
+        if (CounterClockwiseF)
         {
           calculateTurningArcAngle(-2*PI,false,theta);
         }
@@ -1258,7 +1258,7 @@ namespace Plan
         double thetaH1 = std::atan2(WP4(1,0)-OF(1,0),WP4(0,0)-OF(0,0));
         inf("Start angle %f Finish angle %f",thetaH0,thetaH1);
         std::vector<Matrix> arc;
-        if (RightF)
+        if (CounterClockwiseF)
         {
           if (Angles::normalizeRadian(thetaH1-thetaH0)<=0)
           {
