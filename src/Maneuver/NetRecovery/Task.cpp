@@ -52,6 +52,7 @@ namespace Maneuver
       Vehicles m_vehicles;
       Vehicle m_vehicle;
       int m_currWP;
+      bool m_near_WP;
       IMC::NetRecovery m_maneuver;
 
       //! Constructor.
@@ -59,7 +60,8 @@ namespace Maneuver
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Maneuvers::Maneuver(name, ctx),
-        m_currWP(0)
+        m_currWP(0),
+        m_near_WP(false)
       {
         bindToManeuver<Task, IMC::NetRecovery>();
         bind<IMC::NetRecoveryState>(this);
@@ -133,15 +135,17 @@ namespace Maneuver
             {
               stopManeuver();
             }
-            else
+            else if(m_near_WP)
             { 
               m_currWP += 1;
               sendFixedWingPath();
             }
+            m_near_WP = true;
           }
           else
           {
-            signalProgress(pcs->eta);              
+            signalProgress(pcs->eta);
+            m_near_WP = false;
           }
         }        
       }      
