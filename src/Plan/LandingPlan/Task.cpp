@@ -127,6 +127,32 @@ namespace Plan
       double OCFz;
     };
 
+    struct DubinsParametersContainer
+    {
+      //! Rotation direction for the start circle
+      bool CounterClockwiseS;
+      //! Rotation direction for the final circle
+      bool CounterClockwiseF;
+      //! X-coordinate for the start circle
+      double Xcs;
+      //! Y-coordinate for the start circle
+      double Ycs;
+      //! Matrix containing the center of the start circle
+      Matrix OCS;
+      //! X-coordinate for the final circle
+      double Xcf;
+      //! Y-coordinate for the final circle
+      double Ycf;
+      //! Matrix containing the center of the final circle
+      Matrix OCF;
+      //! Matrix containing the exit tangent point for arc on the start circle
+      Matrix Pchi;
+      //! Matrix containing the entry tangent point for the arc on the final circle
+      Matrix PN;
+      //! Length of the dubins path
+      double LengthPath;
+    };
+
     struct Task: public DUNE::Tasks::Task
     {
       //! Task arguments
@@ -135,6 +161,8 @@ namespace Plan
       LandingPathArguments m_landArg;
       //! Landing path parameters
       LandingPath m_landParameteres;
+      //! Vector containing information about all variants of dubins path
+      std::vector<DubinsParametersContainer> m_dubinsPaths;
       //! Accumulated EstimatedState message
       IMC::EstimatedState m_estate;
       //! Segments in the start circle
@@ -493,8 +521,9 @@ namespace Plan
         Xs(1,0) = 0.0;
         Xs(2,0) = 0.0;
         //! Calculated path
+        bool createdPath = dubinsPath(Xs,Xf,path,CounterClockwiseF,OCF);
 
-        if (!dubinsPath(Xs,Xf,path,CounterClockwiseF,OCF))
+        if (!createdPath)
         {
           //! Need an extra WP
           Xf(0,0) = m_landParameteres.WPa(0,0);
@@ -668,10 +697,22 @@ namespace Plan
         if (m_landArg.automatic)
         {
           inf("Creating a plan automatic");
+          DubinsParametersContainer dubinsPath;
+          findPath(Xs,Xf,dubinsPath);
+          Xcs = dubinsPath.Xcs;
+          Ycs = dubinsPath.Ycs;
+          OCS = dubinsPath.OCS;
+          Xcf = dubinsPath.Xcf;
+          Ycf = dubinsPath.Ycf;
+          OCF = dubinsPath.OCF;
+          Pchi = dubinsPath.Pchi;
+          PN = dubinsPath.PN;
+          CounterClockwiseS = dubinsPath.CounterClockwiseS;
+          CounterClockwiseF = dubinsPath.CounterClockwiseF;
           //! Creating plan alternatives
 
           //! Counter clockwise, counter clockwise
-          Matrix OCS1 = Matrix(2,1,0.0);
+          /*Matrix OCS1 = Matrix(2,1,0.0);
           bool CounterClockwiseS1 = true;
           double Xcs1 = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)+PI/2);
           double Ycs1 = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)+PI/2);
@@ -883,7 +924,7 @@ namespace Plan
               CounterClockwiseF = CounterClockwiseF4;
               inf("Calculated that clockwise, clockwise is the shortest path");
               break;
-          }
+          }*/
 
 
 
@@ -1002,6 +1043,120 @@ namespace Plan
         inf("Constructed Dubins path");
         return true;
 
+      }
+      // ! Return the function parameters for the shortest dubins path
+      bool findPath(const Matrix Xs,const Matrix Xf,DubinsParametersContainer &dubinsPath)
+      {
+        //! Initializing the structs
+        DubinsParametersContainer CounterClockwiseCounterClocwise;
+        CounterClockwiseCounterClocwise.CounterClockwiseF = true;
+        CounterClockwiseCounterClocwise.CounterClockwiseS = true;
+        DubinsParametersContainer CounterClockwiseClockwise;
+        CounterClockwiseClockwise.CounterClockwiseS = true;
+        CounterClockwiseClockwise.CounterClockwiseF = false;
+        DubinsParametersContainer ClockwiseCounterClockwise;
+        ClockwiseCounterClockwise.CounterClockwiseS = false;
+        ClockwiseCounterClockwise.CounterClockwiseF = true;
+        DubinsParametersContainer ClockwiseClockwise;
+        ClockwiseClockwise.CounterClockwiseS = false;
+        ClockwiseClockwise.CounterClockwiseF = false;
+        bool filledParameters = fillDubinsParametersContainger(Xs,Xf,CounterClockwiseCounterClocwise);
+        if (!filledParameters)
+        {
+          return false;
+        }
+        filledParameters = fillDubinsParametersContainger(Xs,Xf,CounterClockwiseClockwise);
+        if (!filledParameters)
+        {
+          return false;
+        }
+        filledParameters = fillDubinsParametersContainger(Xs,Xf,ClockwiseCounterClockwise);
+        if (!filledParameters)
+        {
+          return false;
+        }
+        filledParameters = fillDubinsParametersContainger(Xs,Xf,ClockwiseClockwise);
+        if (!filledParameters)
+        {
+          return false;
+        }
+        m_dubinsPaths.clear();
+        m_dubinsPaths.push_back(CounterClockwiseCounterClocwise);
+        m_dubinsPaths.push_back(CounterClockwiseClockwise);
+        m_dubinsPaths.push_back(ClockwiseCounterClockwise);
+        m_dubinsPaths.push_back(ClockwiseClockwise);
+        Matrix LengthPathV = Matrix(4,1,0.0);
+        LengthPathV(0,0) = CounterClockwiseCounterClocwise.LengthPath;
+        LengthPathV(1,0) = CounterClockwiseClockwise.LengthPath;
+        LengthPathV(2,0) = ClockwiseCounterClockwise.LengthPath;
+        LengthPathV(3,0) = ClockwiseClockwise.LengthPath;
+        double currShortest = CounterClockwiseCounterClocwise.LengthPath;
+        int currIndex = 0;
+        //! Find the shortest path
+        inf("Path length: %f",currShortest);
+        for (int i=1;i<4;i++)
+        {
+          inf("Path length: %f",LengthPathV(i,0));
+          if (currShortest>LengthPathV(i,0))
+          {
+            currShortest = LengthPathV(i,0);
+            currIndex = i;
+          }
+        }
+        inf("The currIndex is %d",currIndex);
+        dubinsPath = m_dubinsPaths[currIndex];
+        return true;
+      }
+      //! Fills the struct in the DubinsParametersContainer
+      bool fillDubinsParametersContainger(const Matrix Xs,const Matrix Xf,DubinsParametersContainer &dubinsPath)
+      {
+        dubinsPath.OCS = Matrix(2,1,0.0);
+        if (dubinsPath.CounterClockwiseS)
+        {
+          dubinsPath.Xcs = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)+PI/2);
+          dubinsPath.Ycs = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)+PI/2);
+        }
+        else
+        {
+          dubinsPath.Xcs = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)-PI/2);
+          dubinsPath.Ycs = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)-PI/2);
+        }
+        dubinsPath.OCF = Matrix(2,1,0.0);
+        if (dubinsPath.CounterClockwiseF)
+        {
+          dubinsPath.Xcf = Xf(0,0)-m_landArg.Rf*cos(Xf(3,0)+PI/2);
+          dubinsPath.Ycf = Xf(1,0)-m_landArg.Rf*sin(Xf(3,0)+PI/2);
+        }
+        else
+        {
+          dubinsPath.Xcf = Xf(0,0)-m_landArg.Rf*cos(Xf(3,0)-PI/2);
+          dubinsPath.Ycf = Xf(1,0)-m_landArg.Rf*sin(Xf(3,0)-PI/2);
+        }
+
+        dubinsPath.OCS(0,0) = dubinsPath.Xcs;
+        dubinsPath.OCS(1,0) = dubinsPath.Ycs;
+        dubinsPath.OCF(0,0) = dubinsPath.Xcf;
+        dubinsPath.OCF(1,0) = dubinsPath.Ycf;
+        dubinsPath.Pchi = Matrix(2,1,0.0);
+        dubinsPath.PN = Matrix(2,1,0.0);
+        if (!dubinsParameteres(dubinsPath.OCS,dubinsPath.OCF,m_landArg.Rs,m_landArg.Rf,dubinsPath.CounterClockwiseS,dubinsPath.CounterClockwiseF,dubinsPath.Pchi,dubinsPath.PN))
+        {
+          war("Dubins Path does not exist from start position to end position");
+          return false;
+        }
+        double theta0 = std::atan2(Xs(1,0)-dubinsPath.Ycs,Xs(0,0)-dubinsPath.Xcs);
+        double theta1 = std::atan2(dubinsPath.Pchi(1,0)-dubinsPath.Ycs,dubinsPath.Pchi(0,0)-dubinsPath.Xcs);
+        double sLtheta1 = 0;
+        arcAngle(theta0,theta1,dubinsPath.CounterClockwiseS,sLtheta1);
+        debug("Arc angle start1 %f",sLtheta1);
+
+        double theta01 = std::atan2(dubinsPath.PN(1,0)-dubinsPath.Ycf,dubinsPath.PN(0,0)-dubinsPath.Xcf);
+        double theta11 = std::atan2(Xf(1,0)-dubinsPath.Ycf,Xf(0,0)-dubinsPath.Xcf);
+        double fLtheta1 = 0;
+        arcAngle(theta01,theta11,dubinsPath.CounterClockwiseF,fLtheta1);
+        debug("Arc angle finish1%f",fLtheta1);
+        dubinsPath.LengthPath = m_landArg.Rs*sLtheta1 + std::sqrt(std::pow(dubinsPath.Pchi(0,0)-dubinsPath.PN(0,0),2)+std::pow(dubinsPath.Pchi(1,0)-dubinsPath.PN(1,0),2)) + m_landArg.Rf*fLtheta1;
+        return true;
       }
 
       //! Return the parameters in Dubins Path
