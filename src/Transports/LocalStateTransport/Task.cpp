@@ -49,6 +49,9 @@ namespace Transports
       bool m_ref_valid;
       bool m_use_fallback;
 
+      bool m_configured;
+      bool m_warning_given;
+
       IMC::EstimatedLocalState m_elstate;
       IMC::EstimatedState m_estate;
       IMC::Acceleration m_acc;
@@ -59,7 +62,9 @@ namespace Transports
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Task(name, ctx),
-        m_use_fallback(true)
+        m_use_fallback(true),
+        m_configured(false),
+        m_warning_given(false)
       {
         // Bind to incoming IMC messages
         bind<IMC::EstimatedState>(this);
@@ -107,6 +112,7 @@ namespace Transports
       void
       consume(const IMC::CoordConfig* config)
       {
+        m_configured = true;
         m_use_fallback = config->use_fallback;
         if (m_use_fallback)
         {
@@ -137,10 +143,20 @@ namespace Transports
 
         if (!m_ref_valid && m_use_fallback)
         {
-         war("Ignored ESTATE; valid reference LLH not set!");
+          if(!m_warning_given)
+          {
+            war("Ignored EstimatedState, valid LLH reference is not set!");
+            m_warning_given = true;
+            m_configured = false;
+          }
          return;
         }
 
+        if (m_warning_given && m_configured)
+        {
+          m_warning_given = false;
+          war("Valid LLH reference is set, starting producing EstimatedLocalState");
+        }
         spew("Got Estimated State from system '%s' and entity '%s'.",
         resolveSystemId(msg->getSource()),
         resolveEntity(msg->getSourceEntity()).c_str());
