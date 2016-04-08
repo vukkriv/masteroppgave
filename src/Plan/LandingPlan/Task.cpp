@@ -860,7 +860,9 @@ namespace Plan
         {
           return false;
         }
+        //! Clearing the vector to remove old data
         m_dubinsPaths.clear();
+        //! Insert new paths
         m_dubinsPaths.push_back(CounterClockwiseCounterClocwise);
         m_dubinsPaths.push_back(CounterClockwiseClockwise);
         m_dubinsPaths.push_back(ClockwiseCounterClockwise);
@@ -873,17 +875,17 @@ namespace Plan
         double currShortest = CounterClockwiseCounterClocwise.LengthPath;
         int currIndex = 0;
         //! Find the shortest path
-        inf("Path length: %f",currShortest);
+        debug("Path length: %f",currShortest);
         for (int i=1;i<4;i++)
         {
-          inf("Path length: %f",LengthPathV(i,0));
+          debug("Path length: %f",LengthPathV(i,0));
           if (currShortest>LengthPathV(i,0))
           {
             currShortest = LengthPathV(i,0);
             currIndex = i;
           }
         }
-        inf("The currIndex is %d",currIndex);
+        debug("The currIndex is %d",currIndex);
         dubinsPath = m_dubinsPaths[currIndex];
         return true;
       }
