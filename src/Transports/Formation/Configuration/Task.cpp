@@ -133,7 +133,7 @@ namespace Transports
           .defaultValue("0.0, 0.0, 0.0")
           .units(Units::Meter)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Desired formation positions matrix.");
+          .description("Desired formation positions matrix, where the order of the position vectors corresponds to the order of the vehicle list.");
 
           param("Incidence Matrix", m_args.incidence_matrix)
           .defaultValue("0")
