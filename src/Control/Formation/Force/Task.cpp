@@ -489,7 +489,7 @@ namespace Control
           m_pos_update_delay = Matrix(1, m_N, 0);
         }
 
-        void
+        bool
         configParseParticipants(const IMC::CoordConfig* config)
         {
           debug("New desired formation.");
@@ -532,9 +532,10 @@ namespace Control
               uav += 1;
             }
             if (!found_self)
-              throw DUNE::Exception(
-                  "Vehicle not found in formation vehicle list!");
-
+            {
+              war("Vehicle is no longer a part of the formation");
+              return found_self;
+            }
             // Resize and reset position and velocity matrices to fit number of vehicles
             m_x.resizeAndFill(3, m_N, 0);
             m_v.resizeAndFill(3, 1, 0);
@@ -542,6 +543,7 @@ namespace Control
 
             m_x_c = m_x_c_default;
           }
+          return true;
         }
 
         void
@@ -637,7 +639,13 @@ namespace Control
           {            
             //CoordConfig contains new formation data
             // Parse participants
-            configParseParticipants(config);
+            bool found_self = configParseParticipants(config);
+            if (!found_self)
+            {
+              m_configured=false;
+              return;
+            }
+
             if (m_N > 1)
             {
               // Parse incidence matrix
@@ -667,6 +675,11 @@ namespace Control
         void
         consume(const IMC::EstimatedLocalState* msg)
         {
+          if (!m_configured)
+          {
+            spew("Not configured!");
+            return;
+          }
           double now = Clock::getSinceEpoch();
           static double last_print;
           if (!m_args.print_frequency || !last_print
@@ -772,6 +785,11 @@ namespace Control
         void
         consume(const IMC::FormCoord* msg)
         {
+          if (!m_configured)
+          {
+            spew("Not configured!");
+            return;
+          }
           double now = Clock::getSinceEpoch();
           static double last_print;
           if (!m_args.print_frequency || !last_print
