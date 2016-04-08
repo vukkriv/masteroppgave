@@ -69,17 +69,6 @@ namespace Plan
       double netHeading;
       //! The side the auxiliary wp
       bool RightWPa;
-      //! Landing waypoints
-      //! WP1
-      Matrix WP1;
-      //! WP1
-      Matrix WP2;
-      //! WP1
-      Matrix WP3;
-      //! WP1
-      Matrix WP4;
-      //! Auxiliary waypoint
-      Matrix WPa;
       //! Net lat
       double net_lat;
       //! Net lon
@@ -100,17 +89,6 @@ namespace Plan
       double Rs;
       //! Finish turning circle radius
       double Rf;
-      //! Finish turning circle rotation
-      bool clockwise;
-      //! Finish turning circle center
-      Matrix OCF;
-      //! Start position
-      Matrix Xs;
-      double state_lat;
-      double state_lon;
-      double state_height;
-      //! Finish turning circle offset height
-      double OCFz;
       //! Waiting at loiter
       bool wait_at_loiter = false;
       //! Advance options
@@ -123,12 +101,40 @@ namespace Plan
 
     };
 
+    struct LandingPath
+    {
+      //! Landing waypoints
+      //! WP1
+      Matrix WP1;
+      //! WP1
+      Matrix WP2;
+      //! WP1
+      Matrix WP3;
+      //! WP1
+      Matrix WP4;
+      //! Auxiliary waypoint
+      Matrix WPa;
+      //! Finish turning circle rotation
+      bool clockwise;
+      //! Finish turning circle center
+      Matrix OCF;
+      //! Start position
+      Matrix Xs;
+      double state_lat;
+      double state_lon;
+      double state_height;
+      //! Finish turning circle offset height
+      double OCFz;
+    };
+
     struct Task: public DUNE::Tasks::Task
     {
       //! Task arguments
       Arguments m_args;
       //! Landing path arguments
       LandingPathArguments m_landArg;
+      //! Landing path parameters
+      LandingPath m_landParameteres;
       //! Accumulated EstimatedState message
       IMC::EstimatedState m_estate;
       //! Segments in the start circle
@@ -275,47 +281,47 @@ namespace Plan
           inf("m_Ns = %d m_Nf = %d",m_Ns,m_Nf);
 
           //! Fill WP matrix
-          m_landArg.WP1 = Matrix(3,1,0.0);
-          m_landArg.WP1(0,0) = -m_landArg.a0;
-          m_landArg.WP1(2,0) = m_landArg.net_height+m_landArg.a0*std::tan(m_landArg.gamma_a);
+          m_landParameteres.WP1 = Matrix(3,1,0.0);
+          m_landParameteres.WP1(0,0) = -m_landArg.a0;
+          m_landParameteres.WP1(2,0) = m_landArg.net_height+m_landArg.a0*std::tan(m_landArg.gamma_a);
 
-          m_landArg.WP2 = Matrix(3,1,0.0);
-          m_landArg.WP2(0,0) = m_landArg.a1;
-          m_landArg.WP2(2,0) = m_landArg.net_height-m_landArg.a1*std::tan(m_landArg.gamma_a);
+          m_landParameteres.WP2 = Matrix(3,1,0.0);
+          m_landParameteres.WP2(0,0) = m_landArg.a1;
+          m_landParameteres.WP2(2,0) = m_landArg.net_height-m_landArg.a1*std::tan(m_landArg.gamma_a);
 
-          m_landArg.WP3 = Matrix(3,1,0.0);
-          m_landArg.WP3(0,0) = m_landArg.WP2(0,0)+m_landArg.a2;
-          m_landArg.WP3(2,0) = m_landArg.WP2(2,0)-m_landArg.a2*std::tan(m_landArg.gamma_a);
+          m_landParameteres.WP3 = Matrix(3,1,0.0);
+          m_landParameteres.WP3(0,0) = m_landParameteres.WP2(0,0)+m_landArg.a2;
+          m_landParameteres.WP3(2,0) = m_landParameteres.WP2(2,0)-m_landArg.a2*std::tan(m_landArg.gamma_a);
 
-          m_landArg.WP4 = Matrix(3,1,0.0);
-          m_landArg.WP4(0,0) = m_landArg.WP3(0,0)+m_landArg.a3;
-          m_landArg.WP4(2,0) = m_landArg.WP3(2,0);
+          m_landParameteres.WP4 = Matrix(3,1,0.0);
+          m_landParameteres.WP4(0,0) = m_landParameteres.WP3(0,0)+m_landArg.a3;
+          m_landParameteres.WP4(2,0) = m_landParameteres.WP3(2,0);
 
-          m_landArg.WPa = Matrix(3,1,0.0);
-          m_landArg.WPa(0,0) = m_landArg.WP1(0,0);
+          m_landParameteres.WPa = Matrix(3,1,0.0);
+          m_landParameteres.WPa(0,0) = m_landParameteres.WP1(0,0);
           //! Ensure that the extra wp is valid
           if (m_landArg.RightWPa)
           {
-            m_landArg.WPa(1,0) = 2*m_landArg.Rf;
+            m_landParameteres.WPa(1,0) = 2*m_landArg.Rf;
           }
           else
           {
-            m_landArg.WPa(1,0) = -2*m_landArg.Rf;
+            m_landParameteres.WPa(1,0) = -2*m_landArg.Rf;
           }
 
-          m_landArg.WPa(2,0) = m_landArg.WP2(2,0)-m_landArg.a2*std::tan(m_landArg.gamma_a);
+          m_landParameteres.WPa(2,0) = m_landParameteres.WP2(2,0)-m_landArg.a2*std::tan(m_landArg.gamma_a);
 
           //! Rotate all WP into NED
-          m_landArg.WP1 = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WP1;
-          m_landArg.WP2 = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WP2;
-          m_landArg.WP3 = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WP3;
-          m_landArg.WP4 = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WP4;
-          m_landArg.WPa = Rzyx(0,0,m_landArg.netHeading)*m_landArg.WPa;
+          m_landParameteres.WP1 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP1;
+          m_landParameteres.WP2 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP2;
+          m_landParameteres.WP3 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP3;
+          m_landParameteres.WP4 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP4;
+          m_landParameteres.WPa = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WPa;
 
-          inf("WP1 x=%f y=%f z=%f",m_landArg.WP1(0,0),m_landArg.WP1(1,0),m_landArg.WP1(2,0));
-          inf("WP2 x=%f y=%f z=%f",m_landArg.WP2(0,0),m_landArg.WP2(1,0),m_landArg.WP2(2,0));
-          inf("WP3 x=%f y=%f z=%f",m_landArg.WP3(0,0),m_landArg.WP3(1,0),m_landArg.WP3(2,0));
-          inf("WP4 x=%f y=%f z=%f",m_landArg.WP4(0,0),m_landArg.WP4(1,0),m_landArg.WP4(2,0));
+          inf("WP1 x=%f y=%f z=%f",m_landParameteres.WP1(0,0),m_landParameteres.WP1(1,0),m_landParameteres.WP1(2,0));
+          inf("WP2 x=%f y=%f z=%f",m_landParameteres.WP2(0,0),m_landParameteres.WP2(1,0),m_landParameteres.WP2(2,0));
+          inf("WP3 x=%f y=%f z=%f",m_landParameteres.WP3(0,0),m_landParameteres.WP3(1,0),m_landParameteres.WP3(2,0));
+          inf("WP4 x=%f y=%f z=%f",m_landParameteres.WP4(0,0),m_landParameteres.WP4(1,0),m_landParameteres.WP4(2,0));
 
           return true;
         }
@@ -399,9 +405,9 @@ namespace Plan
         double cur_lon =  m_landArg.net_lon;
         double cur_height = m_landArg.net_height;
         Coordinates::WGS84::displace(m_landArg.Xs(0,0),m_landArg.Xs(1,0),m_landArg.Xs(2,0),&cur_lat,&cur_lon,&cur_height);*/
-        fPath.lat = m_landArg.state_lat;
-        fPath.lon = m_landArg.state_lon;
-        fPath.z = m_landArg.state_height;
+        fPath.lat = m_landParameteres.state_lat;
+        fPath.lon = m_landParameteres.state_lon;
+        fPath.z = m_landParameteres.state_height;
 
         inf("Current lat: %f current lon: %f current height: %f",fPath.lat,fPath.lon,fPath.z);
         fPath.z_units = IMC::Z_HEIGHT;
@@ -458,20 +464,20 @@ namespace Plan
         Matrix OCF = Matrix(2,1,0.0);
         //! End pose in dubins path
         Matrix Xf = Matrix(4,1,0.0);
-        Xf(0,0) = m_landArg.WP4(0,0);
-        Xf(1,0) = m_landArg.WP4(1,0);
-        Xf(2,0) = m_landArg.WP4(2,0);
+        Xf(0,0) = m_landParameteres.WP4(0,0);
+        Xf(1,0) = m_landParameteres.WP4(1,0);
+        Xf(2,0) = m_landParameteres.WP4(2,0);
         Xf(3,0) = Angles::normalizeRadian(m_landArg.netHeading-PI);
 
         double w4_lat = m_landArg.net_lat;
         double w4_lon = m_landArg.net_lon;
-        double w4_h = m_landArg.net_WGS84_height - m_landArg.WP4(2,0);
+        double w4_h = m_landArg.net_WGS84_height - m_landParameteres.WP4(2,0);
 
         double state_lat = m_estate.lat;
         double state_lon = m_estate.lon;
         double state_height = m_estate.height;
         //! Find wp4 lat lon
-        Coordinates::WGS84::displace(m_landArg.WP4(0,0),m_landArg.WP4(1,0),&w4_lat,&w4_lon);
+        Coordinates::WGS84::displace(m_landParameteres.WP4(0,0),m_landParameteres.WP4(1,0),&w4_lat,&w4_lon);
         Coordinates::WGS84::displace(m_estate.x,m_estate.y,m_estate.z,&state_lat,&state_lon,&state_height);
         //! Find m_estate coordinates relative to net lat lon
         Coordinates::WGS84::displacement(m_landArg.net_lat,m_landArg.net_lon,m_landArg.net_height,state_lat,state_lon,state_height,&Xs(0,0),&Xs(1,0),&Xs(2,0));
@@ -479,10 +485,10 @@ namespace Plan
         inf("Xf x=%f y=%f z=%f psi=%f",Xf(0,0),Xf(1,0),Xf(2,0),Xf(3,0));
         inf("Xs x=%f y=%f z=%f psi=%f",Xs(0,0),Xs(1,0),Xs(2,0),Xs(3,0));
         inf("m_estate height: %f net height: %f",m_estate.height,m_landArg.net_WGS84_height);
-        m_landArg.Xs = Xs;
-        m_landArg.state_lat = state_lat;
-        m_landArg.state_lon = state_lon;
-        m_landArg.state_height = state_height;
+        m_landParameteres.Xs = Xs;
+        m_landParameteres.state_lat = state_lat;
+        m_landParameteres.state_lon = state_lon;
+        m_landParameteres.state_height = state_height;
         Xs(0,0) = 0.0;
         Xs(1,0) = 0.0;
         Xs(2,0) = 0.0;
@@ -491,13 +497,13 @@ namespace Plan
         if (!dubinsPath(Xs,Xf,path,CounterClockwiseF,OCF))
         {
           //! Need an extra WP
-          Xf(0,0) = m_landArg.WPa(0,0);
-          Xf(1,0) = m_landArg.WPa(1,0);
-          Xf(2,0) = m_landArg.WPa(2,0);
+          Xf(0,0) = m_landParameteres.WPa(0,0);
+          Xf(1,0) = m_landParameteres.WPa(1,0);
+          Xf(2,0) = m_landParameteres.WPa(2,0);
           Xf(3,0) = Angles::normalizeRadian(m_landArg.netHeading-PI);
           double wa_lat = m_landArg.net_lat;
           double wa_lon = m_landArg.net_lon;
-          double wa_h = m_landArg.net_WGS84_height - m_landArg.WPa(2,0);
+          double wa_h = m_landArg.net_WGS84_height - m_landParameteres.WPa(2,0);
           //Coordinates::WGS84::displace(m_landArg.WPa(0,0),m_landArg.WPa(1,0),&wa_lat,&wa_lon);
           //Coordinates::WGS84::displacement(m_estate.lat,m_estate.lon,m_estate.height,wa_lat,wa_lon,wa_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
           inf("Attempt to create new dubins path with XF: x= %f y=%f z=%f psi=%f",Xf(0,0),Xf(1,0),Xf(2,0),Xf(3,0));
@@ -527,11 +533,11 @@ namespace Plan
         }
         glideSlope(Xs,Xf,m_landArg.gamma_d,correctHeight,path);
         glideSpiral(OCF,CounterClockwiseF,Xf(2,0),correctHeight,m_landArg.gamma_d,path);
-        m_landArg.OCF = OCF;
-        m_landArg.clockwise = !CounterClockwiseF;
-        m_landArg.OCFz = Xf(2,0);
+        m_landParameteres.OCF = OCF;
+        m_landParameteres.clockwise = !CounterClockwiseF;
+        m_landParameteres.OCFz = Xf(2,0);
         inf("Reach correct height %f from the height %f",path[path.size()-1](2,0),Xs(2,0));
-        inf("WP4 = h-z %f",m_landArg.net_WGS84_height-m_landArg.WP4(2,0));
+        inf("WP4 = h-z %f",m_landArg.net_WGS84_height-m_landParameteres.WP4(2,0));
         inf("Lat %f lon %f ref height %f",m_landArg.net_lat,m_landArg.net_lon,m_landArg.net_WGS84_height);
         return true;
       }
@@ -568,10 +574,10 @@ namespace Plan
       addLoiter(IMC::MessageList<IMC::Maneuver>& maneuverList)
       {
         IMC::Loiter loiter;
-        double loiter_lat = m_landArg.state_lat;
-        double loiter_lon = m_landArg.state_lon;
-        double loiter_h = m_landArg.state_height;
-        Coordinates::WGS84::displace(m_landArg.OCF(0,0),m_landArg.OCF(1,0),m_landArg.OCFz,&loiter_lat,&loiter_lon,&loiter_h);
+        double loiter_lat = m_landParameteres.state_lat;
+        double loiter_lon = m_landParameteres.state_lon;
+        double loiter_h = m_landParameteres.state_height;
+        Coordinates::WGS84::displace(m_landParameteres.OCF(0,0),m_landParameteres.OCF(1,0),m_landParameteres.OCFz,&loiter_lat,&loiter_lon,&loiter_h);
         loiter.lat = loiter_lat;
         loiter.lon = loiter_lon;
         loiter.z = loiter_h;
@@ -579,7 +585,7 @@ namespace Plan
         loiter.speed = m_landArg.speed_WP2;
         loiter.speed_units = IMC::SUNITS_METERS_PS;
         loiter.type = IMC::Loiter::LT_CIRCULAR;
-        if (m_landArg.clockwise)
+        if (m_landParameteres.clockwise)
         {
           loiter.direction = IMC::Loiter::LD_CLOCKW;
         }
@@ -597,13 +603,13 @@ namespace Plan
       addNetApproach(IMC::MessageList<IMC::Maneuver>& maneuverList)
       {
         //3
-        addGotoPoint(m_landArg.WP3,m_landArg.speed_WP2,maneuverList);
+        addGotoPoint(m_landParameteres.WP3,m_landArg.speed_WP2,maneuverList);
 
         //2
-        addGotoPoint(m_landArg.WP2,m_landArg.speed_WP3,maneuverList);
+        addGotoPoint(m_landParameteres.WP2,m_landArg.speed_WP3,maneuverList);
 
         //1
-        addGotoPoint(m_landArg.WP1,m_landArg.speed_WP4,maneuverList);
+        addGotoPoint(m_landParameteres.WP1,m_landArg.speed_WP4,maneuverList);
 
       }
       //!
