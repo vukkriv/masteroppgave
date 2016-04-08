@@ -195,6 +195,8 @@ namespace Control
         bool m_coordinatorEnabled;
         //! Vehicles initialized
         std::vector<bool> m_initialized;
+        //! Vehicles connected
+        std::vector<bool> m_connected;
         //! All parameters well defined
         bool m_initializedCoord;
 
@@ -419,6 +421,13 @@ namespace Control
           debug("Entities reserved");
         }
 
+        //! Initialize resources.
+        void
+        onResourceInitialization(void)
+        {
+          initCoordinator();
+        }
+
         //! Update internal state with new parameter values.
         void
         onUpdateParameters(void)
@@ -498,30 +507,13 @@ namespace Control
               resolveEntity(el->getSourceEntity()).c_str() == m_args.centroid_els_entity_label)
             m_centroid_heading = el->state->psi;
 
-
-          if (!m_initializedCoord)
-          {
-            debug("Initializing coordinator after EstimatedLocalState");
-            m_ref_lat = el->state->lat;
-            m_ref_lon = el->state->lon;
-            m_ref_hae = el->state->height;
-            m_ref_valid = true;
-            initCoordinator();
-            initRunwayPath();
-            //return;
-            debug("Initialized coordinator after EstimatedLocalState");
-          }
-
-          //spew("Got EstimatedState \nfrom '%s' at '%s'",
-          //     resolveEntity(el->getSourceEntity()).c_str(),
-          //     resolveSystemId(el->getSource()));
-
-          //debug("Received EstimatedLocalState from %s: ",vh_id.c_str());
           int s = getVehicle(el);
-
-          //spew("s=%d",s);
           if (s == INVALID)  //invalid vehicle
             return;
+
+
+          m_estate[s] = *el;
+          m_connected[s] = true;
 
           Matrix p = Matrix(3, 1, 0); //position in NED
           Matrix v = Matrix(3, 1, 0); //velocity in NED
@@ -536,11 +528,41 @@ namespace Control
           v(2) = el->state->vz;
           m_v[s] = v;
 
-          m_initialized[s] = true;
-          m_estate[s] = *el;
+          static double last_print;
+          double now = Clock::getSinceEpoch();
 
+          if (!allConnected())
+          {
+            if (!m_args.print_frequency || !last_print
+                || (now - last_print) > 1.0 / m_args.print_frequency)
+            {
+
+              if (!m_initialized[FIXEDWING])
+                war("FixedWing not initialized");
+              else if (!m_initialized[CENTROID])
+                war("Centroid not connected");
+              else
+                war("FixedWing and Centroid is not connected");
+              last_print = now;
+            }
+            return;
+          }
+
+          //! consider doing the following only when reference has changed (check values)
+          m_ref_lat = el->state->lat;
+          m_ref_lon = el->state->lon;
+          m_ref_hae = el->state->height;
+          m_ref_valid = true;
+
+          updateRunwayPath();
+
+          //spew("calcpath");
           calcPathErrors(p, v, s);
+          //spew("updateMean");
           updateMeanValues(s);
+          //spew("switch state");
+
+          m_initialized[s] = true;
 
           IMC::NetRecoveryState::NetRecoveryLevelEnum last_state = m_curr_state;
           switch (m_curr_state)
@@ -560,18 +582,16 @@ namespace Control
                 }
                 else
                 {
-                  static double last_print;
-                  double now = Clock::getSinceEpoch();
                   if (!m_args.print_frequency || !last_print
                       || (now - last_print) > 1.0 / m_args.print_frequency)
                   {
 
                     if (!m_initialized[FIXEDWING])
-                      war("FixedWing not connected");
+                      war("FixedWing not initialized");
                     else if (!m_initialized[CENTROID])
-                      war("Centroid not connected");
+                      war("Centroid not initialized");
                     else
-                      war("FixedWing and Centroid is not connected");
+                      war("FixedWing and Centroid is not initialized");
                     last_print = now;
                   }
                 }
@@ -681,6 +701,7 @@ namespace Control
           m_cross_track_window = std::vector<std::queue<Matrix> >(no_vehicles);
           m_cross_track_d_window = std::vector<std::queue<Matrix> >(no_vehicles);
           m_initialized = std::vector<bool>(no_vehicles);
+          m_connected = std::vector<bool>(no_vehicles);
 
           for (unsigned int i = 0; i < no_vehicles; i++)
           {
@@ -706,6 +727,7 @@ namespace Control
               m_cross_track_d_window[i].push(Matrix(3, 1, 0));
             }
             m_initialized[i] = false;
+            m_connected[i] = false;
           }
           m_runway.end_NED = Matrix(3, 1, 0);
           m_runway.start_NED = Matrix(3, 1, 0);
@@ -716,7 +738,7 @@ namespace Control
         }
 
         void
-        initRunwayPath()
+        updateRunwayPath()
         {
           WGS84::displacement(m_ref_lat, m_ref_lon, 0, m_runway.lat_start,
                               m_runway.lon_start, 0, &m_runway.start_NED(0),
@@ -855,6 +877,17 @@ namespace Control
             return CENTROID;
           }
           return INVALID;
+        }
+
+        bool
+        allConnected()
+        {
+          for (unsigned int i = 0; i < m_vehicles.no_vehicles; i++)
+          {
+            if (!m_connected[i])
+              return false;
+          }
+          return true;
         }
 
         bool
