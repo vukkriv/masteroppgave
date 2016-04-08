@@ -69,7 +69,7 @@ namespace Transports
 
         std::vector<bool> connected;
 
-        void
+        bool
         setVehicleList(const IMC::CoordConfig* config, DUNE::Tasks::Task *task)
         {
           const IMC::MessageList<IMC::VehicleFormationParticipant>* part = &config->participants;
@@ -102,11 +102,10 @@ namespace Transports
               uav += 1;
             }
             if (!found_self)
-              throw DUNE::Exception(
-                  "Vehicle not found in formation vehicle list!");
+              return false;
           }
-
           connected = std::vector<bool>(m_N, false);
+          return true;
         }
 
         bool
@@ -400,7 +399,13 @@ namespace Transports
           {
             //CoordConfig contains new formation data
             debug("New Formation vehicles' list.");
-            m_vehicles.setVehicleList(config, this);
+            bool found_self = m_vehicles.setVehicleList(config, this);
+            if (!found_self)
+            {
+              war("Vehicle is no longer a part of the formation");
+              m_configured = false;
+              return;
+            }
             states = std::vector<IMC::EstimatedLocalState>(m_vehicles.m_N);
             if (!m_configured)
             {
