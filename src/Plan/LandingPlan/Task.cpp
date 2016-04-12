@@ -67,8 +67,6 @@ namespace Plan
       Matrix Net;
       //! Net orientation
       double netHeading;
-      //! The side the auxiliary wp
-      bool RightWPa;
       //! Net lat
       double net_lat;
       //! Net lon
@@ -112,8 +110,6 @@ namespace Plan
       Matrix WP3;
       //! WP1
       Matrix WP4;
-      //! Auxiliary waypoint
-      Matrix WPa;
       //! Finish turning circle rotation
       bool clockwise;
       //! Finish turning circle center
@@ -325,26 +321,11 @@ namespace Plan
           m_landParameteres.WP4(0,0) = m_landParameteres.WP3(0,0)+m_landArg.a3;
           m_landParameteres.WP4(2,0) = m_landParameteres.WP3(2,0);
 
-          m_landParameteres.WPa = Matrix(3,1,0.0);
-          m_landParameteres.WPa(0,0) = m_landParameteres.WP1(0,0);
-          //! Ensure that the extra wp is valid
-          if (m_landArg.RightWPa)
-          {
-            m_landParameteres.WPa(1,0) = 2*m_landArg.Rf;
-          }
-          else
-          {
-            m_landParameteres.WPa(1,0) = -2*m_landArg.Rf;
-          }
-
-          m_landParameteres.WPa(2,0) = m_landParameteres.WP2(2,0)-m_landArg.a2*std::tan(m_landArg.gamma_a);
-
           //! Rotate all WP into NED
           m_landParameteres.WP1 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP1;
           m_landParameteres.WP2 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP2;
           m_landParameteres.WP3 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP3;
           m_landParameteres.WP4 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP4;
-          m_landParameteres.WPa = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WPa;
 
           debug("WP1 x=%f y=%f z=%f",m_landParameteres.WP1(0,0),m_landParameteres.WP1(1,0),m_landParameteres.WP1(2,0));
           debug("WP2 x=%f y=%f z=%f",m_landParameteres.WP2(0,0),m_landParameteres.WP2(1,0),m_landParameteres.WP2(2,0));
@@ -378,7 +359,6 @@ namespace Plan
         m_landArg.speed_WP1 = tList.get("speed12",12.0);
         m_landArg.Rs = tList.get("min_turn_radius", 150.0);
         m_landArg.Rf = tList.get("loiter_radius",150.0);
-        m_landArg.RightWPa = (tList.get("auxiliary_WPa_side") == "true") ? true:false;
         m_landArg.automatic = (tList.get("automatic") == "true") ? true : false;
         debug("Content from tList:");
         debug("Net Lat %f",m_landArg.net_lat);
@@ -399,7 +379,6 @@ namespace Plan
         debug("Automatic %d",m_landArg.automatic);
         debug("Right start dir %d",m_landArg.rightStartTurningDirection);
         debug("Right finish %d",m_landArg.rightFinishTurningCircle);
-        debug("WPA %d",m_landArg.RightWPa);
         inf("Extracted arguments from neptus");
       }
       //! Generates a landing path
