@@ -380,26 +380,27 @@ namespace Plan
         m_landArg.Rf = tList.get("loiter_radius",150.0);
         m_landArg.RightWPa = (tList.get("auxiliary_WPa_side") == "true") ? true:false;
         m_landArg.automatic = (tList.get("automatic") == "true") ? true : false;
-        inf("Content from tList:");
-        inf("Net Lat %f",m_landArg.net_lat);
-        inf("Net lon %f",m_landArg.net_lon);
-        inf("Net WGS %f",m_landArg.net_WGS84_height);
-        inf("Net Height %f",m_landArg.net_height);
-        inf("Net heading %f", m_landArg.netHeading);
-        inf("Attack angle %f",m_landArg.gamma_a);
-        inf("Descent %f",m_landArg.gamma_d);
-        inf("A0 %f",m_landArg.a0);
-        inf("A1 %f",m_landArg.a1);
-        inf("A2 %f",m_landArg.a2);
-        inf("A3 %f",m_landArg.a3);
-        inf("Speed 35 %f",m_landArg.speed_WP4);
-        inf("Speed 12 %f",m_landArg.speed_WP1);
-        inf("Rs %f",m_landArg.Rs);
-        inf("Rf %f",m_landArg.Rf);
-        inf("Automatic %d",m_landArg.automatic);
-        inf("Right start dir %d",m_landArg.rightStartTurningDirection);
-        inf("Right finish %d",m_landArg.rightFinishTurningCircle);
-        inf("WPA %d",m_landArg.RightWPa);
+        debug("Content from tList:");
+        debug("Net Lat %f",m_landArg.net_lat);
+        debug("Net lon %f",m_landArg.net_lon);
+        debug("Net WGS %f",m_landArg.net_WGS84_height);
+        debug("Net Height %f",m_landArg.net_height);
+        debug("Net heading %f", m_landArg.netHeading);
+        debug("Attack angle %f",m_landArg.gamma_a);
+        debug("Descent %f",m_landArg.gamma_d);
+        debug("A0 %f",m_landArg.a0);
+        debug("A1 %f",m_landArg.a1);
+        debug("A2 %f",m_landArg.a2);
+        debug("A3 %f",m_landArg.a3);
+        debug("Speed 35 %f",m_landArg.speed_WP4);
+        debug("Speed 12 %f",m_landArg.speed_WP1);
+        debug("Rs %f",m_landArg.Rs);
+        debug("Rf %f",m_landArg.Rf);
+        debug("Automatic %d",m_landArg.automatic);
+        debug("Right start dir %d",m_landArg.rightStartTurningDirection);
+        debug("Right finish %d",m_landArg.rightFinishTurningCircle);
+        debug("WPA %d",m_landArg.RightWPa);
+        inf("Extracted arguments from neptus");
       }
       //! Generates a landing path
       bool
