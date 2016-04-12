@@ -555,13 +555,15 @@ namespace Plan
         }
         inf("Dubins path has been created");
         //! Is correct height
-        bool correctHeight;
+        lateralPath(Xs,Xf,OCF,CounterClockwiseF,path);
+        /*bool correctHeight;
         if (Xf(2,0)<Xs(2,0))
         {
           m_landArg.gamma_d = -m_landArg.gamma_d;
         }
+
         glideSlope(Xs,Xf,m_landArg.gamma_d,correctHeight,path);
-        glideSpiral(OCF,CounterClockwiseF,Xf(2,0),correctHeight,m_landArg.gamma_d,path);
+        glideSpiral(OCF,CounterClockwiseF,Xf(2,0),correctHeight,m_landArg.gamma_d,path);*/
         m_landParameteres.OCF = OCF;
         m_landParameteres.clockwise = !CounterClockwiseF;
         m_landParameteres.OCFz = Xf(2,0);
@@ -575,10 +577,14 @@ namespace Plan
       void
       lateralPath(Matrix Xs,Matrix Xf,Matrix OCF,bool CounterClokwiseF,std::vector<Matrix> &path)
       {
-        bool reachedCorrectHeight = glideSlope(Xs,Xf,path);
+        if (Xf(2,0)<Xs(2,0))
+        {
+          m_landArg.gamma_d = -m_landArg.gamma_d;
+        }
+        bool reachedCorrectHeight = createGlideSlope(Xs,Xf,path);
         if (!reachedCorrectHeight)
         {
-          glideSpiral(OCF,CounterClockwiseF,Xf(2,0),path);
+          createSpiral(OCF,CounterClokwiseF,Xf(2,0),path);
         }
       }
 
@@ -1113,12 +1119,13 @@ namespace Plan
         arc.erase(arc.begin(),arc.end());
       }
       //! Constructs a glideslope from x0 towards height of loiter point along dubins path
-      void
-      glideSlope(const Matrix x0,const Matrix WP,double descentAngle,bool &correctHeigth,std::vector<Matrix> &Path)
+      bool
+      createGlideSlope(const Matrix x0,const Matrix WP,std::vector<Matrix> &Path)
       {
         //! The path starts at the same height as x0
+        double descentAngle = m_landArg.gamma_d;
+        bool correctHeight = false;
         Path[0](2,0) = x0(2,0);
-        correctHeigth = false;
         double D;
         inf("Start height %f desired height %f",x0(2,0),WP(2,0));
         for (unsigned i=0;i<Path.size()-1;i++)
@@ -1126,14 +1133,14 @@ namespace Plan
           D = sqrt(std::pow(Path[i+1](0,0)-Path[i](0,0),2)+std::pow(Path[i+1](1,0)-Path[i](1,0),2));
           debug("The distance D = %f",D);
           debug("New angle %f descent angel %f",std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),D),2)),std::sqrt(std::pow(descentAngle,2)));
-          if (!correctHeigth && std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),D),2))<std::sqrt(std::pow(descentAngle,2)))
+          if (!correctHeight && std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),D),2))<std::sqrt(std::pow(descentAngle,2)))
           {
-            correctHeigth = true;
+            correctHeight = true;
             inf("Reached correct height");
             descentAngle = std::atan2(WP(2,0)-Path[i](2,0),D);
             Path[i+1](2,0) = Path[i](2,0)+D*tan(descentAngle);
           }
-          else if (!correctHeigth)
+          else if (!correctHeight)
           {
             Path[i+1](2,0) = Path[i](2,0) + D*tan(descentAngle);
           }
@@ -1143,15 +1150,14 @@ namespace Plan
           }
         }
         inf("Desired height %f path height %f",WP(2,0),Path[Path.size()-1](2,0));
+        return correctHeight;
       }
       //! Create a spiral path towards the desired height dHeight
       void
-      glideSpiral(const Matrix OF,const bool CounterClockwiseF,const double dHeight,bool &correctHeigth, double descentAngle,std::vector<Matrix> &Path)
+      createSpiral(const Matrix OF,const bool CounterClockwiseF,const double dHeight,std::vector<Matrix> &Path)
       {
-        if(correctHeigth)
-        {
-          return;
-        }
+        bool correctHeight = false;
+        double descentAngle = m_landArg.gamma_d;
         double theta0 = std::atan2(Path[Path.size()-1](1,0)-OF(1,0),Path[Path.size()-1](0,0)-OF(0,0));
         Matrix WP4 = Path.back();
         Matrix theta = Matrix(1,m_Nf);
@@ -1181,13 +1187,13 @@ namespace Plan
         debug("Glide angle is %f",descentAngle);
         int max_iter = 1000;
         int cur_iter = 0;
-        while(!correctHeigth && cur_iter < max_iter)
+        while(!correctHeight && cur_iter < max_iter)
         {
           ++cur_iter;
           if (std::sqrt(std::pow(std::atan2(dHeight-WPS1(2,0),D),2))<std::sqrt(std::pow(descentAngle,2)))
           {
             descentAngle = std::atan2(dHeight-WPS1(2,0),D);
-            correctHeigth = true;
+            correctHeight = true;
           }
           WPS0 = WPS1;
           xnn = OF(0,0) + m_landArg.Rf*cos(theta0+theta(0,n));
