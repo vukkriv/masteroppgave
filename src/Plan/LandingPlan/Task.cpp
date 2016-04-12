@@ -488,7 +488,7 @@ namespace Plan
 
         //! Direction of end turn
         bool CounterClockwiseF;
-        //! Center of end turning circle
+        //! Center of final turning circle
         Matrix OCF = Matrix(2,1,0.0);
         //! End pose in dubins path
         Matrix Xf = Matrix(4,1,0.0);
@@ -497,22 +497,22 @@ namespace Plan
         Xf(2,0) = m_landParameteres.WP4(2,0);
         Xf(3,0) = Angles::normalizeRadian(m_landArg.netHeading-PI);
 
-        double w4_lat = m_landArg.net_lat;
-        double w4_lon = m_landArg.net_lon;
-        double w4_h = m_landArg.net_WGS84_height - m_landParameteres.WP4(2,0);
+        double wp4_lat = m_landArg.net_lat;
+        double wp4_lon = m_landArg.net_lon;
+        double wp4_h = m_landArg.net_WGS84_height - m_landParameteres.WP4(2,0);
 
         double state_lat = m_estate.lat;
         double state_lon = m_estate.lon;
         double state_height = m_estate.height;
         //! Find wp4 lat lon
-        Coordinates::WGS84::displace(m_landParameteres.WP4(0,0),m_landParameteres.WP4(1,0),&w4_lat,&w4_lon);
+        Coordinates::WGS84::displace(m_landParameteres.WP4(0,0),m_landParameteres.WP4(1,0),&wp4_lat,&wp4_lon);
         Coordinates::WGS84::displace(m_estate.x,m_estate.y,m_estate.z,&state_lat,&state_lon,&state_height);
         //! Find m_estate coordinates relative to net lat lon
         Coordinates::WGS84::displacement(m_landArg.net_lat,m_landArg.net_lon,m_landArg.net_height,state_lat,state_lon,state_height,&Xs(0,0),&Xs(1,0),&Xs(2,0));
-        Coordinates::WGS84::displacement(state_lat,state_lon,state_height,w4_lat,w4_lon,w4_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
-        inf("Xf x=%f y=%f z=%f psi=%f",Xf(0,0),Xf(1,0),Xf(2,0),Xf(3,0));
-        inf("Xs x=%f y=%f z=%f psi=%f",Xs(0,0),Xs(1,0),Xs(2,0),Xs(3,0));
-        inf("m_estate height: %f net height: %f",m_estate.height,m_landArg.net_WGS84_height);
+        Coordinates::WGS84::displacement(state_lat,state_lon,state_height,wp4_lat,wp4_lon,wp4_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
+        debug("Xf x=%f y=%f z=%f psi=%f",Xf(0,0),Xf(1,0),Xf(2,0),Xf(3,0));
+        debug("Xs x=%f y=%f z=%f psi=%f",Xs(0,0),Xs(1,0),Xs(2,0),Xs(3,0));
+        debug("m_estate height: %f net height: %f",m_estate.height,m_landArg.net_WGS84_height);
         m_landParameteres.Xs = Xs;
         m_landParameteres.state_lat = state_lat;
         m_landParameteres.state_lon = state_lon;
@@ -529,22 +529,16 @@ namespace Plan
           return false;
         }
         inf("Dubins path has been created");
-        //! Is correct height
+        //! Create a lateral path
         lateralPath(Xs,Xf,OCF,CounterClockwiseF,path);
-        /*bool correctHeight;
-        if (Xf(2,0)<Xs(2,0))
-        {
-          m_landArg.gamma_d = -m_landArg.gamma_d;
-        }
-
-        glideSlope(Xs,Xf,m_landArg.gamma_d,correctHeight,path);
-        glideSpiral(OCF,CounterClockwiseF,Xf(2,0),correctHeight,m_landArg.gamma_d,path);*/
+        inf("Created lateral path");
+        //! Store parameter that has been used in the construction of the path
         m_landParameteres.OCF = OCF;
         m_landParameteres.clockwise = !CounterClockwiseF;
         m_landParameteres.OCFz = Xf(2,0);
-        inf("Reach correct height %f from the height %f",path[path.size()-1](2,0),Xs(2,0));
-        inf("WP4 = h-z %f",m_landArg.net_WGS84_height-m_landParameteres.WP4(2,0));
-        inf("Lat %f lon %f ref height %f",m_landArg.net_lat,m_landArg.net_lon,m_landArg.net_WGS84_height);
+        debug("Reach correct height %f from the height %f",path[path.size()-1](2,0),Xs(2,0));
+        debug("WP4 = h-z %f",m_landArg.net_WGS84_height-m_landParameteres.WP4(2,0));
+        debug("Lat %f lon %f ref height %f",m_landArg.net_lat,m_landArg.net_lon,m_landArg.net_WGS84_height);
         return true;
       }
 
