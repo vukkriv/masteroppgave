@@ -525,33 +525,8 @@ namespace Plan
 
         if (!createdPath)
         {
-          //! Need an extra WP
-          Xf(0,0) = m_landParameteres.WPa(0,0);
-          Xf(1,0) = m_landParameteres.WPa(1,0);
-          Xf(2,0) = m_landParameteres.WPa(2,0);
-          Xf(3,0) = Angles::normalizeRadian(m_landArg.netHeading-PI);
-          double wa_lat = m_landArg.net_lat;
-          double wa_lon = m_landArg.net_lon;
-          double wa_h = m_landArg.net_WGS84_height - m_landParameteres.WPa(2,0);
-          //Coordinates::WGS84::displace(m_landArg.WPa(0,0),m_landArg.WPa(1,0),&wa_lat,&wa_lon);
-          //Coordinates::WGS84::displacement(m_estate.lat,m_estate.lon,m_estate.height,wa_lat,wa_lon,wa_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
-          inf("Attempt to create new dubins path with XF: x= %f y=%f z=%f psi=%f",Xf(0,0),Xf(1,0),Xf(2,0),Xf(3,0));
-          if (!dubinsPath(Xs,Xf,path,CounterClockwiseF,OCF))
-          {
-            err("Could not generate a landing path: Abort");
-            return false;
-          }
-          Matrix Xst = Matrix(4,1,0.0);
-          Xst = Xf;
-          //Coordinates::WGS84::displacement(m_estate.lat,m_estate.lon,m_estate.height,w4_lat,w4_lon,w4_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
-          Xf(3,0) = Angles::normalizeRadian(m_landArg.netHeading-PI);
-          inf("Attempt a new way toward the landing approach");
-          if (!dubinsPath(Xst,Xf,path,CounterClockwiseF,OCF))
-          {
-            err("Could not generate a landing path: Abort");
-            return false;
-          }
-          inf("Found a new path to the landing approach");
+          err("Could not generate a landing path: Abort");
+          return false;
         }
         inf("Dubins path has been created");
         //! Is correct height
