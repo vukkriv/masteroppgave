@@ -571,6 +571,17 @@ namespace Plan
         return true;
       }
 
+      //! Create a lateral path to be added to the Dubins path
+      void
+      lateralPath(Matrix Xs,Matrix Xf,Matrix OCF,bool CounterClokwiseF,std::vector<Matrix> &path)
+      {
+        bool reachedCorrectHeight = glideSlope(Xs,Xf,path);
+        if (!reachedCorrectHeight)
+        {
+          glideSpiral(OCF,CounterClockwiseF,Xf(2,0),path);
+        }
+      }
+
       //! Extract maneuvers from a list and add them to plan maneuver
       void
       addManeuverListToPlan(IMC::MessageList<IMC::Maneuver>* maneuverList,IMC::PlanSpecification &plan_spec)
@@ -1163,8 +1174,8 @@ namespace Plan
         WPS1(2,0) = znn;
         inf("Next height %f",m_estate.height-znn);
         inf("Desired height %f",m_landArg.netHeading-dHeight);
-        int n = 3;
-        Path.push_back(WPS0);
+        int n = 2;
+//        Path.push_back(WPS0);
         Path.push_back(WPS1);
         inf("theta has %d elements",theta.size());
         debug("Glide angle is %f",descentAngle);
