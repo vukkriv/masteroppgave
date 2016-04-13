@@ -46,14 +46,34 @@ namespace Plan
       fp32_t glideslope_angle;
     };
 
+    struct VirtualRunway //Landingpath
+    {
+      IMC::NetRecovery* nr;
+
+      fp64_t VR_center_lat;
+      fp64_t VR_center_lon;
+      double VR_heading;
+      double VR_length;
+      double goto_lat;
+      double goto_lon;
+
+
+    };
+
     struct Arguments
     {
       FixedWingLoiter fw_loiter;
+      fp32_t glideslope_approach_distance;
+      fp32_t glideslope_distance;
+      fp32_t glideslope_angle;
+      fp32_t desired_speed;
+      bool ignoreEvasive;
     };
 
     struct Task: public DUNE::Tasks::Task
     {
       Arguments m_args;
+      VirtualRunway   virtual_runway;
 
       //! Last plan control state
       IMC::PlanControlState m_last_pcs;
@@ -154,6 +174,17 @@ namespace Plan
               resolveSystemId(msg->getDestination()),
               msg->getDestinationEntity());
 
+        if(msg->plan_id == "land"){
+          debug("Received requested dubinspath");
+
+          const IMC::PlanSpecification* dubins_planspec = static_cast<const IMC::PlanSpecification*>(msg->arg.get());
+
+          sendFixedWingPlan(dubins_planspec,virtual_runway.nr);
+          debug("Sent FixedWing NetRecovery plan");
+
+
+        }
+
         //msg->toText(std::cout);
         // Ignore if not reply for this entity
         /*
@@ -200,9 +231,12 @@ namespace Plan
               {
                 debug("NetRecovery maneuver set request dispatched from Neptus");
                 IMC::Maneuver* man = (*it)->data.get();
-                IMC::NetRecovery* nr = static_cast<IMC::NetRecovery*>(man);
-                sendFixedWingPlan(planspec->plan_id,nr);
-                debug("Sent FixedWing NetRecovery plan");
+            //  IMC::NetRecovery* nr = static_cast<IMC::NetRecovery*>(man);
+                virtual_runway.nr =static_cast<IMC::NetRecovery*>(man);
+                extractVirtualRunway(virtual_runway.nr);
+                requestDubins(); //Request dubins-path from uav position to loiter.
+              //  sendFixedWingPlan(planspec->plan_id,nr);
+              //  debug("Sent FixedWing NetRecovery plan");
                 break;
               }
             }
@@ -297,49 +331,116 @@ namespace Plan
           return;
         }
       }
+
+      void extractVirtualRunway(IMC::NetRecovery* maneuver){
+
+        double bearing;
+        double range;
+
+        WGS84::getNEBearingAndRange(maneuver->start_lat,maneuver->start_lon,
+                                    maneuver->end_lat,maneuver->end_lon,
+                                             &bearing,&range);
+
+
+        //to-do calcualte center lat/lon center
+        virtual_runway.VR_center_lat =
+        virtual_runway.VR_center_lon =
+        virtual_runway.VR_heading    = bearing;
+        virtual_runway.VR_length     = range;
+
+      }
+
       void
-      sendFixedWingPlan(std::string name, IMC::NetRecovery* maneuver)
+      requestDubins(){
+        IMC::PlanGeneration msg;
+        std::string s
+        DUNE::Utils::String::
+
+        msg.params = "land_lat=" + virtual_runway.VR_center_lat + ";";
+        msg.params += "land_lon=" + virtual_runway.VR_center_lon + ";";
+        msg.params += "land_heading=" + virtual_runway.VR_heading + ";";
+
+        msg.params += "net_height=" + -netHeight / 2 + ";";
+        msg.params += "min_turn_radius=" + minTurnRadius + ";";
+        msg.params += "loiter_radius="+ loiterTurnRadius + ";";
+
+        msg.params += "attack_angle=" + 0 + ";";
+        msg.params += "descend_angle=" + m_args.fw_loiter.glideslope_angle + ";";
+
+        msg.params += "dist_behind=" + (virtual_runway.VR_length/2.0) + ";";
+        msg.params += "final_approach=" + (virtual_runway.VR_length/2.0) + ";";
+        msg.params += "glideslope=" + m_args.glideslope_approach_distance + ";";
+        msg.params += "approach" + m_args.glideslope_approach_distance + ";";
+        msg.params += "speed12=" + m_args.desired_speed + ";";
+        msg.params += "speed345=" + m_args.desired_speed + ";";
+
+        msg.params += "z_unit=height;"; // "height" or "altitude"
+        msg.params += "net_WGS84_height=" + netWGS84Height + ";";
+
+      //  msg.params += "auxiliary_WPa_side=" + auxiliaryWpaRight + ";";
+        msg.params += "ignore_evasive=" + m_args.ignoreEvasive + ";";
+
+        msg.params += "automatic=" + automatic + ";";
+        msg.params += "right_start_turning_direction=" + rightStartTurningDirection + ";";
+        msg.params += "right_finish_turning_circle=" + rightFinishTurningCircle + ";";
+
+
+        msg.op = IMC::PlanGeneration::OP_REQUEST;
+        msg.cmd = IMC::PlanGeneration::CMD_GENERATE;
+        msg.plan_id = "land";
+
+        dispatch(msg);
+
+      }
+      void
+      sendFixedWingPlan(const IMC::PlanSpecification* dubins_planspec, IMC::NetRecovery* maneuver)
       {
         // Create plan set request
         IMC::PlanDB plan_db;
         plan_db.type = IMC::PlanDB::DBT_REQUEST;
         plan_db.op = IMC::PlanDB::DBOP_SET;
-        plan_db.plan_id = name + "_fixedwing";
+        plan_db.plan_id = dubins_planspec->plan_id + "_fixedwing";
         plan_db.request_id = 0;
 
 
-        // Add current loiter as initial maneuver
+        IMC::PlanSpecification plan_spec = dubins_planspec;
+        plan_spec.description = "A fixed wing recovery plan";
 
-        IMC::PlanManeuver loiter_man;
-        loiter_man.maneuver_id = 1;
 
-        IMC::Loiter man_loit;
-        man_loit.type = IMC::Loiter::LT_CIRCULAR;
-        man_loit.direction = IMC::Loiter::LD_CLOCKW;
-
-        man_loit.z             = m_args.fw_loiter.altitude;
-        man_loit.z_units       = IMC::Z_ALTITUDE;
-        man_loit.speed         = m_args.fw_loiter.speed;
-        man_loit.speed_units   = IMC::SUNITS_METERS_PS;
-        man_loit.duration      = m_args.fw_loiter.duration;
-        man_loit.radius        = m_args.fw_loiter.radius;
-        man_loit.lat           = m_args.fw_loiter.lat;
-        man_loit.lon           = m_args.fw_loiter.lon;
+//        // Add current loiter as initial maneuver
+//
+//        IMC::PlanManeuver loiter_man;
+//        loiter_man.maneuver_id = 1;
+//
+//        IMC::Loiter man_loit;
+//        man_loit.type = IMC::Loiter::LT_CIRCULAR;
+//        man_loit.direction = IMC::Loiter::LD_CLOCKW;
+//
+//        man_loit.z             = m_args.fw_loiter.altitude;
+//        man_loit.z_units       = IMC::Z_ALTITUDE;
+//        man_loit.speed         = m_args.fw_loiter.speed;
+//        man_loit.speed_units   = IMC::SUNITS_METERS_PS;
+//        man_loit.duration      = m_args.fw_loiter.duration;
+//        man_loit.radius        = m_args.fw_loiter.radius;
+//        man_loit.lat           = m_args.fw_loiter.lat;
+//        man_loit.lon           = m_args.fw_loiter.lon;
 
         //Calculate go-to approach point based on desired along-track position behind the start point of the virtual runway
 
-        double bearing;
-        double range;
+//        double bearing;
+//        double range;
+//
+//
+//        WGS84::getNEBearingAndRange(maneuver->start_lat,maneuver->start_lon,
+//                                    maneuver->end_lat,maneuver->end_lon,
+//                                    &bearing,&range);
+//
+//        double z_diff = abs(m_args.fw_loiter.altitude - maneuver->z);
+//        double distance = z_diff / tan(Angles::radians(m_args.fw_loiter.glideslope_angle));
 
 
-        WGS84::getNEBearingAndRange(maneuver->start_lat,maneuver->start_lon,
-                                    maneuver->end_lat,maneuver->end_lon,
-                                    &bearing,&range);
-        double z_diff = abs(m_args.fw_loiter.altitude - maneuver->z);
-        double distance = z_diff / tan(Angles::radians(m_args.fw_loiter.glideslope_angle));
-
-        double N_offset = -distance * cos(bearing);
-        double E_offset = -distance * sin(bearing);
+        double N_offset   = -m_args.glideslope_distance * cos(virtual_runway.VR_heading);
+        double E_offset   = -m_args.glideslope_distance * sin(virtual_runway.VR_heading);
         double lat_offset = maneuver->start_lat;
         double lon_offset = maneuver->start_lon;
         double height_offset = 0.0;
@@ -352,69 +453,53 @@ namespace Plan
 
         // Add goto-point
 
-        IMC::Goto man_goto;
-        man_goto.lat           = lat_offset;
-        man_goto.lon           = lon_offset;
-        man_goto.speed         = m_args.fw_loiter.speed;
-        man_goto.speed_units   = IMC::SUNITS_METERS_PS;
-        man_goto.z             = m_args.fw_loiter.altitude;
-        man_goto.z_units       = IMC::Z_ALTITUDE;
+        IMC::Goto man_goto_approach_glideslope;
 
+        man_goto_approach_glideslope.lat           = lat_offset;
+        man_goto_approach_glideslope.lon           = lon_offset;
+        man_goto_approach_glideslope.speed         = m_args.fw_loiter.speed;
+        man_goto_approach_glideslope.speed_units   = IMC::SUNITS_METERS_PS;
+        man_goto_approach_glideslope.z             = m_args.fw_loiter.altitude;
+        man_goto_approach_glideslope.z_units       = IMC::Z_ALTITUDE;
+
+        //
+        IMC::MessageList<IMC::PlanManeuver>  manlist = plan_spec.maneuvers;
 
 
         //
-
-
         IMC::PlanManeuver* pman1 = new IMC::PlanManeuver();
         IMC::InlineMessage<IMC::Maneuver> pman1_inline;
-        pman1_inline.set(man_loit);
-        pman1->maneuver_id = "1";
+        pman1_inline.set(man_goto_approach_glideslope);
+        pman1->maneuver_id = "1000";
         pman1->data = pman1_inline;
 
-        IMC::PlanManeuver* pman2 = new IMC::PlanManeuver();
+        IMC::PlanManeuver* pman2  = new IMC::PlanManeuver();
         IMC::InlineMessage<IMC::Maneuver> pman2_inline;
-        pman2_inline.set(man_goto);
-        pman2->maneuver_id = "2";
+        pman2_inline.set(maneuver);
+        pman2->maneuver_id = "10001";
         pman2->data = pman2_inline;
 
-        IMC::PlanManeuver* pman3  = new IMC::PlanManeuver();
-        IMC::InlineMessage<IMC::Maneuver> pman3_inline;
-        pman3_inline.set(maneuver);
-        pman3->maneuver_id = "3";
-        pman3->data = pman3_inline;
-
-        IMC::PlanSpecification plan_spec;
-        plan_spec.description = "A fixed wing recovery plan";
-        plan_spec.plan_id = plan_db.plan_id;
-
         IMC::PlanTransition* transition = new IMC::PlanTransition;
-        transition->source_man = "1";
-        transition->dest_man   = "2";
+        transition->source_man = "1000";
+        transition->dest_man   = "1001";
         transition->conditions = "ManeuverIsDone";
 
         IMC::PlanTransition* transition2 = new IMC::PlanTransition;
-        transition2->source_man = "2";
-        transition2->dest_man   = "3";
+        transition2->source_man = "1001";
+        transition2->dest_man   = "2";
         transition2->conditions = "ManeuverIsDone";
 
-        IMC::PlanTransition* transition3 = new IMC::PlanTransition;
-        transition3->source_man = "3";
-        transition3->dest_man   = "2";
-        transition3->conditions = "ManeuverIsDone";
 
-        IMC::MessageList<IMC::PlanTransition> translist;
+        IMC::MessageList<IMC::PlanTransition> translist = plan_spec.transitions;
         translist.push_back(transition);
         translist.push_back(transition2);
-        translist.push_back(transition3);
 
-        IMC::MessageList<IMC::PlanManeuver> manlist;
         manlist.push_back(pman1);
         manlist.push_back(pman2);
-        manlist.push_back(pman3);
 
-        plan_spec.start_man_id = "1";
-        plan_spec.maneuvers = manlist;
-        plan_spec.transitions = translist;
+//        plan_spec.start_man_id = "1";
+//        plan_spec.maneuvers = manlist;
+//        plan_spec.transitions = translist;
 
         // Set plan
         plan_db.arg.set(plan_spec);
@@ -432,6 +517,7 @@ namespace Plan
         dispatch(plan_ctrl);
         */
       }
+
       //! Main loop.
       void
       onMain(void)
