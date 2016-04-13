@@ -39,8 +39,11 @@ namespace Plan
       uint8_t altitude;
       fp32_t speed;
       fp32_t radius;
+      fp64_t lat;
+      fp64_t lon;
       uint16_t duration;
       double distance_runway;
+      fp32_t glideslope_angle;
     };
 
     struct Arguments
@@ -77,6 +80,11 @@ namespace Plan
         .visibility(Parameter::VISIBILITY_USER)
         .defaultValue("0");
 
+        param("Glideslope Angle", m_args.fw_loiter.glideslope_angle)
+        .visibility(Parameter::VISIBILITY_USER)
+        .units(Units::Degree)
+        .defaultValue("4.0");
+
         param("Loiter along-track distance", m_args.fw_loiter.distance_runway)
         .visibility(Parameter::VISIBILITY_USER)
         .units(Units::Meter)
@@ -87,6 +95,7 @@ namespace Plan
         bind<IMC::PlanControl>(this);
         bind<IMC::PlanControlState>(this);
         bind<IMC::PlanSpecification>(this);
+        bind<IMC::PathControlState>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -123,6 +132,17 @@ namespace Plan
       void
       onResourceRelease(void)
       {
+      }
+
+      void
+      consume(const IMC::PathControlState* pcs){
+
+        if (pcs->flags & IMC::PathControlState::FL_LOITERING){
+          m_args.fw_loiter.lat = pcs->end_lat;
+          m_args.fw_loiter.lon = pcs->end_lon;
+          m_args.fw_loiter.altitude = pcs->end_z;
+          m_args.fw_loiter.radius = pcs->lradius;
+        }
       }
 
       void
@@ -255,6 +275,7 @@ namespace Plan
         }
 
         m_last_pcs = *pcs;
+
       }
 
       void
@@ -287,7 +308,7 @@ namespace Plan
         plan_db.request_id = 0;
 
 
-        // Add loiter as initial maneuver
+        // Add current loiter as initial maneuver
 
         IMC::PlanManeuver loiter_man;
         loiter_man.maneuver_id = 1;
@@ -302,18 +323,23 @@ namespace Plan
         man_loit.speed_units   = IMC::SUNITS_METERS_PS;
         man_loit.duration      = m_args.fw_loiter.duration;
         man_loit.radius        = m_args.fw_loiter.radius;
+        man_loit.lat           = m_args.fw_loiter.lat;
+        man_loit.lon           = m_args.fw_loiter.lon;
 
-        //Calculate loiter point based on desired along-track position behind the start point of the virtual runway
+        //Calculate go-to approach point based on desired along-track position behind the start point of the virtual runway
 
         double bearing;
         double range;
 
+
         WGS84::getNEBearingAndRange(maneuver->start_lat,maneuver->start_lon,
                                     maneuver->end_lat,maneuver->end_lon,
                                     &bearing,&range);
+        double z_diff = abs(m_args.fw_loiter.altitude - maneuver->z);
+        double distance = z_diff / tan(Angles::radians(m_args.fw_loiter.glideslope_angle));
 
-        double N_offset = -m_args.fw_loiter.distance_runway * cos(bearing);
-        double E_offset = -m_args.fw_loiter.distance_runway * sin(bearing);
+        double N_offset = -distance * cos(bearing);
+        double E_offset = -distance * sin(bearing);
         double lat_offset = maneuver->start_lat;
         double lon_offset = maneuver->start_lon;
         double height_offset = 0.0;
@@ -321,10 +347,22 @@ namespace Plan
         WGS84::displace(N_offset, E_offset, 0.0,
                   &lat_offset, &lon_offset, &height_offset);
 
-        man_loit.lat = lat_offset;
-        man_loit.lon = lon_offset;
+        //man_loit.lat = lat_offset;
+        //man_loit.lon = lon_offset;
+
+        // Add goto-point
+
+        IMC::Goto man_goto;
+        man_goto.lat           = lat_offset;
+        man_goto.lon           = lon_offset;
+        man_goto.speed         = m_args.fw_loiter.speed;
+        man_goto.speed_units   = IMC::SUNITS_METERS_PS;
+        man_goto.z             = m_args.fw_loiter.altitude;
+        man_goto.z_units       = IMC::Z_ALTITUDE;
 
 
+
+        //
 
 
         IMC::PlanManeuver* pman1 = new IMC::PlanManeuver();
@@ -333,11 +371,17 @@ namespace Plan
         pman1->maneuver_id = "1";
         pman1->data = pman1_inline;
 
-        IMC::PlanManeuver* pman2  = new IMC::PlanManeuver();
+        IMC::PlanManeuver* pman2 = new IMC::PlanManeuver();
         IMC::InlineMessage<IMC::Maneuver> pman2_inline;
-        pman2_inline.set(maneuver);
+        pman2_inline.set(man_goto);
         pman2->maneuver_id = "2";
         pman2->data = pman2_inline;
+
+        IMC::PlanManeuver* pman3  = new IMC::PlanManeuver();
+        IMC::InlineMessage<IMC::Maneuver> pman3_inline;
+        pman3_inline.set(maneuver);
+        pman3->maneuver_id = "3";
+        pman3->data = pman3_inline;
 
         IMC::PlanSpecification plan_spec;
         plan_spec.description = "A fixed wing recovery plan";
@@ -350,16 +394,23 @@ namespace Plan
 
         IMC::PlanTransition* transition2 = new IMC::PlanTransition;
         transition2->source_man = "2";
-        transition2->dest_man   = "1";
+        transition2->dest_man   = "3";
         transition2->conditions = "ManeuverIsDone";
+
+        IMC::PlanTransition* transition3 = new IMC::PlanTransition;
+        transition3->source_man = "3";
+        transition3->dest_man   = "2";
+        transition3->conditions = "ManeuverIsDone";
 
         IMC::MessageList<IMC::PlanTransition> translist;
         translist.push_back(transition);
         translist.push_back(transition2);
+        translist.push_back(transition3);
 
         IMC::MessageList<IMC::PlanManeuver> manlist;
         manlist.push_back(pman1);
         manlist.push_back(pman2);
+        manlist.push_back(pman3);
 
         plan_spec.start_man_id = "1";
         plan_spec.maneuvers = manlist;
