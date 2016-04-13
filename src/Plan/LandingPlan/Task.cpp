@@ -656,8 +656,6 @@ namespace Plan
         //! Finish circle center
         double Xcf;
         double Ycf;
-        //! Radius of second end turning circle
-        double Rsec;
         //! Exit tangent point on start circle
         Matrix Pchi = Matrix(2,1,0.0);
         //! Entry tangent point on finish circle
@@ -666,18 +664,18 @@ namespace Plan
         if (m_landArg.automatic)
         {
           inf("Creating a plan automatic");
-          DubinsParametersContainer dubinsPath;
-          findPath(Xs,Xf,dubinsPath);
-          Xcs = dubinsPath.Xcs;
-          Ycs = dubinsPath.Ycs;
-          OCS = dubinsPath.OCS;
-          Xcf = dubinsPath.Xcf;
-          Ycf = dubinsPath.Ycf;
-          OCF = dubinsPath.OCF;
-          Pchi = dubinsPath.Pchi;
-          PN = dubinsPath.PN;
-          CounterClockwiseS = dubinsPath.CounterClockwiseS;
-          CounterClockwiseF = dubinsPath.CounterClockwiseF;
+          DubinsParametersContainer dubins;
+          findPath(Xs,Xf,dubins);
+          Xcs = dubins.Xcs;
+          Ycs = dubins.Ycs;
+          OCS = dubins.OCS;
+          Xcf = dubins.Xcf;
+          Ycf = dubins.Ycf;
+          OCF = dubins.OCF;
+          Pchi = dubins.Pchi;
+          PN = dubins.PN;
+          CounterClockwiseS = dubins.CounterClockwiseS;
+          CounterClockwiseF = dubins.CounterClockwiseF;
         }
         else
         {
@@ -794,7 +792,7 @@ namespace Plan
 
       }
       // ! Return the function parameters for the shortest dubins path
-      bool findPath(const Matrix Xs,const Matrix Xf,DubinsParametersContainer &dubinsPath)
+      bool findPath(const Matrix Xs,const Matrix Xf,DubinsParametersContainer &dubins)
       {
         //! Initializing the structs
         DubinsParametersContainer CounterClockwiseCounterClocwise;
@@ -855,58 +853,58 @@ namespace Plan
           }
         }
         debug("The currIndex is %d",currIndex);
-        dubinsPath = m_dubinsPaths[currIndex];
+        dubins = m_dubinsPaths[currIndex];
         return true;
       }
       //! Fills the struct in the DubinsParametersContainer
-      bool fillDubinsParametersContainger(const Matrix Xs,const Matrix Xf,DubinsParametersContainer &dubinsPath)
+      bool fillDubinsParametersContainger(const Matrix Xs,const Matrix Xf,DubinsParametersContainer &dubins)
       {
-        dubinsPath.OCS = Matrix(2,1,0.0);
-        if (dubinsPath.CounterClockwiseS)
+        dubins.OCS = Matrix(2,1,0.0);
+        if (dubins.CounterClockwiseS)
         {
-          dubinsPath.Xcs = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)+PI/2);
-          dubinsPath.Ycs = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)+PI/2);
+          dubins.Xcs = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)+PI/2);
+          dubins.Ycs = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)+PI/2);
         }
         else
         {
-          dubinsPath.Xcs = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)-PI/2);
-          dubinsPath.Ycs = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)-PI/2);
+          dubins.Xcs = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)-PI/2);
+          dubins.Ycs = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)-PI/2);
         }
-        dubinsPath.OCF = Matrix(2,1,0.0);
-        if (dubinsPath.CounterClockwiseF)
+        dubins.OCF = Matrix(2,1,0.0);
+        if (dubins.CounterClockwiseF)
         {
-          dubinsPath.Xcf = Xf(0,0)-m_landArg.Rf*cos(Xf(3,0)+PI/2);
-          dubinsPath.Ycf = Xf(1,0)-m_landArg.Rf*sin(Xf(3,0)+PI/2);
+          dubins.Xcf = Xf(0,0)-m_landArg.Rf*cos(Xf(3,0)+PI/2);
+          dubins.Ycf = Xf(1,0)-m_landArg.Rf*sin(Xf(3,0)+PI/2);
         }
         else
         {
-          dubinsPath.Xcf = Xf(0,0)-m_landArg.Rf*cos(Xf(3,0)-PI/2);
-          dubinsPath.Ycf = Xf(1,0)-m_landArg.Rf*sin(Xf(3,0)-PI/2);
+          dubins.Xcf = Xf(0,0)-m_landArg.Rf*cos(Xf(3,0)-PI/2);
+          dubins.Ycf = Xf(1,0)-m_landArg.Rf*sin(Xf(3,0)-PI/2);
         }
 
-        dubinsPath.OCS(0,0) = dubinsPath.Xcs;
-        dubinsPath.OCS(1,0) = dubinsPath.Ycs;
-        dubinsPath.OCF(0,0) = dubinsPath.Xcf;
-        dubinsPath.OCF(1,0) = dubinsPath.Ycf;
-        dubinsPath.Pchi = Matrix(2,1,0.0);
-        dubinsPath.PN = Matrix(2,1,0.0);
-        if (!dubinsParameteres(dubinsPath.OCS,dubinsPath.OCF,m_landArg.Rs,m_landArg.Rf,dubinsPath.CounterClockwiseS,dubinsPath.CounterClockwiseF,dubinsPath.Pchi,dubinsPath.PN))
+        dubins.OCS(0,0) = dubins.Xcs;
+        dubins.OCS(1,0) = dubins.Ycs;
+        dubins.OCF(0,0) = dubins.Xcf;
+        dubins.OCF(1,0) = dubins.Ycf;
+        dubins.Pchi = Matrix(2,1,0.0);
+        dubins.PN = Matrix(2,1,0.0);
+        if (!dubinsParameteres(dubins.OCS,dubins.OCF,m_landArg.Rs,m_landArg.Rf,dubins.CounterClockwiseS,dubins.CounterClockwiseF,dubins.Pchi,dubins.PN))
         {
           war("Dubins Path does not exist from start position to end position");
           return false;
         }
-        double theta0 = std::atan2(Xs(1,0)-dubinsPath.Ycs,Xs(0,0)-dubinsPath.Xcs);
-        double theta1 = std::atan2(dubinsPath.Pchi(1,0)-dubinsPath.Ycs,dubinsPath.Pchi(0,0)-dubinsPath.Xcs);
+        double theta0 = std::atan2(Xs(1,0)-dubins.Ycs,Xs(0,0)-dubins.Xcs);
+        double theta1 = std::atan2(dubins.Pchi(1,0)-dubins.Ycs,dubins.Pchi(0,0)-dubins.Xcs);
         double sLtheta1 = 0;
-        arcAngle(theta0,theta1,dubinsPath.CounterClockwiseS,sLtheta1);
+        arcAngle(theta0,theta1,dubins.CounterClockwiseS,sLtheta1);
         debug("Arc angle start1 %f",sLtheta1);
 
-        double theta01 = std::atan2(dubinsPath.PN(1,0)-dubinsPath.Ycf,dubinsPath.PN(0,0)-dubinsPath.Xcf);
-        double theta11 = std::atan2(Xf(1,0)-dubinsPath.Ycf,Xf(0,0)-dubinsPath.Xcf);
+        double theta01 = std::atan2(dubins.PN(1,0)-dubins.Ycf,dubins.PN(0,0)-dubins.Xcf);
+        double theta11 = std::atan2(Xf(1,0)-dubins.Ycf,Xf(0,0)-dubins.Xcf);
         double fLtheta1 = 0;
-        arcAngle(theta01,theta11,dubinsPath.CounterClockwiseF,fLtheta1);
+        arcAngle(theta01,theta11,dubins.CounterClockwiseF,fLtheta1);
         debug("Arc angle finish1%f",fLtheta1);
-        dubinsPath.LengthPath = m_landArg.Rs*sLtheta1 + std::sqrt(std::pow(dubinsPath.Pchi(0,0)-dubinsPath.PN(0,0),2)+std::pow(dubinsPath.Pchi(1,0)-dubinsPath.PN(1,0),2)) + m_landArg.Rf*fLtheta1;
+        dubins.LengthPath = m_landArg.Rs*sLtheta1 + std::sqrt(std::pow(dubins.Pchi(0,0)-dubins.PN(0,0),2)+std::pow(dubins.Pchi(1,0)-dubins.PN(1,0),2)) + m_landArg.Rf*fLtheta1;
         return true;
       }
 
@@ -1050,7 +1048,7 @@ namespace Plan
       ConstructArc(const Matrix theta,const double theta0,const double R,const Matrix center,std::vector<Matrix>& arc)
       {
         Matrix tempP = Matrix(3,1,0.0);
-        for (unsigned i=0;i<theta.columns();i++)
+        for (int i=0;i<theta.columns();i++)
         {
 
           tempP(0,0) = center(0,0) + R*std::cos(theta0+theta(0,i));
