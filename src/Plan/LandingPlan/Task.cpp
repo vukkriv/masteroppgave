@@ -102,13 +102,13 @@ namespace Plan
     struct LandingPath
     {
       //! Landing waypoints
-      //! WP1
+      //! WP1: Behind the net
       Matrix WP1;
-      //! WP1
+      //! WP2: In front of the net
       Matrix WP2;
-      //! WP1
+      //! WP3: The start of the glide slope
       Matrix WP3;
-      //! WP1
+      //! WP4: The start of the approach towards the net
       Matrix WP4;
       //! Finish turning circle rotation
       bool clockwise;
