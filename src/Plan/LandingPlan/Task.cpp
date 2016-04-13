@@ -88,7 +88,7 @@ namespace Plan
       //! Finish turning circle radius
       double Rf;
       //! Waiting at loiter
-      bool wait_at_loiter = false;
+      bool wait_at_loiter;
       //! Advance options
       //! Automatic generation of start and finish circle
       bool automatic;
@@ -185,6 +185,9 @@ namespace Plan
         //! Initialize the default values
         TupleList tList("","=",";",true);
         readTupleList(tList);
+        //! Default set that the path is not waiting in the final loiter position
+        m_landArg.wait_at_loiter = false;
+        //! Bind IMC messages
         bind<IMC::EstimatedState>(this);
         bind<IMC::PlanGeneration>(this);
       }
@@ -212,14 +215,14 @@ namespace Plan
           IMC::PlanDB plan_db;
           plan_db.type = IMC::PlanDB::DBT_REQUEST;
           plan_db.op = IMC::PlanDB::DBOP_SET;
-          plan_db.plan_id = "land";
+          plan_db.plan_id = "landFromLoiter";
           plan_db.request_id = 0;
 
           //! Create plan specification
           IMC::PlanSpecification plan_spec;
           plan_spec.plan_id = plan_db.plan_id;
           plan_spec.start_man_id = 1;
-          plan_spec.description = "Plan activating land";
+          plan_spec.description = "Plan activating landFromLoiter";
           //! Create a list of maneuvers
           IMC::MessageList<IMC::Maneuver> maneuverList;
 
