@@ -343,15 +343,15 @@ namespace Plan
       void
       readTupleList(TupleList tList)
       {
-        m_landArg.rightStartTurningDirection = (tList.get("right_start_turning_direction") == "true") ? true : false;
-        m_landArg.rightFinishTurningCircle = (tList.get("right_finish_turning_circle") == "true") ? true : false;
+        m_landArg.rightStartTurningDirection = (tList.get("start_turning_circle_counter_clockwise") == "true") ? true : false;
+        m_landArg.rightFinishTurningCircle = (tList.get("final_turning_circle_counter_clockwise") == "true") ? true : false;
         m_landArg.net_lat = Angles::radians(tList.get("land_lat",63.629409));
         m_landArg.net_lon = Angles::radians(tList.get("land_lon",9.726401));
         m_landArg.net_WGS84_height = tList.get("net_WGS84_height",0.0);
         m_landArg.netHeading = Angles::radians(tList.get("land_heading",60));
         m_landArg.net_height = tList.get("net_height",-3.0);
-        m_landArg.gamma_a = Angles::radians(tList.get("attack_angle",3.0));
-        m_landArg.gamma_d = Angles::radians(tList.get("descend_angle", 3.0));
+        m_landArg.gamma_a = Angles::radians(tList.get("final_approach_angle",3.0));
+        m_landArg.gamma_d = Angles::radians(tList.get("glide_slope_angle", 3.0));
         m_landArg.a0 = tList.get("dist_behind",10.0);
         m_landArg.a1 = tList.get("final_approach",10.0);
         m_landArg.a2 = tList.get("glideslope",300.0);
@@ -360,8 +360,8 @@ namespace Plan
         m_landArg.speed_WP3 = tList.get("speed345",12.0);
         m_landArg.speed_WP2 = tList.get("speed12",12.0);
         m_landArg.speed_WP1 = tList.get("speed12",12.0);
-        m_landArg.Rs = tList.get("min_turn_radius", 150.0);
-        m_landArg.Rf = tList.get("loiter_radius",150.0);
+        m_landArg.Rs = tList.get("start_turning_circle_radius", 150.0);
+        m_landArg.Rf = tList.get("final_turning_circle_radius",150.0);
         m_landArg.automatic = (tList.get("automatic") == "true") ? true : false;
         debug("Content from tList:");
         debug("Net Lat %f",m_landArg.net_lat);
@@ -1024,6 +1024,7 @@ namespace Plan
           step = theta_limit;
         }
         inf("Step limit %f",theta_limit);
+        debug("Step %f",step);
         for (unsigned i=0;i<N;i++)
         {
           theta(0,i)=i*step;
