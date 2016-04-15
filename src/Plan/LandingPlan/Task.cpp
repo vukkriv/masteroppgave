@@ -403,7 +403,7 @@ namespace Plan
         //! Create plan specification
         IMC::PlanSpecification plan_spec;
         plan_spec.plan_id = plan_db.plan_id;
-        plan_spec.start_man_id = 1;
+        plan_spec.start_man_id = "1";
         plan_spec.description = "Plan activating land";
 
         //! Create a list of maneuvers
@@ -552,7 +552,7 @@ namespace Plan
           IMC::PlanManeuver man_spec;
 
           man_spec.data.set(*it);
-          man_spec.maneuver_id = i;
+          man_spec.maneuver_id = unsignedToString(i);
 
           if (it!=maneuverList->begin())
           {
@@ -1227,6 +1227,17 @@ namespace Plan
       void
       onResourceRelease(void)
       {
+      }
+
+      std::string unsignedToString ( unsigned number )
+      {
+        std::ostringstream oss;
+
+        // Works just like cout
+        oss<< number;
+
+        // Return the underlying string
+        return oss.str();
       }
 
       //! Main loop.
