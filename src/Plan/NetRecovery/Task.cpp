@@ -44,7 +44,6 @@ namespace Plan
       fp64_t lon;
       double duration;
       double distance_runway;
-      double glideslope_angle;
     };
 
     struct VirtualRunway //Landingpath
@@ -112,7 +111,7 @@ namespace Plan
         .visibility(Parameter::VISIBILITY_USER)
         .defaultValue("0");
 
-        param("Glideslope Angle", m_args.fw_loiter.glideslope_angle)
+        param("Glideslope Angle", m_args.glideslope_angle)
         .visibility(Parameter::VISIBILITY_USER)
         .units(Units::Degree)
         .defaultValue("4.0");
@@ -422,7 +421,7 @@ namespace Plan
 
 
         msg.params.append("final_approach_angle=").append(DoubleToString(0.0)).append(";");
-        msg.params.append("glide_slope_anglee=").append(DoubleToString(m_args.fw_loiter.glideslope_angle)).append(";");
+        msg.params.append("glide_slope_anglee=").append(DoubleToString(m_args.glideslope_angle)).append(";");
 
         msg.params.append("dist_behind=").append(DoubleToString((virtual_runway.VR_length/2.0))).append(";");
         msg.params.append("final_approach=").append(DoubleToString((virtual_runway.VR_length/2.0))).append(";");
@@ -499,7 +498,7 @@ namespace Plan
 //
 //        double z_diff = abs(m_args.fw_loiter.altitude - maneuver->z);
 //        double distance = z_diff / tan(Angles::radians(m_args.fw_loiter.glideslope_angle));
-
+        double z_loiter = (maneuver.z - maneuver.z_off) + tan(Angles::radians(m_args.glideslope_angle)) * m_args.glideslope_distance;
         //GO-TO Glideslope START POINT
         double N_offset   = -m_args.glideslope_distance * cos(virtual_runway.VR_heading);
         double E_offset   = -m_args.glideslope_distance * sin(virtual_runway.VR_heading);
@@ -520,7 +519,7 @@ namespace Plan
         man_goto_glideslope.lon           = lon_offset;
         man_goto_glideslope.speed         = m_args.fw_loiter.speed;
         man_goto_glideslope.speed_units   = IMC::SUNITS_METERS_PS;
-        man_goto_glideslope.z             = m_args.fw_loiter.altitude;
+        man_goto_glideslope.z             = z_loiter;
         man_goto_glideslope.z_units       = IMC::Z_ALTITUDE;
 
 
@@ -547,7 +546,7 @@ namespace Plan
         man_goto_approach_glideslope.lon           = lon_offset;
         man_goto_approach_glideslope.speed         = m_args.fw_loiter.speed;
         man_goto_approach_glideslope.speed_units   = IMC::SUNITS_METERS_PS;
-        man_goto_approach_glideslope.z             = m_args.fw_loiter.altitude;
+        man_goto_approach_glideslope.z             = z_loiter;
         man_goto_approach_glideslope.z_units       = IMC::Z_ALTITUDE;
         //
        // IMC::MessageList<IMC::PlanManeuver>  manlist = plan_spec.maneuvers;
