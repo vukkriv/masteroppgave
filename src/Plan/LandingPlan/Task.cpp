@@ -165,10 +165,6 @@ namespace Plan
       int m_Ns;
       //! Segments in the finish circle
       int m_Nf;
-      //! Last arc segment for start circle
-      double m_lastArcSegmentStart;
-      //! Last arc segment for final circle
-      double m_lastArcSegmentFinal;
 
 
       //! Constructor.
@@ -201,19 +197,6 @@ namespace Plan
       void
       onUpdateParameters(void)
       {
-        /*m_Ns = std::floor((2*m_landArg.Rs*PI)/m_args.arc_segment_distance);
-        m_Nf = std::floor((2*m_landArg.Rf*PI)/m_args.arc_segment_distance);
-
-        //! Check if m_Ns and m_Nf is bellow 4
-        if (m_Ns<4)
-        {
-          m_Ns = 4;
-        }
-        if (m_Nf<4)
-        {
-          m_Nf = 4;
-        }*/
-
         m_Ns = std::ceil((2*m_landArg.Rs*Math::c_pi)/m_args.arc_segment_distance);
         m_Nf = std::ceil((2*m_landArg.Rf*PI)/m_args.arc_segment_distance);
 
@@ -226,8 +209,6 @@ namespace Plan
         {
           m_Nf = 4;
         }
-        m_lastArcSegmentStart = (m_Ns-(2*m_landArg.Rs*Math::c_pi)/m_args.arc_segment_distance)*m_args.arc_segment_distance;
-        m_lastArcSegmentFinal = (m_Nf - ((2*m_landArg.Rf*PI)/m_args.arc_segment_distance))*m_args.arc_segment_distance;
 
         inf("m_Ns = %d m_Nf = %d",m_Ns,m_Nf);
         if (!m_args.waitLoiter && m_landArg.wait_at_loiter)
@@ -314,12 +295,11 @@ namespace Plan
 
           readTupleList(tList);
 
-          //m_Ns = std::floor((2*m_landArg.Rs*PI)/m_args.arc_segment_distance);
-          //m_Nf = std::floor((2*m_landArg.Rf*PI)/m_args.arc_segment_distance);
+          //! Find total number of segments in a circle
           m_Ns = std::ceil((2*m_landArg.Rs*Math::c_pi)/m_args.arc_segment_distance);
           m_Nf = std::ceil((2*m_landArg.Rf*PI)/m_args.arc_segment_distance);
 
-          //! Check if m_Ns and m_Nf is bellow 4
+          //! Check if m_Ns and m_Nf is bellow 4 in order to construct a minimal circle
           if (m_Ns<4)
           {
             m_Ns = 4;
@@ -328,24 +308,26 @@ namespace Plan
           {
             m_Nf = 4;
           }
-          m_lastArcSegmentStart = (m_Ns-(2*m_landArg.Rs*Math::c_pi)/m_args.arc_segment_distance)*m_args.arc_segment_distance;
-          m_lastArcSegmentFinal = (m_Nf - ((2*m_landArg.Rf*PI)/m_args.arc_segment_distance))*m_args.arc_segment_distance;
 
           inf("m_Ns = %d m_Nf = %d",m_Ns,m_Nf);
 
-          //! Fill WP matrix
+          //! Construct waypoint for the final landing path
+          //! WP1 is set behind the net
           m_landParameteres.WP1 = Matrix(3,1,0.0);
           m_landParameteres.WP1(0,0) = -m_landArg.a0;
           m_landParameteres.WP1(2,0) = m_landArg.net_height+m_landArg.a0*std::tan(m_landArg.gamma_a);
 
+          //! WP2 is set in front of the net, and is the final phase before the net
           m_landParameteres.WP2 = Matrix(3,1,0.0);
           m_landParameteres.WP2(0,0) = m_landArg.a1;
           m_landParameteres.WP2(2,0) = m_landArg.net_height-m_landArg.a1*std::tan(m_landArg.gamma_a);
 
+          //! WP3 is the start of the glide slope towards the net
           m_landParameteres.WP3 = Matrix(3,1,0.0);
           m_landParameteres.WP3(0,0) = m_landParameteres.WP2(0,0)+m_landArg.a2;
           m_landParameteres.WP3(2,0) = m_landParameteres.WP2(2,0)-m_landArg.a2*std::tan(m_landArg.gamma_d);
 
+          //! WP4 is the approach to the glide slope
           m_landParameteres.WP4 = Matrix(3,1,0.0);
           m_landParameteres.WP4(0,0) = m_landParameteres.WP3(0,0)+m_landArg.a3;
           m_landParameteres.WP4(2,0) = m_landParameteres.WP3(2,0);
@@ -365,7 +347,7 @@ namespace Plan
         }
         return false;
       }
-      //! Read tuplelist
+      //! Read tuplelist from the incoming planGeneration message
       void
       readTupleList(TupleList tList)
       {
@@ -410,7 +392,7 @@ namespace Plan
         debug("Right finish %d",m_landArg.rightFinishTurningCircle);
         inf("Extracted arguments from neptus");
       }
-      //! Generates a landing path
+      //! Generates a landing path from the initial position of the plane towards the position of the net
       bool
       generateLandingPath()
       {
@@ -435,13 +417,9 @@ namespace Plan
         //! Create a list of maneuvers
         IMC::MessageList<IMC::Maneuver> maneuverList;
 
-        //! Create a followPath maneuver
+        //! Create a followPath maneuver which is filled with Dubins path
         IMC::FollowPath fPath;
 
-        /*double cur_lat = m_landArg.net_lat;
-        double cur_lon =  m_landArg.net_lon;
-        double cur_height = m_landArg.net_height;
-        Coordinates::WGS84::displace(m_landArg.Xs(0,0),m_landArg.Xs(1,0),m_landArg.Xs(2,0),&cur_lat,&cur_lon,&cur_height);*/
         fPath.lat = m_landParameteres.state_lat;
         fPath.lon = m_landParameteres.state_lon;
         fPath.z = m_landParameteres.state_height;
@@ -453,7 +431,7 @@ namespace Plan
         addPathPoint(path,&fPath);
         maneuverList.push_back(fPath);
 
-        //! Add loiter maneuver if the waitLoiter flag is set to true
+        //! Add loiter maneuver if the waitLoiter flag is set to true, else finish the landing path
         if (m_args.waitLoiter)
         {
           addLoiter(maneuverList);
@@ -484,7 +462,7 @@ namespace Plan
         return true;
 
       }
-      //! Create path towards the start approach
+      //! Create path towards the approach to the glide slope (WP4)
       bool
       createPath(std::vector<Matrix>& path)
       {
@@ -936,7 +914,8 @@ namespace Plan
         return true;
       }
 
-      //! Return the parameters in Dubins Path
+      //! Return the parameters in Dubins Path. The equation used for the calculation can be found
+      // in the book "Cooperative path planning of unmanned aerial vehicles"
       bool
       dubinsParameteres(Matrix Ocs,Matrix Ocf,double Rs,double Rf,bool TurnS,bool TurnF,Matrix& Pchi,Matrix& PN)
       {
@@ -966,17 +945,15 @@ namespace Plan
         double beta = std::atan2(Ycf-Ycs,Xcf-Xcs);
 
         //! Define tangent points
-        //! First
+        //! Angle to the tangent point at the start circle
         double thetaS = turn(TurnS,alpha,beta);
-        //! Second
+        //! Angle to the tangent point at the final circle
         double thetaF = turn(TurnF,alpha,beta);
         //! Exit tangent point for first circle
-        //Pchi = Matrix(2,1,0.0);
         Pchi(0,0) = Xcs+m_landArg.Rs*cos(thetaS);
         Pchi(1,0) = Ycs+m_landArg.Rs*sin(thetaS);
         inf("Created exit tangent");
         //! Entry tangent point
-        //PN = Matrix(2,1,0.0);
         PN(0,0) = Xcf+m_landArg.Rf*cos(thetaF);
         PN(1,0) = Ycf+m_landArg.Rf*sin(thetaF);
         inf("Created entry tangent");
@@ -1023,35 +1000,32 @@ namespace Plan
           return beta-alpha+(3*PI)/2;
         }
       }
-      //! Return N angle from 0 theta
+      //! Return N angle from 0 theta_limit with fixed arc segment length
       void
       calculateTurningArcAngle(const double theta_limit,const bool startCircle,Matrix &theta)
       {
-        //inf("Test n with floor limitation: %f",std::floor((theta_limit)/(2*PI)*m_args.N));
-        //! Find the number of segments that are required to construct the arc
         unsigned N;
         double step;
+        //! Calculate the angle between two arc segments
         if (startCircle)
         {
           step = m_args.arc_segment_distance/m_landArg.Rs;
-          //N = std::floor((sign(theta_limit)*theta_limit)/(2*PI)*m_Ns);
         }
         else
         {
           step = m_args.arc_segment_distance/m_landArg.Rf;
-          //N = std::floor((sign(theta_limit)*theta_limit)/(2*PI)*m_Nf);
         }
-        //inf("N = %d, Ns = %d Nf = %d",N,m_Ns,m_Nf);
-        inf("Step size %f",step);
+        debug("Step size %f",step);
+        //! Find the number of segments that are required to construct the arc
         N = std::ceil((sign(theta_limit)*theta_limit)/step)+1;
+        inf("N = %d, Ns = %d Nf = %d",N,m_Ns,m_Nf);
+        //! Correct the sign of the step to match theta_limit
         step = sign(theta_limit)*step;
-
+        //! Resizing the matrix
         theta.resize(1,N);
 
-        //step = theta_limit/(N-1);
         for (unsigned i=0;i<N;i++)
         {
-
           if (i==N-1)
           {
             theta(0,i) = theta_limit;
@@ -1061,9 +1035,9 @@ namespace Plan
             theta(0,i)=i*step;
           }
         }
-        inf("Step limit %f",theta_limit);
+        debug("Step limit %f",theta_limit);
         debug("Step %f",step);
-        inf("Last theta %f and size theta %d N= %d",theta(0,N-1),theta.columns(),N);
+        debug("Last theta %f and size theta %d N= %d",theta(0,N-1),theta.columns(),N);
       }
       //! Return the sign of a number. 0 is considered positive
       int
