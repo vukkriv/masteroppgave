@@ -22,7 +22,7 @@
 // language governing permissions and limitations at                        *
 // http://ec.europa.eu/idabc/eupl.html.                                     *
 //***************************************************************************
-// Author: Jostein B. Moe                                                   *
+// Author: Jostein B. Moe, Sigurd Olav Nevstad                              *
 //***************************************************************************
 
 // DUNE headers.
@@ -417,12 +417,12 @@ namespace Plan
         msg.params.append("net_height=").append(DoubleToString(-virtual_runway.VR_altitude)).append(";");
 
 
-        msg.params.append("min_turn_radius=").append(DoubleToString(m_args.fw_loiter.radius_first)).append(";");
-        msg.params.append("loiter_radius=").append(DoubleToString(m_args.fw_loiter.radius_second)).append(";");
+        msg.params.append("start_turning_circle_radius=").append(DoubleToString(m_args.fw_loiter.radius_first)).append(";");
+        msg.params.append("final_turning_circle_radius=").append(DoubleToString(m_args.fw_loiter.radius_second)).append(";");
 
 
-        msg.params.append("attack_angle=").append(DoubleToString(0.0)).append(";");
-        msg.params.append("descend_angle=").append(DoubleToString(m_args.fw_loiter.glideslope_angle)).append(";");
+        msg.params.append("final_approach_angle=").append(DoubleToString(0.0)).append(";");
+        msg.params.append("glide_slope_anglee=").append(DoubleToString(m_args.fw_loiter.glideslope_angle)).append(";");
 
         msg.params.append("dist_behind=").append(DoubleToString((virtual_runway.VR_length/2.0))).append(";");
         msg.params.append("final_approach=").append(DoubleToString((virtual_runway.VR_length/2.0))).append(";");
@@ -441,8 +441,8 @@ namespace Plan
 
         msg.params.append("automatic=").append(m_args.automatic_generation).append(";");
 
-        msg.params.append("right_start_turning_direction=").append(DoubleToString(m_args.rightStartTurningDirection)).append(";");
-        msg.params.append("right_finish_turning_circle=").append(DoubleToString(m_args.rightFinishTurningCircle)).append(";");
+        msg.params.append("start_turning_circle_counter_clockwise=").append(DoubleToString(m_args.rightStartTurningDirection)).append(";");
+        msg.params.append("final_turning_circle_counter_clockwise=").append(DoubleToString(m_args.rightFinishTurningCircle)).append(";");
 
         msg.op = IMC::PlanGeneration::OP_REQUEST;
         msg.cmd = IMC::PlanGeneration::CMD_GENERATE;
