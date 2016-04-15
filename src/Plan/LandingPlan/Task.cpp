@@ -318,7 +318,7 @@ namespace Plan
 
           m_landParameteres.WP3 = Matrix(3,1,0.0);
           m_landParameteres.WP3(0,0) = m_landParameteres.WP2(0,0)+m_landArg.a2;
-          m_landParameteres.WP3(2,0) = m_landParameteres.WP2(2,0)-m_landArg.a2*std::tan(m_landArg.gamma_a);
+          m_landParameteres.WP3(2,0) = m_landParameteres.WP2(2,0)-m_landArg.a2*std::tan(m_landArg.gamma_d);
 
           m_landParameteres.WP4 = Matrix(3,1,0.0);
           m_landParameteres.WP4(0,0) = m_landParameteres.WP3(0,0)+m_landArg.a3;
@@ -496,6 +496,7 @@ namespace Plan
         debug("Xf x=%f y=%f z=%f psi=%f",Xf(0,0),Xf(1,0),Xf(2,0),Xf(3,0));
         debug("Xs x=%f y=%f z=%f psi=%f",Xs(0,0),Xs(1,0),Xs(2,0),Xs(3,0));
         debug("m_estate height: %f net height: %f",m_estate.height,m_landArg.net_WGS84_height);
+        debug("State: lat %f lon %f height %f",state_lat,state_lon,state_height);
         m_landParameteres.Xs = Xs;
         m_landParameteres.state_lat = state_lat;
         m_landParameteres.state_lon = state_lon;
@@ -575,10 +576,11 @@ namespace Plan
         double loiter_lat = m_landParameteres.state_lat;
         double loiter_lon = m_landParameteres.state_lon;
         double loiter_h = m_landParameteres.state_height;
+        debug("loiter_h %f OCFz %f ",loiter_h,m_landParameteres.OCFz);
         Coordinates::WGS84::displace(m_landParameteres.OCF(0,0),m_landParameteres.OCF(1,0),m_landParameteres.OCFz,&loiter_lat,&loiter_lon,&loiter_h);
         loiter.lat = loiter_lat;
         loiter.lon = loiter_lon;
-        loiter.z = loiter_h;
+        loiter.z = m_landParameteres.state_height-m_landParameteres.OCFz;
         loiter.z_units = IMC::Z_HEIGHT;
         loiter.speed = m_landArg.speed_WP2;
         loiter.speed_units = IMC::SUNITS_METERS_PS;
