@@ -251,6 +251,7 @@ namespace Plan
         if (   msg->getDestination() == getSystemId()
             && msg->getSource()      != getSystemId()
             && msg->type == IMC::PlanDB::DBT_REQUEST
+            && msg->plan_id != "land_fixedwing"
             && msg->op   == IMC::PlanDB::DBOP_SET)
         {
           debug(
@@ -421,7 +422,7 @@ namespace Plan
 
 
         msg.params.append("final_approach_angle=").append(DoubleToString(0.0)).append(";");
-        msg.params.append("glide_slope_anglee=").append(DoubleToString(m_args.glideslope_angle)).append(";");
+        msg.params.append("glide_slope_angle=").append(DoubleToString(m_args.glideslope_angle)).append(";");
 
         msg.params.append("dist_behind=").append(DoubleToString((virtual_runway.VR_length/2.0))).append(";");
         msg.params.append("final_approach=").append(DoubleToString((virtual_runway.VR_length/2.0))).append(";");
@@ -615,15 +616,15 @@ namespace Plan
         debug("PlanDB sent");
 
         // Create and send plan start request
-        /*
+
         IMC::PlanControl plan_ctrl;
         plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
-        plan_ctrl.op = IMC::PlanControl::PC_START;
+        plan_ctrl.op = IMC::PlanControl::PC_LOAD;
         plan_ctrl.plan_id = plan_spec.plan_id;
         plan_ctrl.request_id = 0;
         plan_ctrl.arg.set(plan_spec);
         dispatch(plan_ctrl);
-        */
+
       }
 
       std::string DoubleToString ( double number )
