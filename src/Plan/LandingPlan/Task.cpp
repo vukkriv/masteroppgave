@@ -165,6 +165,11 @@ namespace Plan
       int m_Ns;
       //! Segments in the finish circle
       int m_Nf;
+      //! Last arc segment for start circle
+      double m_lastArcSegmentStart;
+      //! Last arc segment for final circle
+      double m_lastArcSegmentFinal;
+
 
       //! Constructor.
       //! @param[in] name task name.
@@ -196,7 +201,7 @@ namespace Plan
       void
       onUpdateParameters(void)
       {
-        m_Ns = std::floor((2*m_landArg.Rs*PI)/m_args.arc_segment_distance);
+        /*m_Ns = std::floor((2*m_landArg.Rs*PI)/m_args.arc_segment_distance);
         m_Nf = std::floor((2*m_landArg.Rf*PI)/m_args.arc_segment_distance);
 
         //! Check if m_Ns and m_Nf is bellow 4
@@ -207,7 +212,24 @@ namespace Plan
         if (m_Nf<4)
         {
           m_Nf = 4;
+        }*/
+
+        m_Ns = std::ceil((2*m_landArg.Rs*Math::c_pi)/m_args.arc_segment_distance);
+        m_Nf = std::ceil((2*m_landArg.Rf*PI)/m_args.arc_segment_distance);
+
+        //! Check if m_Ns and m_Nf is bellow 4
+        if (m_Ns<4)
+        {
+          m_Ns = 4;
         }
+        if (m_Nf<4)
+        {
+          m_Nf = 4;
+        }
+        m_lastArcSegmentStart = (m_Ns-(2*m_landArg.Rs*Math::c_pi)/m_args.arc_segment_distance)*m_args.arc_segment_distance;
+        m_lastArcSegmentFinal = (m_Nf - ((2*m_landArg.Rf*PI)/m_args.arc_segment_distance))*m_args.arc_segment_distance;
+
+        inf("m_Ns = %d m_Nf = %d",m_Ns,m_Nf);
         if (!m_args.waitLoiter && m_landArg.wait_at_loiter)
         {
 
@@ -292,8 +314,10 @@ namespace Plan
 
           readTupleList(tList);
 
-          m_Ns = std::floor((2*m_landArg.Rs*PI)/m_args.arc_segment_distance);
-          m_Nf = std::floor((2*m_landArg.Rf*PI)/m_args.arc_segment_distance);
+          //m_Ns = std::floor((2*m_landArg.Rs*PI)/m_args.arc_segment_distance);
+          //m_Nf = std::floor((2*m_landArg.Rf*PI)/m_args.arc_segment_distance);
+          m_Ns = std::ceil((2*m_landArg.Rs*Math::c_pi)/m_args.arc_segment_distance);
+          m_Nf = std::ceil((2*m_landArg.Rf*PI)/m_args.arc_segment_distance);
 
           //! Check if m_Ns and m_Nf is bellow 4
           if (m_Ns<4)
@@ -304,6 +328,8 @@ namespace Plan
           {
             m_Nf = 4;
           }
+          m_lastArcSegmentStart = (m_Ns-(2*m_landArg.Rs*Math::c_pi)/m_args.arc_segment_distance)*m_args.arc_segment_distance;
+          m_lastArcSegmentFinal = (m_Nf - ((2*m_landArg.Rf*PI)/m_args.arc_segment_distance))*m_args.arc_segment_distance;
 
           inf("m_Ns = %d m_Nf = %d",m_Ns,m_Nf);
 
@@ -1004,37 +1030,39 @@ namespace Plan
         //inf("Test n with floor limitation: %f",std::floor((theta_limit)/(2*PI)*m_args.N));
         //! Find the number of segments that are required to construct the arc
         unsigned N;
+        double step;
         if (startCircle)
         {
-          N = std::floor((sign(theta_limit)*theta_limit)/(2*PI)*m_Ns);
+          step = m_args.arc_segment_distance/m_landArg.Rs;
+          //N = std::floor((sign(theta_limit)*theta_limit)/(2*PI)*m_Ns);
         }
         else
         {
-          N = std::floor((sign(theta_limit)*theta_limit)/(2*PI)*m_Nf);
+          step = m_args.arc_segment_distance/m_landArg.Rf;
+          //N = std::floor((sign(theta_limit)*theta_limit)/(2*PI)*m_Nf);
         }
-        inf("N = %d, Ns = %d Nf = %d",N,m_Ns,m_Nf);
-        if (N==0)
-          N = 1;
+        //inf("N = %d, Ns = %d Nf = %d",N,m_Ns,m_Nf);
+        inf("Step size %f",step);
+        N = std::ceil((sign(theta_limit)*theta_limit)/step)+1;
+        step = sign(theta_limit)*step;
+
         theta.resize(1,N);
-        double step;
-        if (N!=1)
+
+        //step = theta_limit/(N-1);
+        for (unsigned i=0;i<N;i++)
         {
-          step = theta_limit/(N-1);
-        }
-        else
-        {
-          step = theta_limit;
+
+          if (i==N-1)
+          {
+            theta(0,i) = theta_limit;
+          }
+          else
+          {
+            theta(0,i)=i*step;
+          }
         }
         inf("Step limit %f",theta_limit);
         debug("Step %f",step);
-        for (unsigned i=0;i<N;i++)
-        {
-          theta(0,i)=i*step;
-        }
-        if (N==1)
-        {
-          theta(0,0) = step;
-        }
         inf("Last theta %f and size theta %d N= %d",theta(0,N-1),theta.columns(),N);
       }
       //! Return the sign of a number. 0 is considered positive
