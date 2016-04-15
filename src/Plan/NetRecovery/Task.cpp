@@ -42,9 +42,9 @@ namespace Plan
       double radius_second;
       fp64_t lat;
       fp64_t lon;
-      uint16_t duration;
+      double duration;
       double distance_runway;
-      fp32_t glideslope_angle;
+      double glideslope_angle;
     };
 
     struct VirtualRunway //Landingpath
@@ -198,12 +198,12 @@ namespace Plan
       void
       consume(const IMC::PathControlState* pcs){
 
-        if (pcs->flags & IMC::PathControlState::FL_LOITERING){
-          m_args.fw_loiter.lat = pcs->end_lat;
-          m_args.fw_loiter.lon = pcs->end_lon;
-          m_args.fw_loiter.altitude = pcs->end_z;
-          m_args.fw_loiter.radius_second = pcs->lradius;
-        }
+//        if (pcs->flags & IMC::PathControlState::FL_LOITERING){
+//          m_args.fw_loiter.lat = pcs->end_lat;
+//          m_args.fw_loiter.lon = pcs->end_lon;
+//          m_args.fw_loiter.altitude = pcs->end_z;
+//          m_args.fw_loiter.radius_second = pcs->lradius;
+//        }
       }
 
       void
@@ -399,6 +399,7 @@ namespace Plan
 
         virtual_runway.VR_center_lat = Angles::degrees(lat_offset);
         virtual_runway.VR_center_lon = Angles::degrees(lon_offset);
+        m_args.desired_speed = maneuver->speed;
 
         inf("VR center lat = %f, VR ceter lon = %f",virtual_runway.VR_center_lat,virtual_runway.VR_center_lon);
 
@@ -466,7 +467,7 @@ namespace Plan
         debug("Created new PlanSpecification...");
         plan_spec.description = "A fixed wing recovery plan";
         plan_spec.plan_id = dubins_planspec->plan_id + "_fixedwing";
-
+        plan_spec.start_man_id = "1";
 
 //        // Add current loiter as initial maneuver
 //
@@ -499,12 +500,38 @@ namespace Plan
 //        double z_diff = abs(m_args.fw_loiter.altitude - maneuver->z);
 //        double distance = z_diff / tan(Angles::radians(m_args.fw_loiter.glideslope_angle));
 
-
+        //GO-TO Glideslope START POINT
         double N_offset   = -m_args.glideslope_distance * cos(virtual_runway.VR_heading);
         double E_offset   = -m_args.glideslope_distance * sin(virtual_runway.VR_heading);
         double lat_offset = maneuver.start_lat;
         double lon_offset = maneuver.start_lon;
         double height_offset = 0.0;
+
+        WGS84::displace(N_offset, E_offset, 0.0,
+                  &lat_offset, &lon_offset, &height_offset);
+
+        //man_loit.lat = lat_offset;
+        //man_loit.lon = lon_offset;
+
+        // Add goto-point
+        IMC::Goto man_goto_glideslope;
+
+        man_goto_glideslope.lat           = lat_offset;
+        man_goto_glideslope.lon           = lon_offset;
+        man_goto_glideslope.speed         = m_args.fw_loiter.speed;
+        man_goto_glideslope.speed_units   = IMC::SUNITS_METERS_PS;
+        man_goto_glideslope.z             = m_args.fw_loiter.altitude;
+        man_goto_glideslope.z_units       = IMC::Z_ALTITUDE;
+
+
+        debug("Goto created...");
+
+        //GO-TO APPROACH GLIDESLOPE POINT
+        N_offset   = -(m_args.glideslope_distance+m_args.glideslope_approach_distance) * cos(virtual_runway.VR_heading);
+        E_offset   = -(m_args.glideslope_distance+m_args.glideslope_approach_distance) * sin(virtual_runway.VR_heading);
+        lat_offset = maneuver.start_lat;
+        lon_offset = maneuver.start_lon;
+        height_offset = 0.0;
 
         WGS84::displace(N_offset, E_offset, 0.0,
                   &lat_offset, &lon_offset, &height_offset);
@@ -522,9 +549,6 @@ namespace Plan
         man_goto_approach_glideslope.speed_units   = IMC::SUNITS_METERS_PS;
         man_goto_approach_glideslope.z             = m_args.fw_loiter.altitude;
         man_goto_approach_glideslope.z_units       = IMC::Z_ALTITUDE;
-
-        debug("Goto created...");
-
         //
        // IMC::MessageList<IMC::PlanManeuver>  manlist = plan_spec.maneuvers;
 
@@ -533,46 +557,50 @@ namespace Plan
         IMC::PlanManeuver* pman1 = new IMC::PlanManeuver();
         IMC::InlineMessage<IMC::Maneuver> pman1_inline;
         pman1_inline.set(man_goto_approach_glideslope);
-        pman1->maneuver_id = "4";
+        pman1->maneuver_id = "3";
         pman1->data = pman1_inline;
 
-        debug("PlanManeuver 1 created");
-
         IMC::PlanManeuver* pman2  = new IMC::PlanManeuver();
-        debug("PlanManeuver 2 creating new..");
         IMC::InlineMessage<IMC::Maneuver> pman2_inline;
-        debug("PlanManeuver 2 creating first inline");
-        pman2_inline.set(maneuver); // SEGMENTATION FAULT
-        debug("PlanManeuver 2 creating second inline");
-        pman2->maneuver_id = "5";
-        debug("PlanManeuver 2 id is set");
+        pman2_inline.set(man_goto_glideslope); // SEGMENTATION FAULT
+        pman2->maneuver_id = "4";
         pman2->data = pman2_inline;
 
-        debug("PlanManeuver 2 created");
+        IMC::PlanManeuver* pman3 = new IMC::PlanManeuver();
+        IMC::InlineMessage<IMC::Maneuver> pman3_inline;
+        pman3_inline.set(maneuver);
+        pman3->maneuver_id = "5";
+        pman3->data = pman3_inline;
 
-        IMC::PlanTransition* transition = new IMC::PlanTransition;
-        transition->source_man = "4";
-        transition->dest_man   = "5";
-        transition->conditions = "ManeuverIsDone";
+        IMC::PlanTransition* transition1 = new IMC::PlanTransition;
+        transition1->source_man = "2";
+        transition1->dest_man   = "3";
+        transition1->conditions = "ManeuverIsDone";
 
         debug("PlanTransition 1 created");
 
         IMC::PlanTransition* transition2 = new IMC::PlanTransition;
-        transition2->source_man = "5";
-        transition2->dest_man   = "2";
+        transition2->source_man = "3";
+        transition2->dest_man   = "4";
         transition2->conditions = "ManeuverIsDone";
 
-        debug("PlanTransition 2 created");
+        IMC::PlanTransition* transition3 = new IMC::PlanTransition;
+        transition3->source_man = "4";
+        transition3->dest_man   = "5";
+        transition3->conditions = "ManeuverIsDone";
+
 
 
         //IMC::MessageList<IMC::PlanTransition> translist = plan_spec.transitions;
         debug("Push back trans list");
-        plan_spec.transitions.push_back(transition);
+        plan_spec.transitions.push_back(transition1);
         plan_spec.transitions.push_back(transition2);
+        plan_spec.transitions.push_back(transition3);
 
         debug("Push back manuvers list");
         plan_spec.maneuvers.push_back(pman1);
         plan_spec.maneuvers.push_back(pman2);
+        plan_spec.maneuvers.push_back(pman3);
 
 //        plan_spec.start_man_id = "1";
 //        plan_spec.maneuvers = manlist;
@@ -586,6 +614,7 @@ namespace Plan
         debug("Trying to send planDB");
         dispatch(plan_db);
         debug("PlanDB sent");
+
         // Create and send plan start request
         /*
         IMC::PlanControl plan_ctrl;
