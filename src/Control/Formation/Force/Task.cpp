@@ -643,9 +643,10 @@ namespace Control
             if (!found_self)
             {
               m_configured=false;
+              debug("Not configured for formation");
               return;
             }
-
+            debug("m_N=%d",m_N);
             if (m_N > 1)
             {
               // Parse incidence matrix
@@ -668,7 +669,7 @@ namespace Control
             m_args.disable_mission_velocity   = config->disable_mission_vel;
             m_args.hold_current_formation     = config->formation;
           }
-          debug("CoordConfig handled");
+          debug("CoordConfig handled, m_configured=%d",m_configured);
         }
 
         //! Consume Formation Position
@@ -1217,11 +1218,12 @@ namespace Control
           if (!m_args.use_controller || !isActive() || !m_configured)
             return;
 
-          updateFormation();
-
+          if (m_N > 1)
+          {
+            updateFormation();
+          }
           // Check if we should abort
           checkFormation();
-
 
           // Calculate internal feedback, alpha in AGENT body
           // missionVelocity in CENTROID body
