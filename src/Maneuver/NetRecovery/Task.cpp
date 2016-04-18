@@ -127,26 +127,23 @@ namespace Maneuver
       consume(const IMC::PathControlState* pcs)
       {
         if (m_vehicle==FIXEDWING)
-        {            
+        {
+          signalProgress(pcs->eta);
+
           if (pcs->flags & IMC::PathControlState::FL_NEAR)
           {
             debug("PathControlState FL_NEAR at WP %d",m_currWP);
-            if (m_currWP == 2)
+            if ((m_currWP == 2) & (pcs->end_lat == m_maneuver.end_lat) & (pcs->end_lon == m_maneuver.end_lon) )
             {
               stopManeuver();
             }
-            else if(m_near_WP)
+            else if((m_currWP == 1) & (pcs->end_lat == m_maneuver.start_lat) & (pcs->end_lon == m_maneuver.start_lon) )
             { 
               m_currWP += 1;
               sendFixedWingPath();
             }
-            m_near_WP = true;
           }
-          else
-          {
-            signalProgress(pcs->eta);
-            m_near_WP = false;
-          }
+
         }        
       }      
       void 
