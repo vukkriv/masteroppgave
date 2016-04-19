@@ -319,7 +319,6 @@ namespace Plan
         m_landArg.Rf = tList.get("final_turning_circle_radius",150.0);
         m_landArg.automatic = (tList.get("automatic") == "true") ? true : false;
         m_landArg.wait_at_loiter = (tList.get("wait_at_loiter") == "true") ? true : false;
-        m_landArg.wait_at_loiter = true;
         debug("Content from tList:");
         debug("Net Lat %f",m_landArg.net_lat);
         debug("Net lon %f",m_landArg.net_lon);
