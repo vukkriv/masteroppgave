@@ -28,8 +28,11 @@
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 
+// USER headers
+#include <USER/DUNE.hpp>
+
 // Local headers.
-#include "PeriodicUAVAutopilot.hpp"
+//#include "PeriodicUAVAutopilot.hpp"
 
 namespace Control
 {
