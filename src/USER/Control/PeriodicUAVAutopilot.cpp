@@ -29,112 +29,113 @@
 #include <string>
 
 // Local headers.
-#include "PeriodicUAVAutopilot.hpp"
+#include <USER/Control/PeriodicUAVAutopilot.hpp>
+
 
 using namespace DUNE::Time;
 using namespace DUNE::Utils;
+using namespace DUNE::IMC;
 
-namespace Control
+namespace DUNE
 {
-  namespace FormationControl
-  {
-    using DUNE_NAMESPACES;
+	namespace Control
+	{
+		//using DUNE_NAMESPACES;
 
-    PeriodicUAVAutopilot::PeriodicUAVAutopilot(const std::string& name,
-        Tasks::Context& ctx, const uint32_t controllable_loops,
-        const uint32_t required_loops):
-        Tasks::Periodic(name, ctx),
-        m_aloops(0),
-        m_controllable_loops(controllable_loops),
-        m_required_loops(required_loops),
-        m_scope_ref(0)
-    {
+		PeriodicUAVAutopilot::PeriodicUAVAutopilot(const std::string& name,
+			Tasks::Context& ctx, const uint32_t controllable_loops,
+			const uint32_t required_loops):
+			Tasks::Periodic(name, ctx),
+			m_aloops(0),
+			m_controllable_loops(controllable_loops),
+			m_required_loops(required_loops),
+			m_scope_ref(0)
+		{
 
-      // Initialize entity state.
-      setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_IDLE);
+		  // Initialize entity state.
+		  setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_IDLE);
 
-      // Register handler routines.
-      bind<IMC::ControlLoops>(this);
-    }
+		  // Register handler routines.
+		  bind<IMC::ControlLoops>(this);
+		}
 
-    PeriodicUAVAutopilot::~PeriodicUAVAutopilot()
-    {   }
+		PeriodicUAVAutopilot::~PeriodicUAVAutopilot()
+		{   }
 
-    void
-    PeriodicUAVAutopilot::onResourceInitialization(void)
-    {
-      requestDeactivation();
-    }
+		void
+		PeriodicUAVAutopilot::onResourceInitialization(void)
+		{
+		  requestDeactivation();
+		}
 
-    void
-    PeriodicUAVAutopilot::reset(void)
-    {
-    }
+		void
+		PeriodicUAVAutopilot::reset(void)
+		{
+		}
 
-    void
-    PeriodicUAVAutopilot::consume(const IMC::ControlLoops* msg)
-    {
-      uint32_t loops = msg->mask & m_controllable_loops;
+		void
+		PeriodicUAVAutopilot::consume(const IMC::ControlLoops* msg)
+		{
+		  uint32_t loops = msg->mask & m_controllable_loops;
 
-      if (!loops)
-        return;
+		  if (!loops)
+			return;
 
-      // If this scope is obsolete, ignore message
-      if (msg->scope_ref < m_scope_ref)
-        return;
+		  // If this scope is obsolete, ignore message
+		  if (msg->scope_ref < m_scope_ref)
+			return;
 
-      m_scope_ref = msg->scope_ref;
+		  m_scope_ref = msg->scope_ref;
 
-      bool was_active = isActive();
+		  bool was_active = isActive();
 
-      if (msg->enable)
-      {
-        if (!isActive())
-        {
-          requestActivation();
-          m_aloops = 0;
-        }
-        m_aloops |= loops;
-      }
-      else
-      {
-        m_aloops &= ~loops;
+		  if (msg->enable)
+		  {
+			if (!isActive())
+			{
+			  requestActivation();
+			  m_aloops = 0;
+			}
+			m_aloops |= loops;
+		  }
+		  else
+		  {
+			m_aloops &= ~loops;
 
-        if (!m_aloops)
-          requestDeactivation();
-      }
+			if (!m_aloops)
+			  requestDeactivation();
+		  }
 
-      if (was_active != isActive())
-      {
-        debug("%s", isActive() ? "enabling" : "disabling");
+		  if (was_active != isActive())
+		  {
+			debug("%s", isActive() ? "enabling" : "disabling");
 
-        if (msg->enable)
-        {
-          requestActivation();
+			if (msg->enable)
+			{
+			  requestActivation();
 
-          IMC::ControlLoops cloops;
-          cloops.enable = IMC::ControlLoops::CL_ENABLE;
-          cloops.mask = m_required_loops;
-          cloops.scope_ref = m_scope_ref;
-          dispatch(cloops);
-        }
-        else
-        {
-          requestDeactivation();
-        }
-      }
-    }
+			  IMC::ControlLoops cloops;
+			  cloops.enable = IMC::ControlLoops::CL_ENABLE;
+			  cloops.mask = m_required_loops;
+			  cloops.scope_ref = m_scope_ref;
+			  dispatch(cloops);
+			}
+			else
+			{
+			  requestDeactivation();
+			}
+		  }
+		}
 
-    /*
-    void
-    PeriodicUAVAutopilot::onMain(void)
-    {
-      while (!stopping())
-      {
-        waitForMessages(1.0);
-      }
-    }
-    */
-
-  }
+		/*
+		void
+		PeriodicUAVAutopilot::onMain(void)
+		{
+		  while (!stopping())
+		  {
+			waitForMessages(1.0);
+		  }
+		}
+		*/
+	}
 }
