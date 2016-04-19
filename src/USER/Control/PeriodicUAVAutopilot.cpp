@@ -29,7 +29,7 @@
 #include <string>
 
 // Local headers.
-#include <DUNE/Control/PeriodicUAVAutopilot.hpp>
+#include <USER/Control/PeriodicUAVAutopilot.hpp>
 
 
 using namespace DUNE::Time;
