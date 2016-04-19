@@ -162,7 +162,7 @@ namespace Control
 
         //! Desired velocity
         //IMC::DesiredVelocity m_desired_velocity;
-        IMC::TranslationalSetpoint m_desired_velocity;
+        IMC::DesiredLinearState m_desired_velocity;
 
 
 
@@ -824,20 +824,20 @@ namespace Control
         void
         sendDesiredVelocity(Matrix velocity)
         {
-          m_desired_velocity.u = velocity(0);
-          m_desired_velocity.v = velocity(1);
-          m_desired_velocity.w = velocity(2);
+          m_desired_velocity.vx = velocity(0);
+          m_desired_velocity.vy = velocity(1);
+          m_desired_velocity.vz = velocity(2);
 
           if (m_args.disable_heave)
-            m_desired_velocity.flags = IMC::TranslationalSetpoint::FL_SURGE | IMC::TranslationalSetpoint::FL_SWAY;
+            m_desired_velocity.flags = IMC::DesiredLinearState::FL_VX | IMC::DesiredLinearState::FL_VY;
           else
-            m_desired_velocity.flags = IMC::TranslationalSetpoint::FL_SURGE | IMC::TranslationalSetpoint::FL_SWAY | IMC::TranslationalSetpoint::FL_HEAVE;
+            m_desired_velocity.flags = IMC::DesiredLinearState::FL_VX | IMC::DesiredLinearState::FL_VY | IMC::DesiredLinearState::FL_VZ;
 
 
 
           dispatch(m_desired_velocity);
           spew("v_d: [%1.1f, %1.1f, %1.1f]",
-              m_desired_velocity.u, m_desired_velocity.v, m_desired_velocity.w);
+              m_desired_velocity.vx, m_desired_velocity.vy, m_desired_velocity.vz);
         }
 
 
