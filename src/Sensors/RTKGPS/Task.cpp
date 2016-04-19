@@ -58,6 +58,8 @@ namespace Sensors
       std::string base_system_name;
       //! Nest position timeout
       float rtk_base_position_timeout;
+      //! Max number of single solution from rtklib that should be ignored
+      int max_number_of_ignored_rtklib_single_solution;
 
     };
 
@@ -87,6 +89,8 @@ namespace Sensors
       unsigned m_base_sys_id;
       //! Input watchdog for nest position
       Time::Counter<float> m_rtk_wdog_base_available;
+      //! Number of single rtklib solution after a fixed solution
+      int m_single_solution_counter;
 
       Task(const std::string& name, Tasks::Context& ctx):
         Tasks::Task(name, ctx),
@@ -128,6 +132,9 @@ namespace Sensors
 
         // Initialize messages.
         clearMessages();
+
+        //! Initialize counter
+        m_single_solution_counter = 0;
 
         bind<IMC::DevDataText>(this);
         bind<IMC::IoEvent>(this);
@@ -384,7 +391,7 @@ namespace Sensors
 		  {
 		    err("No Solution Format Set");
 		  }
-
+		  m_wdog.reset();
 
       }
       void setGpsUncertainty(std::vector<std::string>& parts)
@@ -470,7 +477,6 @@ namespace Sensors
         // Set gps uncertainty
         setGpsUncertainty(parts);
 
-        m_wdog.reset();
         dispatch(m_fix);
         trace("GpsFix Message Dispatched!");
       }
@@ -483,6 +489,7 @@ namespace Sensors
         {
           if(Q == 1) // FIX
           {
+            m_single_solution_counter = 0;
             m_rtkfix.type = IMC::GpsFixRtk::RTK_FIXED;
           }
           else if(Q == 2) // FLOAT
@@ -491,6 +498,12 @@ namespace Sensors
           }
           else
           {
+            //! When the previous solution was a fixed check if the new solution is only a temporary single solution
+            if (m_rtkfix.type == IMC::GpsFixRtk::RTK_FIXED && m_single_solution_counter < m_args.max_number_of_ignored_rtklib_single_solution)
+            {
+              m_single_solution_counter++;
+              return;
+            }
             m_rtkfix.type = IMC::GpsFixRtk::RTK_NONE;
           }
 
@@ -539,7 +552,6 @@ namespace Sensors
         // Set gps uncertainty
         setGpsUncertainty(parts);
 
-        m_wdog.reset();
         dispatch(m_rtkfix);
         trace("RtkFix Message Dispatched!");
       }
