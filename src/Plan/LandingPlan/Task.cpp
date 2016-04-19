@@ -31,7 +31,7 @@
 
 #include <vector>
 #include <cmath>
-#define PI 3.1415926535897932384626433832795
+//#define PI 3.1415926535897932384626433832795
 
 namespace Plan
 {
@@ -41,8 +41,8 @@ namespace Plan
 
     struct Arguments
     {
-      //! Wait at loiter
-      bool waitLoiter;
+      //! Stationary net landing
+      bool dynamically_landing;
       //! Arc segment distance
       double arc_segment_distance;
     };
@@ -87,15 +87,14 @@ namespace Plan
       double Rs;
       //! Finish turning circle radius
       double Rf;
-      //! Waiting at loiter
-      bool wait_at_loiter;
-      //! Advance options
       //! Automatic generation of start and finish circle
       bool automatic;
       //! Right start turning direction
       bool rightStartTurningDirection;
       //! Right finish turning direction
       bool rightFinishTurningCircle;
+      //! Wait at loiter
+      bool wait_at_loiter;
 
     };
 
@@ -173,21 +172,20 @@ namespace Plan
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Task(name, ctx)
       {
-        param("Wait At Loiter", m_args.waitLoiter)
-        .visibility(Tasks::Parameter::VISIBILITY_USER)
-        .defaultValue("false")
-        .description("Enable Wait At Loiter");
 
         param("Distance Between Arc Segment",m_args.arc_segment_distance)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
         .defaultValue("20")
         .description("Distance Between Arc Segment");
 
+        param("Dynamically net landing",m_args.dynamically_landing)
+        .visibility(Tasks::Parameter::VISIBILITY_USER)
+        .defaultValue("false")
+        .description("True = Dynamically net, False = Stationary net");
+
         //! Initialize the default values
         TupleList tList("","=",";",true);
         readTupleList(tList);
-        //! Default set that the path is not waiting in the final loiter position
-        m_landArg.wait_at_loiter = false;
         //! Bind IMC messages
         bind<IMC::EstimatedState>(this);
         bind<IMC::PlanGeneration>(this);
@@ -197,58 +195,7 @@ namespace Plan
       void
       onUpdateParameters(void)
       {
-        m_Ns = std::ceil((2*m_landArg.Rs*Math::c_pi)/m_args.arc_segment_distance);
-        m_Nf = std::ceil((2*m_landArg.Rf*PI)/m_args.arc_segment_distance);
 
-        //! Check if m_Ns and m_Nf is bellow 4
-        if (m_Ns<4)
-        {
-          m_Ns = 4;
-        }
-        if (m_Nf<4)
-        {
-          m_Nf = 4;
-        }
-
-        inf("m_Ns = %d m_Nf = %d",m_Ns,m_Nf);
-        if (!m_args.waitLoiter && m_landArg.wait_at_loiter)
-        {
-
-          //! Create plan set request
-          IMC::PlanDB plan_db;
-          plan_db.type = IMC::PlanDB::DBT_REQUEST;
-          plan_db.op = IMC::PlanDB::DBOP_SET;
-          plan_db.plan_id = "landFromLoiter";
-          plan_db.request_id = 0;
-
-          //! Create plan specification
-          IMC::PlanSpecification plan_spec;
-          plan_spec.plan_id = plan_db.plan_id;
-          plan_spec.start_man_id = 1;
-          plan_spec.description = "Plan activating landFromLoiter";
-          //! Create a list of maneuvers
-          IMC::MessageList<IMC::Maneuver> maneuverList;
-
-          addNetApproach(maneuverList);
-
-          //! Add a maneuver list to a plan
-          addManeuverListToPlan(&maneuverList,plan_spec);
-
-          plan_db.arg.set(plan_spec);
-
-          //! Send set plan request
-          dispatch(plan_db);
-
-          //! Create and send plan start request
-          IMC::PlanControl plan_ctrl;
-          plan_ctrl.type = IMC::PlanControl::PC_REQUEST;
-          plan_ctrl.op = IMC::PlanControl::PC_LOAD;
-          plan_ctrl.plan_id = plan_spec.plan_id;
-          plan_ctrl.request_id = 0;
-          plan_ctrl.arg.set(plan_spec);
-          dispatch(plan_ctrl);
-          m_landArg.wait_at_loiter = false;
-        }
       }
 
       //! Update estimatedState
@@ -297,7 +244,7 @@ namespace Plan
 
           //! Find total number of segments in a circle
           m_Ns = std::ceil((2*m_landArg.Rs*Math::c_pi)/m_args.arc_segment_distance);
-          m_Nf = std::ceil((2*m_landArg.Rf*PI)/m_args.arc_segment_distance);
+          m_Nf = std::ceil((2*m_landArg.Rf*Math::c_pi)/m_args.arc_segment_distance);
 
           //! Check if m_Ns and m_Nf is bellow 4 in order to construct a minimal circle
           if (m_Ns<4)
@@ -371,6 +318,8 @@ namespace Plan
         m_landArg.Rs = tList.get("start_turning_circle_radius", 150.0);
         m_landArg.Rf = tList.get("final_turning_circle_radius",150.0);
         m_landArg.automatic = (tList.get("automatic") == "true") ? true : false;
+        m_landArg.wait_at_loiter = (tList.get("wait_at_loiter") == "true") ? true : false;
+        m_landArg.wait_at_loiter = true;
         debug("Content from tList:");
         debug("Net Lat %f",m_landArg.net_lat);
         debug("Net lon %f",m_landArg.net_lon);
@@ -390,6 +339,7 @@ namespace Plan
         debug("Automatic %d",m_landArg.automatic);
         debug("Right start dir %d",m_landArg.rightStartTurningDirection);
         debug("Right finish %d",m_landArg.rightFinishTurningCircle);
+        debug("Wait at loiter %d",m_landArg.wait_at_loiter);
         inf("Extracted arguments from neptus");
       }
       //! Generates a landing path from the initial position of the plane towards the position of the net
@@ -432,12 +382,11 @@ namespace Plan
         maneuverList.push_back(fPath);
 
         //! Add loiter maneuver if the waitLoiter flag is set to true, else finish the landing path
-        if (m_args.waitLoiter)
+        if (m_landArg.wait_at_loiter)
         {
           addLoiter(maneuverList);
-          m_landArg.wait_at_loiter = true;
         }
-        else
+        if (!m_args.dynamically_landing)
         {
           addNetApproach(maneuverList);
         }
@@ -482,7 +431,7 @@ namespace Plan
         Xf(0,0) = m_landParameteres.WP4(0,0);
         Xf(1,0) = m_landParameteres.WP4(1,0);
         Xf(2,0) = m_landParameteres.WP4(2,0);
-        Xf(3,0) = Angles::normalizeRadian(m_landArg.netHeading-PI);
+        Xf(3,0) = Angles::normalizeRadian(m_landArg.netHeading-Math::c_pi);
 
         double wp4_lat = m_landArg.net_lat;
         double wp4_lon = m_landArg.net_lon;
@@ -691,14 +640,14 @@ namespace Plan
           if (m_landArg.rightStartTurningDirection)
           {
 
-            Xcs = Xs(0,0)-m_landArg.Rs*std::cos(Xs(3,0)+PI/2);
-            Ycs = Xs(1,0)-m_landArg.Rs*std::sin(Xs(3,0)+PI/2);
+            Xcs = Xs(0,0)-m_landArg.Rs*std::cos(Xs(3,0)+Math::c_pi/2);
+            Ycs = Xs(1,0)-m_landArg.Rs*std::sin(Xs(3,0)+Math::c_pi/2);
           }
           else
           {
 
-            Xcs = Xs(0,0)-m_landArg.Rs*std::cos(Xs(3,0)-PI/2);
-            Ycs = Xs(1,0)-m_landArg.Rs*std::sin(Xs(3,0)-PI/2);
+            Xcs = Xs(0,0)-m_landArg.Rs*std::cos(Xs(3,0)-Math::c_pi/2);
+            Ycs = Xs(1,0)-m_landArg.Rs*std::sin(Xs(3,0)-Math::c_pi/2);
           }
           CounterClockwiseS = m_landArg.rightStartTurningDirection;
           OCS(0,0) = Xcs;
@@ -708,13 +657,13 @@ namespace Plan
 
           if (m_landArg.rightFinishTurningCircle)
           {
-            Xcf = Xf(0,0)-m_landArg.Rf*std::cos(Xf(3,0)+PI/2);
-            Ycf = Xf(1,0)-m_landArg.Rf*std::sin(Xf(3,0)+PI/2);
+            Xcf = Xf(0,0)-m_landArg.Rf*std::cos(Xf(3,0)+Math::c_pi/2);
+            Ycf = Xf(1,0)-m_landArg.Rf*std::sin(Xf(3,0)+Math::c_pi/2);
           }
           else
           {
-            Xcf = Xf(0,0)-m_landArg.Rf*std::cos(Xf(3,0)-PI/2);
-            Ycf = Xf(1,0)-m_landArg.Rf*std::sin(Xf(3,0)-PI/2);
+            Xcf = Xf(0,0)-m_landArg.Rf*std::cos(Xf(3,0)-Math::c_pi/2);
+            Ycf = Xf(1,0)-m_landArg.Rf*std::sin(Xf(3,0)-Math::c_pi/2);
           }
           CounterClockwiseF = m_landArg.rightFinishTurningCircle;
 
@@ -745,7 +694,7 @@ namespace Plan
           }
           else
           {
-            calculateTurningArcAngle(-(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0))),true,thetaTS);
+            calculateTurningArcAngle(-(2*Math::c_pi-std::abs(Angles::normalizeRadian(theta1-theta0))),true,thetaTS);
           }
         }
         else
@@ -756,7 +705,7 @@ namespace Plan
           }
           else
           {
-            calculateTurningArcAngle(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0)),true,thetaTS);
+            calculateTurningArcAngle(2*Math::c_pi-std::abs(Angles::normalizeRadian(theta1-theta0)),true,thetaTS);
           }
         }
         ConstructArc(thetaTS,theta0,m_landArg.Rs,OCS,arc);
@@ -776,7 +725,7 @@ namespace Plan
           }
           else
           {
-            calculateTurningArcAngle(-(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0))),false,thetaTF);
+            calculateTurningArcAngle(-(2*Math::c_pi-std::abs(Angles::normalizeRadian(theta1-theta0))),false,thetaTF);
           }
         }
         else
@@ -787,7 +736,7 @@ namespace Plan
           }
           else
           {
-            calculateTurningArcAngle(2*PI-std::abs(Angles::normalizeRadian(theta1-theta0)),false,thetaTF);
+            calculateTurningArcAngle(2*Math::c_pi-std::abs(Angles::normalizeRadian(theta1-theta0)),false,thetaTF);
           }
         }
         ConstructArc(thetaTF,theta0,m_landArg.Rf,OCF,arc);
@@ -868,24 +817,24 @@ namespace Plan
         dubins.OCS = Matrix(2,1,0.0);
         if (dubins.CounterClockwiseS)
         {
-          dubins.Xcs = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)+PI/2);
-          dubins.Ycs = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)+PI/2);
+          dubins.Xcs = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)+Math::c_pi/2);
+          dubins.Ycs = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)+Math::c_pi/2);
         }
         else
         {
-          dubins.Xcs = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)-PI/2);
-          dubins.Ycs = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)-PI/2);
+          dubins.Xcs = Xs(0,0)-m_landArg.Rs*cos(Xs(3,0)-Math::c_pi/2);
+          dubins.Ycs = Xs(1,0)-m_landArg.Rs*sin(Xs(3,0)-Math::c_pi/2);
         }
         dubins.OCF = Matrix(2,1,0.0);
         if (dubins.CounterClockwiseF)
         {
-          dubins.Xcf = Xf(0,0)-m_landArg.Rf*cos(Xf(3,0)+PI/2);
-          dubins.Ycf = Xf(1,0)-m_landArg.Rf*sin(Xf(3,0)+PI/2);
+          dubins.Xcf = Xf(0,0)-m_landArg.Rf*cos(Xf(3,0)+Math::c_pi/2);
+          dubins.Ycf = Xf(1,0)-m_landArg.Rf*sin(Xf(3,0)+Math::c_pi/2);
         }
         else
         {
-          dubins.Xcf = Xf(0,0)-m_landArg.Rf*cos(Xf(3,0)-PI/2);
-          dubins.Ycf = Xf(1,0)-m_landArg.Rf*sin(Xf(3,0)-PI/2);
+          dubins.Xcf = Xf(0,0)-m_landArg.Rf*cos(Xf(3,0)-Math::c_pi/2);
+          dubins.Ycf = Xf(1,0)-m_landArg.Rf*sin(Xf(3,0)-Math::c_pi/2);
         }
 
         dubins.OCS(0,0) = dubins.Xcs;
@@ -972,7 +921,7 @@ namespace Plan
             }
             else
             {
-              theta = 2*PI-std::abs(Angles::normalizeRadian(theta1-theta0));
+              theta = 2*Math::c_pi-std::abs(Angles::normalizeRadian(theta1-theta0));
             }
           }
         else
@@ -983,7 +932,7 @@ namespace Plan
             }
             else
             {
-              theta = 2*PI-std::abs(Angles::normalizeRadian(theta1-theta0));
+              theta = 2*Math::c_pi-std::abs(Angles::normalizeRadian(theta1-theta0));
             }
           }
       }
@@ -993,11 +942,11 @@ namespace Plan
       {
         if (Right)
         {
-          return alpha+beta+PI/2;
+          return alpha+beta+Math::c_pi/2;
         }
         else
         {
-          return beta-alpha+(3*PI)/2;
+          return beta-alpha+(3*Math::c_pi)/2;
         }
       }
       //! Return N angle from 0 theta_limit with fixed arc segment length
@@ -1118,11 +1067,11 @@ namespace Plan
         Matrix theta = Matrix(1,m_Nf);
         if (CounterClockwiseF)
         {
-          calculateTurningArcAngle(-2*PI,false,theta);
+          calculateTurningArcAngle(-2*Math::c_pi,false,theta);
         }
         else
         {
-          calculateTurningArcAngle(2*PI,false,theta);
+          calculateTurningArcAngle(2*Math::c_pi,false,theta);
         }
         Matrix WPS0 = Path.back();
         double xnn = OF(0,0) + m_landArg.Rf*cos(theta0+theta(0,1));
@@ -1181,7 +1130,7 @@ namespace Plan
           }
           else
           {
-            calculateTurningArcAngle(-(2*PI-std::abs(Angles::normalizeRadian(thetaH1-thetaH0))),false,theta);
+            calculateTurningArcAngle(-(2*Math::c_pi-std::abs(Angles::normalizeRadian(thetaH1-thetaH0))),false,theta);
           }
         }
         else
@@ -1192,7 +1141,7 @@ namespace Plan
           }
           else
           {
-            calculateTurningArcAngle((2*PI-std::abs(Angles::normalizeRadian(thetaH1-thetaH0))),false,theta);
+            calculateTurningArcAngle((2*Math::c_pi-std::abs(Angles::normalizeRadian(thetaH1-thetaH0))),false,theta);
           }
         }
         ConstructArc(theta,thetaH0,m_landArg.Rf,OF,arc);
