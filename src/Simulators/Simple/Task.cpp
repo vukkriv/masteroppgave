@@ -61,7 +61,7 @@ namespace Simulators
       //! Initial position (NED)
       Math::Matrix pos_ned;
 
-      //! Use TranslationalSetpoint instead of DesiredVelocity
+      //! Use DesiredLinearState instead of DesiredVelocity
       bool trans_setpoint;
     };
 
@@ -159,12 +159,12 @@ namespace Simulators
 
         param("Use Translational Setpoint", m_args.trans_setpoint)
         .defaultValue("false")
-        .description("Use TranslationalSetpoint instead of DesiredVelocity for velocity control.");
+        .description("Use DesiredLinearState instead of DesiredVelocity for velocity control.");
 
 
         bind<IMC::DesiredControl>(this);
         bind<IMC::DesiredVelocity>(this);
-        bind<TranslationalSetpoint>(this);
+        bind<DesiredLinearState>(this);
 
         // Set OK status
         setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
@@ -246,13 +246,13 @@ namespace Simulators
       }
 
       void
-      consume(const IMC::TranslationalSetpoint* msg)
+      consume(const IMC::DesiredLinearState* msg)
       {
         if (m_type == SINGLE && m_args.trans_setpoint)
         {
-          m_desired_velocity(0) = msg->u;
-          m_desired_velocity(1) = msg->v;
-          m_desired_velocity(2) = msg->w;
+          m_desired_velocity(0) = msg->vx;
+          m_desired_velocity(1) = msg->vy;
+          m_desired_velocity(2) = msg->vz;
         }
         spew("Received Translational Setpoint [N,E,D]: [%f,%f,%f]", m_desired_velocity(0), m_desired_velocity(1), m_desired_velocity(2));
       }
