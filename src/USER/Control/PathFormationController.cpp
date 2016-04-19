@@ -28,8 +28,10 @@
 // ISO C++ 98 headers.
 #include <iomanip>
 
+// LOCAL headers
+#include <USER/Control/PathFormationController.hpp>
+
 // DUNE headers.
-#include <DUNE/Control/PathFormationController.hpp>
 #include <DUNE/Math/General.hpp>
 #include <DUNE/Math/Angles.hpp>
 #include <DUNE/Time.hpp>
