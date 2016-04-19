@@ -44,6 +44,8 @@ namespace Sensors
     {
       //! GPS Fix message.
       IMC::GpsFix m_fix;
+      //! GPS fix messge to use as base ref.
+      IMC::GpsFix m_fix_as_base;
       //! RTK Fix message.
       IMC::GpsFixRtk m_rtkfix;
       //! Task arguments.
@@ -92,10 +94,11 @@ namespace Sensors
           {
             //GPS pos is valid
             //Set the gps pos of the base
-            m_rtkfix.base_lat = m_fix.lat;
-            m_rtkfix.base_lon = m_fix.lon;
-            m_rtkfix.base_height = m_fix.height + m_args.hae_offset;
-            m_rtkfix.validity = IMC::GpsFixRtk::RFV_VALID_BASE;
+            m_fix_as_base = m_fix;
+
+            updateRtkfix();
+
+
             
             //Send base pos to all rovers
             debug("Dispatching base position");
@@ -122,8 +125,21 @@ namespace Sensors
 
 
           }
+
+          if (paramChanged(m_args.hae_offset))
+            updateRtkfix();
+
         }
 
+      }
+
+      void
+      updateRtkfix()
+      {
+        m_rtkfix.base_lat = m_fix_as_base.lat;
+        m_rtkfix.base_lon = m_fix_as_base.lon;
+        m_rtkfix.base_height = m_fix_as_base.height + m_args.hae_offset;
+        m_rtkfix.validity = IMC::GpsFixRtk::RFV_VALID_BASE;
       }
 
       void
