@@ -37,8 +37,8 @@ namespace DUNE
 }
 
 
-#include <DUNE/Control/PathFormationController.hpp>
-#include <DUNE/Control/PeriodicUAVAutopilot.hpp>
+#include <USER/Control/PathFormationController.hpp>
+#include <USER/Control/PeriodicUAVAutopilot.hpp>
 
 
 
