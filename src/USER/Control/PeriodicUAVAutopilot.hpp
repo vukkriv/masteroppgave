@@ -29,99 +29,104 @@
 #define PERIODIC_UAV_AUTOPILOT_HPP_INCLUDED_
 
 // DUNE headers.
-#include <DUNE/DUNE.hpp>
+//#include <DUNE/DUNE.hpp>
+#include <DUNE/Coordinates.hpp>
+#include <DUNE/Control.hpp>
+#include <DUNE/Tasks.hpp>
+#include <DUNE/IMC.hpp>
+#include <DUNE/Time.hpp>
 
-namespace Control
+namespace DUNE
 {
-  namespace FormationControl
-  {
-    using DUNE_NAMESPACES;
+	namespace Control
+	{
+		//using DUNE_NAMESPACES;
 
-    // Export DLL Symbol.
-    class DUNE_DLL_SYM PeriodicUAVAutopilot;
+		// Export DLL Symbol.
+		class DUNE_DLL_SYM PeriodicUAVAutopilot;
 
-    class PeriodicUAVAutopilot: public Tasks::Periodic
-    {
-    public:
-      //! Constructor
-      PeriodicUAVAutopilot(const std::string& name, Tasks::Context& ctx,
-          const uint32_t controllable_loops, const uint32_t required_loops);
+		class PeriodicUAVAutopilot: public Tasks::Periodic
+		{
+		public:
+		  //! Constructor
+		  PeriodicUAVAutopilot(const std::string& name, Tasks::Context& ctx,
+			  const uint32_t controllable_loops, const uint32_t required_loops);
 
-      //! Destructor.
-      virtual
-      ~PeriodicUAVAutopilot(void);
+		  //! Destructor.
+		  virtual
+		  ~PeriodicUAVAutopilot(void);
 
-      virtual void
-      onResourceInitialization(void);
+		  virtual void
+		  onResourceInitialization(void);
 
-      virtual void
-      onResourceAcquisition(void)
-      { }
+		  virtual void
+		  onResourceAcquisition(void)
+		  { }
 
-      virtual void
-      onResourceRelease(void)
-      { }
+		  virtual void
+		  onResourceRelease(void)
+		  { }
 
-      //! Reset to initial values
-      virtual void
-      reset(void);
-
-
-      void
-      consume(const IMC::ControlLoops* msg);
-
-      //void
-      //onMain(void);
-    protected:
-
-      //! On autopilot activation
-      //! Does nothing by default
-      virtual void
-      onAutopilotActivation(void)
-      { }
-
-      //! On autopilot deactivation
-      //! Does nothing by default
-      virtual void
-      onAutopilotDeactivation(void)
-      { }
-
-      //! On deactivation leave error or active entity state
-      //! Method from parent class
-      void
-      onDeactivation(void)
-      {
-        setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_IDLE);
-        reset();
-        onAutopilotDeactivation();
-      }
-
-      //! On activation enter active entity state
-      //! Method from parent class
-      void
-      onActivation(void)
-      {
-        setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
-        reset();
-        onAutopilotActivation();
-      }
+		  //! Reset to initial values
+		  virtual void
+		  reset(void);
 
 
-    private:
-      //! Active loops.
-      uint32_t m_aloops;
-      //! Time of last Estimated State (Integration timer).
-      Time::Delta m_last_estate;
-      //! Last EstimatedState
-      IMC::EstimatedState m_estate;
-      //! Controllable loops in this controller
-      const uint32_t m_controllable_loops;
-      //! Required loops for this controller
-      const uint32_t m_required_loops;
-      //! Control loops last reference
-      uint32_t m_scope_ref;
-    };
-  }
+		  void
+		  consume(const IMC::ControlLoops* msg);
+
+		  //void
+		  //onMain(void);
+		protected:
+
+		  //! On autopilot activation
+		  //! Does nothing by default
+		  virtual void
+		  onAutopilotActivation(void)
+		  { }
+
+		  //! On autopilot deactivation
+		  //! Does nothing by default
+		  virtual void
+		  onAutopilotDeactivation(void)
+		  { }
+
+		  //! On deactivation leave error or active entity state
+		  //! Method from parent class
+		  void
+		  onDeactivation(void)
+		  {
+			setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_IDLE);
+			reset();
+			onAutopilotDeactivation();
+		  }
+
+		  //! On activation enter active entity state
+		  //! Method from parent class
+		  void
+		  onActivation(void)
+		  {
+			setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
+			reset();
+			onAutopilotActivation();
+		  }
+
+
+		private:
+		  //! Active loops.
+		  uint32_t m_aloops;
+		  //! Time of last Estimated State (Integration timer).
+		  Time::Delta m_last_estate;
+		  //! Last EstimatedState
+		  IMC::EstimatedState m_estate;
+		  //! Controllable loops in this controller
+		  const uint32_t m_controllable_loops;
+		  //! Required loops for this controller
+		  const uint32_t m_required_loops;
+		  //! Control loops last reference
+		  uint32_t m_scope_ref;
+		};
+	}
 }
 
 #endif

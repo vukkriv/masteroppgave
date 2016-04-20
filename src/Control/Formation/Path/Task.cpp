@@ -28,6 +28,9 @@
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 
+// USER headers.
+#include <USER/DUNE.hpp>
+
 namespace Control
 {
   namespace Formation
