@@ -160,11 +160,6 @@ namespace Plan
       std::vector<DubinsParametersContainer> m_dubinsPaths;
       //! Accumulated EstimatedState message
       IMC::EstimatedState m_estate;
-      //! Segments in the start circle
-      int m_Ns;
-      //! Segments in the finish circle
-      int m_Nf;
-
 
       //! Constructor.
       //! @param[in] name task name.
@@ -238,22 +233,6 @@ namespace Plan
           TupleList tList(msg->params,"=",";",true);
 
           readTupleList(tList);
-
-          //! Find total number of segments in a circle
-          m_Ns = std::ceil((2*m_landArg.Rs*Math::c_pi)/m_args.arc_segment_distance);
-          m_Nf = std::ceil((2*m_landArg.Rf*Math::c_pi)/m_args.arc_segment_distance);
-
-          //! Check if m_Ns and m_Nf is bellow 4 in order to construct a minimal circle
-          if (m_Ns<4)
-          {
-            m_Ns = 4;
-          }
-          if (m_Nf<4)
-          {
-            m_Nf = 4;
-          }
-
-          inf("m_Ns = %d m_Nf = %d",m_Ns,m_Nf);
 
           //! Construct waypoint for the final landing path
           //! WP4 is set behind the net
@@ -680,7 +659,7 @@ namespace Plan
         //! Define turning arc
         std::vector<Matrix> arc;
         //! Declare angle array
-        Matrix thetaTS =Matrix(1,m_Ns,0.0);
+        Matrix thetaTS =Matrix(1,1,0.0);
         //! First arc
         inf("Starting to construct first arc");
         double theta0 = std::atan2(Xs(1,0)-Ycs,Xs(0,0)-Xcs);
@@ -715,7 +694,7 @@ namespace Plan
         theta0 = std::atan2(PN(1,0)-Ycf,PN(0,0)-Xcf);
         theta1 = std::atan2(Xf(1,0)-Ycf,Xf(0,0)-Xcf);
         //! Declare angle array
-        Matrix thetaTF =Matrix(1,m_Nf,0.0);
+        Matrix thetaTF =Matrix(1,1,0.0);
         if (CounterClockwiseF)
         {
           if(Angles::normalizeRadian(theta1-theta0)<=0)
@@ -966,7 +945,6 @@ namespace Plan
         debug("Step size %f",step);
         //! Find the number of segments that are required to construct the arc
         N = std::ceil((sign(theta_limit)*theta_limit)/step)+1;
-        inf("N = %d, Ns = %d Nf = %d",N,m_Ns,m_Nf);
         //! Correct the sign of the step to match theta_limit
         step = sign(theta_limit)*step;
         //! Resizing the matrix
@@ -1063,7 +1041,7 @@ namespace Plan
         double descentAngle = m_landArg.gamma_d;
         double theta0 = std::atan2(Path[Path.size()-1](1,0)-OF(1,0),Path[Path.size()-1](0,0)-OF(0,0));
         Matrix WP1 = Path.back();
-        Matrix theta = Matrix(1,m_Nf);
+        Matrix theta = Matrix(1,1,0.0);
         if (CounterClockwiseF)
         {
           calculateTurningArcAngle(-2*Math::c_pi,false,theta);
@@ -1084,7 +1062,6 @@ namespace Plan
         inf("Next height %f",m_estate.height-znn);
         inf("Desired height %f",m_landArg.netHeading-dHeight);
         int n = 2;
-//        Path.push_back(WPS0);
         Path.push_back(WPS1);
         inf("theta has %d elements",theta.size());
         debug("Glide angle is %f",descentAngle);
@@ -1109,8 +1086,8 @@ namespace Plan
           WPS1(2,0) = znn;
           Path.push_back(WPS1);
           n = n+1;
-          //! Check if n has reached m_N. Then set to 1, such that the 0 value is only used once
-          if (n>=m_Nf)
+          //! Check if n has reached the max number of segments in circle. Then set to 1, such that the 0 value is only used once
+          if (n>=std::ceil((2*m_landArg.Rf*Math::c_pi)/m_args.arc_segment_distance))
           {
             n = 1;
           }
@@ -1181,7 +1158,8 @@ namespace Plan
       {
       }
 
-      std::string unsignedToString ( unsigned number )
+      std::string
+      unsignedToString ( unsigned number )
       {
         std::ostringstream oss;
 
