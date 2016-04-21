@@ -178,14 +178,11 @@ namespace Plan
         .defaultValue("20")
         .description("Distance Between Arc Segment");
 
-        param("Dynamically net landing",m_args.dynamically_landing)
+        param("Dynamicall Net Landing",m_args.dynamically_landing)
         .visibility(Tasks::Parameter::VISIBILITY_USER)
         .defaultValue("false")
         .description("True = Dynamically net, False = Stationary net");
 
-        //! Initialize the default values
-        TupleList tList("","=",";",true);
-        readTupleList(tList);
         //! Bind IMC messages
         bind<IMC::EstimatedState>(this);
         bind<IMC::PlanGeneration>(this);
