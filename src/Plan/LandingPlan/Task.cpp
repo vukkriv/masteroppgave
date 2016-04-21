@@ -50,13 +50,13 @@ namespace Plan
     struct LandingPathArguments
     {
       //! Length of point behind the net
-      double a0;
+      double behind_net;
       //! Length of final approach
-      double a1;
+      double infront_net;
       //! Length of glideslope
-      double a2;
+      double length_glideslope;
       //! Length of approach
-      double a3;
+      double length_approach_glideslope;
       //! Length of waypoint behind the nett
       double b1;
       //! Angle of attack
@@ -258,22 +258,22 @@ namespace Plan
           //! Construct waypoint for the final landing path
           //! WP4 is set behind the net
           m_landParameteres.WP4 = Matrix(3,1,0.0);
-          m_landParameteres.WP4(0,0) = -m_landArg.a0;
-          m_landParameteres.WP4(2,0) = m_landArg.net_height+m_landArg.a0*std::tan(m_landArg.gamma_a);
+          m_landParameteres.WP4(0,0) = -m_landArg.behind_net;
+          m_landParameteres.WP4(2,0) = m_landArg.net_height+m_landArg.behind_net*std::tan(m_landArg.gamma_a);
 
           //! WP3 is set in front of the net, and is the final phase before the net
           m_landParameteres.WP3 = Matrix(3,1,0.0);
-          m_landParameteres.WP3(0,0) = m_landArg.a1;
-          m_landParameteres.WP3(2,0) = m_landArg.net_height-m_landArg.a1*std::tan(m_landArg.gamma_a);
+          m_landParameteres.WP3(0,0) = m_landArg.infront_net;
+          m_landParameteres.WP3(2,0) = m_landArg.net_height-m_landArg.infront_net*std::tan(m_landArg.gamma_a);
 
           //! WP2 is the start of the glide slope towards the net
           m_landParameteres.WP2 = Matrix(3,1,0.0);
-          m_landParameteres.WP2(0,0) = m_landParameteres.WP3(0,0)+m_landArg.a2;
-          m_landParameteres.WP2(2,0) = m_landParameteres.WP3(2,0)-m_landArg.a2*std::tan(m_landArg.gamma_d);
+          m_landParameteres.WP2(0,0) = m_landParameteres.WP3(0,0)+m_landArg.length_glideslope;
+          m_landParameteres.WP2(2,0) = m_landParameteres.WP3(2,0)-m_landArg.length_glideslope*std::tan(m_landArg.gamma_d);
 
           //! WP1 is the approach to the glide slope
           m_landParameteres.WP1 = Matrix(3,1,0.0);
-          m_landParameteres.WP1(0,0) = m_landParameteres.WP2(0,0)+m_landArg.a3;
+          m_landParameteres.WP1(0,0) = m_landParameteres.WP2(0,0)+m_landArg.length_approach_glideslope;
           m_landParameteres.WP1(2,0) = m_landParameteres.WP2(2,0);
 
           //! Rotate all WP into NED
@@ -304,10 +304,10 @@ namespace Plan
         m_landArg.net_height = tList.get("net_height",-3.0);
         m_landArg.gamma_a = Angles::radians(tList.get("final_approach_angle",3.0));
         m_landArg.gamma_d = Angles::radians(tList.get("glide_slope_angle", 3.0));
-        m_landArg.a0 = tList.get("dist_behind",10.0);
-        m_landArg.a1 = tList.get("final_approach",10.0);
-        m_landArg.a2 = tList.get("glideslope",300.0);
-        m_landArg.a3 = tList.get("approach",100.0);
+        m_landArg.behind_net = tList.get("dist_behind",10.0);
+        m_landArg.infront_net = tList.get("final_approach",10.0);
+        m_landArg.length_glideslope = tList.get("glideslope",300.0);
+        m_landArg.length_approach_glideslope = tList.get("approach",100.0);
         m_landArg.speed_WP4 = tList.get("speed345",12.0);
         m_landArg.speed_WP3 = tList.get("speed345",12.0);
         m_landArg.speed_WP2 = tList.get("speed12",12.0);
@@ -324,10 +324,10 @@ namespace Plan
         debug("Net heading %f", m_landArg.netHeading);
         debug("Attack angle %f",m_landArg.gamma_a);
         debug("Descent %f",m_landArg.gamma_d);
-        debug("A0 %f",m_landArg.a0);
-        debug("A1 %f",m_landArg.a1);
-        debug("A2 %f",m_landArg.a2);
-        debug("A3 %f",m_landArg.a3);
+        debug("Behind net %f",m_landArg.behind_net);
+        debug("In front of net %f",m_landArg.infront_net);
+        debug("Length glideslope %f",m_landArg.length_glideslope);
+        debug("Length approach glideslope %f",m_landArg.length_approach_glideslope);
         debug("Speed 35 %f",m_landArg.speed_WP4);
         debug("Speed 12 %f",m_landArg.speed_WP1);
         debug("Rs %f",m_landArg.Rs);
@@ -612,6 +612,9 @@ namespace Plan
         //! Entry tangent point on finish circle
         Matrix PN = Matrix(2,1,0.0);
 
+        //! When automatic is set true the shortest path from the initial position
+        // to the first wp in the net approach. Otherwise the operator can manually decide the
+        // rotation direction
         if (m_landArg.automatic)
         {
           inf("Creating a plan automatic");
