@@ -101,14 +101,14 @@ namespace Plan
     struct LandingPath
     {
       //! Landing waypoints
-      //! WP1: Behind the net
-      Matrix WP1;
-      //! WP2: In front of the net
-      Matrix WP2;
-      //! WP3: The start of the glide slope
-      Matrix WP3;
-      //! WP4: The start of the approach towards the net
+      //! WP4: Behind the net
       Matrix WP4;
+      //! WP3: In front of the net
+      Matrix WP3;
+      //! WP2: The start of the glide slope
+      Matrix WP2;
+      //! WP1: The start of the approach towards the net
+      Matrix WP1;
       //! Finish turning circle rotation
       bool clockwise;
       //! Finish turning circle center
@@ -256,36 +256,36 @@ namespace Plan
           inf("m_Ns = %d m_Nf = %d",m_Ns,m_Nf);
 
           //! Construct waypoint for the final landing path
-          //! WP1 is set behind the net
-          m_landParameteres.WP1 = Matrix(3,1,0.0);
-          m_landParameteres.WP1(0,0) = -m_landArg.a0;
-          m_landParameteres.WP1(2,0) = m_landArg.net_height+m_landArg.a0*std::tan(m_landArg.gamma_a);
-
-          //! WP2 is set in front of the net, and is the final phase before the net
-          m_landParameteres.WP2 = Matrix(3,1,0.0);
-          m_landParameteres.WP2(0,0) = m_landArg.a1;
-          m_landParameteres.WP2(2,0) = m_landArg.net_height-m_landArg.a1*std::tan(m_landArg.gamma_a);
-
-          //! WP3 is the start of the glide slope towards the net
-          m_landParameteres.WP3 = Matrix(3,1,0.0);
-          m_landParameteres.WP3(0,0) = m_landParameteres.WP2(0,0)+m_landArg.a2;
-          m_landParameteres.WP3(2,0) = m_landParameteres.WP2(2,0)-m_landArg.a2*std::tan(m_landArg.gamma_d);
-
-          //! WP4 is the approach to the glide slope
+          //! WP4 is set behind the net
           m_landParameteres.WP4 = Matrix(3,1,0.0);
-          m_landParameteres.WP4(0,0) = m_landParameteres.WP3(0,0)+m_landArg.a3;
-          m_landParameteres.WP4(2,0) = m_landParameteres.WP3(2,0);
+          m_landParameteres.WP4(0,0) = -m_landArg.a0;
+          m_landParameteres.WP4(2,0) = m_landArg.net_height+m_landArg.a0*std::tan(m_landArg.gamma_a);
+
+          //! WP3 is set in front of the net, and is the final phase before the net
+          m_landParameteres.WP3 = Matrix(3,1,0.0);
+          m_landParameteres.WP3(0,0) = m_landArg.a1;
+          m_landParameteres.WP3(2,0) = m_landArg.net_height-m_landArg.a1*std::tan(m_landArg.gamma_a);
+
+          //! WP2 is the start of the glide slope towards the net
+          m_landParameteres.WP2 = Matrix(3,1,0.0);
+          m_landParameteres.WP2(0,0) = m_landParameteres.WP3(0,0)+m_landArg.a2;
+          m_landParameteres.WP2(2,0) = m_landParameteres.WP3(2,0)-m_landArg.a2*std::tan(m_landArg.gamma_d);
+
+          //! WP1 is the approach to the glide slope
+          m_landParameteres.WP1 = Matrix(3,1,0.0);
+          m_landParameteres.WP1(0,0) = m_landParameteres.WP2(0,0)+m_landArg.a3;
+          m_landParameteres.WP1(2,0) = m_landParameteres.WP2(2,0);
 
           //! Rotate all WP into NED
-          m_landParameteres.WP1 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP1;
-          m_landParameteres.WP2 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP2;
-          m_landParameteres.WP3 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP3;
           m_landParameteres.WP4 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP4;
+          m_landParameteres.WP3 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP3;
+          m_landParameteres.WP2 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP2;
+          m_landParameteres.WP1 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP1;
 
-          debug("WP1 x=%f y=%f z=%f",m_landParameteres.WP1(0,0),m_landParameteres.WP1(1,0),m_landParameteres.WP1(2,0));
-          debug("WP2 x=%f y=%f z=%f",m_landParameteres.WP2(0,0),m_landParameteres.WP2(1,0),m_landParameteres.WP2(2,0));
-          debug("WP3 x=%f y=%f z=%f",m_landParameteres.WP3(0,0),m_landParameteres.WP3(1,0),m_landParameteres.WP3(2,0));
           debug("WP4 x=%f y=%f z=%f",m_landParameteres.WP4(0,0),m_landParameteres.WP4(1,0),m_landParameteres.WP4(2,0));
+          debug("WP3 x=%f y=%f z=%f",m_landParameteres.WP3(0,0),m_landParameteres.WP3(1,0),m_landParameteres.WP3(2,0));
+          debug("WP2 x=%f y=%f z=%f",m_landParameteres.WP2(0,0),m_landParameteres.WP2(1,0),m_landParameteres.WP2(2,0));
+          debug("WP1 x=%f y=%f z=%f",m_landParameteres.WP1(0,0),m_landParameteres.WP1(1,0),m_landParameteres.WP1(2,0));
 
           return true;
         }
@@ -407,7 +407,7 @@ namespace Plan
         return true;
 
       }
-      //! Create path towards the approach to the glide slope (WP4)
+      //! Create path towards the approach to the glide slope (WP1)
       bool
       createPath(std::vector<Matrix>& path)
       {
@@ -422,26 +422,26 @@ namespace Plan
         bool CounterClockwiseF;
         //! Center of final turning circle
         Matrix OCF = Matrix(2,1,0.0);
-        //! End pose in dubins path
+        //! End pose in dubins path which is the first waypoint in the net approach
         Matrix Xf = Matrix(4,1,0.0);
-        Xf(0,0) = m_landParameteres.WP4(0,0);
-        Xf(1,0) = m_landParameteres.WP4(1,0);
-        Xf(2,0) = m_landParameteres.WP4(2,0);
+        Xf(0,0) = m_landParameteres.WP1(0,0);
+        Xf(1,0) = m_landParameteres.WP1(1,0);
+        Xf(2,0) = m_landParameteres.WP1(2,0);
         Xf(3,0) = Angles::normalizeRadian(m_landArg.netHeading-Math::c_pi);
 
-        double wp4_lat = m_landArg.net_lat;
-        double wp4_lon = m_landArg.net_lon;
-        double wp4_h = m_landArg.net_WGS84_height - m_landParameteres.WP4(2,0);
+        double wp1_lat = m_landArg.net_lat;
+        double wp1_lon = m_landArg.net_lon;
+        double wp1_h = m_landArg.net_WGS84_height - m_landParameteres.WP1(2,0);
 
         double state_lat = m_estate.lat;
         double state_lon = m_estate.lon;
         double state_height = m_estate.height;
-        //! Find wp4 lat lon
-        Coordinates::WGS84::displace(m_landParameteres.WP4(0,0),m_landParameteres.WP4(1,0),&wp4_lat,&wp4_lon);
+        //! Find WP1 lat lon
+        Coordinates::WGS84::displace(m_landParameteres.WP1(0,0),m_landParameteres.WP1(1,0),&wp1_lat,&wp1_lon);
         Coordinates::WGS84::displace(m_estate.x,m_estate.y,m_estate.z,&state_lat,&state_lon,&state_height);
         //! Find m_estate coordinates relative to net lat lon
         Coordinates::WGS84::displacement(m_landArg.net_lat,m_landArg.net_lon,m_landArg.net_height,state_lat,state_lon,state_height,&Xs(0,0),&Xs(1,0),&Xs(2,0));
-        Coordinates::WGS84::displacement(state_lat,state_lon,state_height,wp4_lat,wp4_lon,wp4_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
+        Coordinates::WGS84::displacement(state_lat,state_lon,state_height,wp1_lat,wp1_lon,wp1_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
         debug("Xf x=%f y=%f z=%f psi=%f",Xf(0,0),Xf(1,0),Xf(2,0),Xf(3,0));
         debug("Xs x=%f y=%f z=%f psi=%f",Xs(0,0),Xs(1,0),Xs(2,0),Xs(3,0));
         debug("m_estate height: %f net height: %f",m_estate.height,m_landArg.net_WGS84_height);
@@ -470,7 +470,7 @@ namespace Plan
         m_landParameteres.clockwise = !CounterClockwiseF;
         m_landParameteres.OCFz = Xf(2,0);
         debug("Reach correct height %f from the height %f",path[path.size()-1](2,0),Xs(2,0));
-        debug("WP4 = h-z %f",m_landArg.net_WGS84_height-m_landParameteres.WP4(2,0));
+        debug("WP1 = h-z %f",m_landArg.net_WGS84_height-m_landParameteres.WP1(2,0));
         debug("Lat %f lon %f ref height %f",m_landArg.net_lat,m_landArg.net_lon,m_landArg.net_WGS84_height);
         return true;
       }
@@ -551,14 +551,14 @@ namespace Plan
       void
       addNetApproach(IMC::MessageList<IMC::Maneuver>& maneuverList)
       {
-        //3
-        addGotoPoint(m_landParameteres.WP3,m_landArg.speed_WP2,maneuverList);
-
         //2
-        addGotoPoint(m_landParameteres.WP2,m_landArg.speed_WP3,maneuverList);
+        addGotoPoint(m_landParameteres.WP2,m_landArg.speed_WP2,maneuverList);
 
-        //1
-        addGotoPoint(m_landParameteres.WP1,m_landArg.speed_WP4,maneuverList);
+        //3
+        addGotoPoint(m_landParameteres.WP3,m_landArg.speed_WP3,maneuverList);
+
+        //4
+        addGotoPoint(m_landParameteres.WP4,m_landArg.speed_WP4,maneuverList);
 
       }
       //!
@@ -566,13 +566,13 @@ namespace Plan
       addGotoPoint(const Matrix WP,const double speed,IMC::MessageList<IMC::Maneuver>& maneuverList)
       {
         IMC::Goto gotoWP;
-        double w1_lat = m_landArg.net_lat;
-        double w1_lon = m_landArg.net_lon;
-        double w1_h = m_landArg.net_WGS84_height - WP(2,0);
-        Coordinates::WGS84::displace(WP(0,0),WP(1,0),&w1_lat,&w1_lon);
-        gotoWP.lat = w1_lat;
-        gotoWP.lon = w1_lon;
-        gotoWP.z = w1_h;
+        double wp_lat = m_landArg.net_lat;
+        double wp_lon = m_landArg.net_lon;
+        double wp_h = m_landArg.net_WGS84_height - WP(2,0);
+        Coordinates::WGS84::displace(WP(0,0),WP(1,0),&wp_lat,&wp_lon);
+        gotoWP.lat = wp_lat;
+        gotoWP.lon = wp_lon;
+        gotoWP.z = wp_h;
         gotoWP.z_units = IMC::Z_HEIGHT;
         gotoWP.speed = speed;
         gotoWP.speed_units = IMC::SUNITS_METERS_PS;
@@ -1059,7 +1059,7 @@ namespace Plan
         bool correctHeight = false;
         double descentAngle = m_landArg.gamma_d;
         double theta0 = std::atan2(Path[Path.size()-1](1,0)-OF(1,0),Path[Path.size()-1](0,0)-OF(0,0));
-        Matrix WP4 = Path.back();
+        Matrix WP1 = Path.back();
         Matrix theta = Matrix(1,m_Nf);
         if (CounterClockwiseF)
         {
@@ -1115,7 +1115,7 @@ namespace Plan
         inf("Exited loop. N iterations: %d", cur_iter);
 
         double thetaH0 = std::atan2(WPS1(1,0)-OF(1,0),WPS1(0,0)-OF(0,0));
-        double thetaH1 = std::atan2(WP4(1,0)-OF(1,0),WP4(0,0)-OF(0,0));
+        double thetaH1 = std::atan2(WP1(1,0)-OF(1,0),WP1(0,0)-OF(0,0));
         inf("Start angle %f Finish angle %f",thetaH0,thetaH1);
         std::vector<Matrix> arc;
         if (CounterClockwiseF)
