@@ -35,8 +35,6 @@ namespace Simulators
   {
     using DUNE_NAMESPACES;
 
-    #define PI 3.141592653589793
-
     struct Arguments
     {
       //! Initial position of vehicle in llh in rad:
@@ -134,8 +132,8 @@ namespace Simulators
         //m_current_lon = 0.17263353573; //m_args.lon0;
 
         // Gloshaugen:
-        m_current_lat = 63.418545 * (PI/180); //1.1110698474;
-        m_current_lon = 10.402840 * (PI/180); //0.17263353573;
+        m_current_lat = 63.418545 * (Math::c_pi/180.0); //1.1110698474;
+        m_current_lon = 10.402840 * (Math::c_pi/180.0); //0.17263353573;
 
         // Init time:
         m_time_prev = Clock().get();
