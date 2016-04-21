@@ -130,6 +130,10 @@ namespace Sensors
         param("RTK Base Position Timeout", m_args.rtk_base_position_timeout)
         .defaultValue("10");
 
+        param("Max Single Ignored", m_args.max_number_of_ignored_rtklib_single_solution)
+        .defaultValue("5")
+        .description("The maximum number of single solution from rtklib that should not be dispatched");
+
         // Initialize messages.
         clearMessages();
 
