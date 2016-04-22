@@ -73,9 +73,9 @@ namespace Navigation
 
       //double m_psi;
 
-      IMC::DesiredHeading dpsi_receive;
-      IMC::RSSI rssi_receive;
-      IMC::EstimatedState states_receive;
+      IMC::DesiredHeading m_psi_d;
+      IMC::RSSI m_rssi;
+      IMC::EstimatedState m_estates;
 
       //IMC::NavigationData zhat_send;
 
@@ -174,7 +174,7 @@ namespace Navigation
       void
       consume(const IMC::EstimatedState* states)
       {
-        states_receive = *states;
+        m_estates = *states;
         //psi = states->psi;
         //inf("heading is: %f", states->psi);
       }
@@ -182,26 +182,26 @@ namespace Navigation
       void
       consume(const IMC::DesiredHeading* msg)
       {
-        dpsi_receive = *msg;
+        m_psi_d = *msg;
       }
 
 
       void
       consume(const IMC::RSSI* rssi)
       {
-        rssi_receive = *rssi;
+        m_rssi = *rssi;
         //inf("rssi is: %f", rssi->value);
 
         //! If this is the first rssi value consumed,
         //! initiate zhatm(0,0) (i.e. the rssi estimate) to this rssi value:
         if (m_initflag == false){
-          m_zhatm(0,0) = rssi_receive.value;
+          m_zhatm(0,0) = m_rssi.value;
           m_initflag = true;
         }
 
         // When a new rssi measurement occurs, estimate and dispatch a new m_zhat:
         //estimateStatevector(rssi_receive,states_receive);
-        estimateStatevector(rssi_receive, states_receive);
+        estimateStatevector(m_rssi, m_estates);
       }
 
 
@@ -258,44 +258,8 @@ namespace Navigation
       onMain(void)
       {
 
-
-        //Matrix zhat_temp = Matrix(3,1,0.0);
-        //zhat_temp(3,1,0.0);
-
-        //IMC::Pressure msg;   // use temperature message from IMC
-        //msg.value = 500;     // Initialize the temperature value.
-        //inf("Inside main");
-        //inf("Dummy: %f", dummy);
-
-        /*
-        IMC::NavigationData zhat_send;
-        zhat_send.custom_x = 0;
-        zhat_send.custom_y = 0;
-        zhat_send.custom_z = 0;
-         */
-
         while (!stopping())
         {
-          //inf("Print this to console");
-          //inf("First element of C: %f", C(0));
-          //inf("I matrix element 22: %f", I(2,2));
-
-
-          //estimateStatevector(rssi_receive, states_receive);
-          /*
-            zhat_send.custom_x = zhat_temp(0);
-            zhat_send.custom_y = zhat_temp(1);
-            zhat_send.custom_z = zhat_temp(2);
-            dispatch(zhat_send);
-           */
-
-          /*
-
-            //msg.value += 1;      // increment the value just to see the output
-            //dispatch(msg);       // Dispatch the value to the message bus
-
-           */
-          //Delay::wait(1.0);    // Wait doing nothing.
 
           waitForMessages(1.0);
         }
