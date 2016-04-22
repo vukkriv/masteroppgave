@@ -37,10 +37,6 @@ namespace Simulators
 
     struct Task: public DUNE::Tasks::Task
     {
-      //! Constructor.
-      //! @param[in] name task name.
-      //! @param[in] ctx context.
-
 
       //double lat_uav;
       //double lon_uav;
@@ -48,8 +44,8 @@ namespace Simulators
       double m_lon_base;
       double m_rssi;
       //double dist;
-      IMC::GpsFix gpsdata;
-      //IMC::EstimatedState estate;
+      //IMC::GpsFix gpsdata;
+      IMC::EstimatedState estate;
       IMC::RSSI m_sim_rssi;
 
       Task(const std::string& name, Tasks::Context& ctx):
@@ -61,9 +57,8 @@ namespace Simulators
         m_rssi(0)
       //dist(0.0)
       {
-        bind<IMC::GpsFix>(this);
-
-        //bind<IMC::EstimatedState>(this);
+        //bind<IMC::GpsFix>(this);
+        bind<IMC::EstimatedState>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -102,7 +97,7 @@ namespace Simulators
       {
       }
 
-
+/*
       void
       consume(const IMC::GpsFix* gps){
         gpsdata = *gps;
@@ -110,8 +105,8 @@ namespace Simulators
 
         calcSimRSSI_gps(gpsdata);
       }
+*/
 
-      /*
         void
         consume(const IMC::EstimatedState* msg)
         {
@@ -121,7 +116,7 @@ namespace Simulators
 
         }
 
-       */
+/*
 
       void
       calcSimRSSI_gps(IMC::GpsFix gpsarg){
@@ -144,8 +139,8 @@ namespace Simulators
         dispatch(sim_rssi);
 
       }
+*/
 
-      /*
         void
         calcSimRSSI(IMC::EstimatedState statearg){
           double lat_uav = statearg.lat;
@@ -169,7 +164,7 @@ namespace Simulators
           //inf("RSSI value is: %f", m_sim_rssi.value);
 
         }
-       */
+
 
 
       //! Main loop.
