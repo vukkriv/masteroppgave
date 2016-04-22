@@ -25,8 +25,8 @@
 // Author: Daniel Røyland                                                  *
 //***************************************************************************
 // Extremum seeking observer. 
-// Input: z_hat
-// Output: heading 
+// Input: RSSI
+// Output: zhat
 
 
 // Math library
@@ -68,6 +68,9 @@ namespace Navigation
       Matrix m_A;
       Matrix m_R;
 
+      //! Flag used to initiate zhatm:
+      bool m_initflag;
+
       //double m_psi;
 
       IMC::DesiredHeading dpsi_receive;
@@ -91,7 +94,8 @@ namespace Navigation
         m_Pm(3,3,0.0),
         //m_psi(0.0)
         m_A(3,3,0.0),
-        m_R(2,1,0.0)
+        m_R(2,1,0.0),
+        m_initflag(false)
       {
 
         param("Lambda", m_args.lambda)
@@ -187,6 +191,13 @@ namespace Navigation
       {
         rssi_receive = *rssi;
         //inf("rssi is: %f", rssi->value);
+
+        //! If this is the first rssi value consumed,
+        //! initiate zhatm(0,0) (i.e. the rssi estimate) to this rssi value:
+        if (m_initflag == false){
+          m_zhatm(0,0) = rssi_receive.value;
+          m_initflag = true;
+        }
 
         // When a new rssi measurement occurs, estimate and dispatch a new m_zhat:
         //estimateStatevector(rssi_receive,states_receive);
