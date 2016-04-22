@@ -435,6 +435,7 @@ namespace Plan
 
         msg.params.append("z_unit=height;");// "height" or "altitude"
         msg.params.append("net_WGS84_height=").append(DoubleToString(m_args.netWGS84Height)).append(";");
+        msg.params.append("wait_at_loiter=true").append(";");
 
       //  msg.params += "auxiliary_WPa_side=" + auxiliaryWpaRight + ";";
       //   msg.params += "ignore_evasive=" + m_args.ignoreEvasive + ";";
@@ -499,7 +500,12 @@ namespace Plan
 //
 //        double z_diff = abs(m_args.fw_loiter.altitude - maneuver->z);
 //        double distance = z_diff / tan(Angles::radians(m_args.fw_loiter.glideslope_angle));
-        double z_loiter = (maneuver.z - maneuver.z_off) + tan(Angles::radians(m_args.glideslope_angle)) * m_args.glideslope_distance;
+        double z_loiter = virtual_runway.VR_altitude + tan(Angles::radians(m_args.glideslope_angle)) * m_args.glideslope_distance;
+        debug("z_loiter er : %f",z_loiter);
+        debug("Maneuver høyde er: %f",(maneuver.z - maneuver.z_off));
+        debug("Glideslope distanse er : %f",m_args.glideslope_distance);
+        debug("Glideslope angle er: %f",m_args.glideslope_angle);
+        debug("Tangens til glideslope vinkelen: %f",tan(Angles::radians(m_args.glideslope_angle)));
         //GO-TO Glideslope START POINT
         double N_offset   = -m_args.glideslope_distance * cos(virtual_runway.VR_heading);
         double E_offset   = -m_args.glideslope_distance * sin(virtual_runway.VR_heading);
