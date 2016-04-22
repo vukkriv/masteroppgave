@@ -44,9 +44,6 @@ namespace Transports
 
       //! Vehicle list
       std::vector<std::string> vehicles;
-
-      //! Vehicle destinations
-      std::vector<std::string> dest_vehicles;
     };
 
     struct Destination
@@ -84,10 +81,6 @@ namespace Transports
         param("Vehicle List", m_args.vehicles)
         .defaultValue("")
         .description("Vehicles in transport layer (comma separated list with vehicle names)");
-
-        param("Destinations", m_args.dest_vehicles)
-        .defaultValue("")
-        .description("Destinations to send messages (comma separated list with vehicle names)");
 
         bind<IMC::Announce>(this);
       }
@@ -158,7 +151,7 @@ namespace Transports
         // consider checking if connection is lost and stop sending as well ?
         if (allConnected())
         {
-          trace("All vehicle discovered and connected");
+          spew("All vehicle discovered and connected");
           return;
         }
 
