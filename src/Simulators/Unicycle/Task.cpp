@@ -111,7 +111,7 @@ namespace Simulators
         bind<IMC::DesiredHeading>(this);
 
         //! Initiate current position matrix:
-        initPos();
+        //initPos();
       }
 
 
@@ -162,6 +162,9 @@ namespace Simulators
       void
       onResourceAcquisition(void)
       {
+        m_current_lat = m_args.lat0; //* (Math::c_pi/180.0);
+        m_current_lon = m_args.lon0; //* (Math::c_pi/180.0);
+
       }
 
       //! Initialize resources.
@@ -233,6 +236,7 @@ namespace Simulators
         estate.psi = psi_d;
         dispatch(estate);
 
+
       }
 
       //! Main loop.
@@ -245,7 +249,7 @@ namespace Simulators
         while (!stopping())
         {
           //! Temporary running this in main instead of in consume() due to no desired heading received
-          //calculateNextPos();
+          calculateNextPos(m_psi_receive);
 
           waitForMessages(1.0);
         }
