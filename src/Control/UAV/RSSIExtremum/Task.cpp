@@ -77,11 +77,6 @@ namespace Control
         IMC::NavigationData m_navdata;
 
 
-
-
-        //! Constructor.
-        //! @param[in] name task name.
-        //! @param[in] ctx context.
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Tasks::Task(name, ctx),
           m_D(2,3,0.0),
@@ -113,9 +108,7 @@ namespace Control
           .defaultValue("0.1")
           .description("Sampling time");
 
-
           //! Bind incoming IMC messages:
-          //bind<IMC::Pressure>(this);
           bind<IMC::NavigationData>(this);
 
           //! Initiate matrices:
@@ -169,7 +162,7 @@ namespace Control
         void
         consume(const IMC::NavigationData* msg){
           m_navdata = *msg;
-
+          //inf("Optimizer: Navdata received");
           calculateNextHeading(m_navdata);
 
         }
@@ -204,7 +197,7 @@ namespace Control
 
           //! Wrap heading to the interval (-pi,pi]:
           m_psi_wrap = fmod(m_psi_next(0) - PI, 2*PI) - PI;
-          inf("Desired heading from optimizer: %f", m_psi_wrap);
+          //inf("Desired heading from optimizer: %f", m_psi_wrap);
 
           // Dispatch desired heading:
           IMC::DesiredHeading psi_d;
