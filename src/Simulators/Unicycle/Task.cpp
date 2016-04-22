@@ -53,7 +53,7 @@ namespace Simulators
 
     };
 
-    struct Task: public DUNE::Tasks::Task
+    struct Task: public DUNE::Tasks::Periodic
     {
       //! Task arguments:
       Arguments m_args;
@@ -72,13 +72,13 @@ namespace Simulators
       double m_dt;
 
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Task(name, ctx),
+        Periodic(name, ctx),
         m_displacement(2,1,0.0),
         //m_current_lat(1.1110653618992075),
         //m_current_lon(0.17123088442770734)
         m_current_lat(0),
         m_current_lon(0),
-        m_time_prev(0),
+        m_time_prev(Clock::get()),
         m_dt(0)
 
 
@@ -114,7 +114,7 @@ namespace Simulators
         //initPos();
       }
 
-
+/*
       void
       initPos(void)
       {
@@ -139,6 +139,7 @@ namespace Simulators
         m_time_prev = Clock().get();
       }
 
+*/
 
       //! Update internal state with new parameter values.
       void
@@ -185,10 +186,10 @@ namespace Simulators
         m_psi_receive = *msg;
 
         //! Calculate next position when new desired heading occurs:
-        calculateNextPos(m_psi_receive);
-        inf("Print this");
+        //calculateNextPos(m_psi_receive);
+        //inf("Print this");
       }
-
+/*
       void
       calculateNextPos(IMC::DesiredHeading psi_arg)
       {
@@ -239,6 +240,67 @@ namespace Simulators
 
       }
 
+*/
+
+      void
+      task(void)
+      {
+
+
+        //! Get time:
+        double dt = Clock().get() - m_time_prev;
+        m_time_prev = Clock::get();
+
+        if (dt > 2*(1/this->getFrequency()) )
+        {
+          debug("Warning: Missed time. Should be %f, was %f", 1/this->getFrequency(), dt);
+        }
+        //inf("Task freq.: %f", this->getFrequency());
+
+        double psi_d;
+        if (m_args.testmode == true)
+        {
+          //! Test heading:
+          psi_d = 0;
+        }else{
+          psi_d = m_psi_receive.value;
+        }
+
+
+        //! Calculate next position based on current position, heading and speed:
+        Matrix R = Matrix(2,1,0.0);
+        R(0) = cos(psi_d);
+        R(1) = sin(psi_d);
+
+        //! Only use initial latlon:
+        //Matrix next_pos = m_current_pos + m_args.dvelocity*m_args.T * R;
+
+        //! Calculate displacement:
+        m_displacement = m_args.dvelocity*dt * R;
+        //m_displacement = 2*1*R;
+
+        //! Update current position:
+        //m_displacement = next_pos;
+
+        //! NED to LLH transformation:
+        WGS84::displace(m_displacement(0),m_displacement(1), &m_current_lat, &m_current_lon);
+
+        //! Print current latlon position:
+        //inf("Current lat: %Lf", m_current_lat);
+        //inf("Current lon: %Lf", m_current_lon);
+
+        //! Store next_pos in estate and dispatch estate to IMC message bus:
+        IMC::EstimatedState estate;
+        estate.lat = m_current_lat;
+        estate.lon = m_current_lon;
+        estate.psi = psi_d;
+        dispatch(estate);
+
+
+      }
+
+
+      /*
       //! Main loop.
       void
       onMain(void)
@@ -254,6 +316,7 @@ namespace Simulators
           waitForMessages(1.0);
         }
       }
+       */
     };
   }
 }
