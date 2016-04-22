@@ -226,11 +226,11 @@ namespace Navigation
         m_zhat = m_zhatm + m_L*(y_k - m_zhatm(0,0));
         //std::cout << zhat;
 
-        IMC::NavigationData zhat_send;
-        zhat_send.custom_x = m_zhat(0);
-        zhat_send.custom_y = m_zhat(1);
-        zhat_send.custom_z = m_zhat(2);
-        dispatch(zhat_send);
+        IMC::NavigationData navdata;
+        navdata.custom_x = m_zhat(0);
+        navdata.custom_y = m_zhat(1);
+        navdata.custom_z = m_zhat(2);
+        dispatch(navdata);
 
         Matrix temp2 = m_I-(m_L*m_C);
 
