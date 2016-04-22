@@ -43,13 +43,11 @@ namespace Simulators
       double height0;
 
       //! Desired velocity:
-      double dvelocity;
-
-      //! Sample time;
-      double T;
+      double V_d;
 
       //! Test mode (constant heading)
-      bool testmode;
+      bool testMode;
+      double testHeading;
 
     };
 
@@ -58,7 +56,7 @@ namespace Simulators
       //! Task arguments:
       Arguments m_args;
 
-      IMC::DesiredHeading m_psi_receive;
+      IMC::DesiredHeading m_psi_d;
 
       //! Displacement from last position:
       Matrix m_displacement;
@@ -74,38 +72,35 @@ namespace Simulators
       Task(const std::string& name, Tasks::Context& ctx):
         Periodic(name, ctx),
         m_displacement(2,1,0.0),
-        //m_current_lat(1.1110653618992075),
-        //m_current_lon(0.17123088442770734)
         m_current_lat(0),
         m_current_lon(0),
         m_time_prev(Clock::get()),
         m_dt(0)
 
-
       {
         param("Lat0", m_args.lat0)
-        .defaultValue("0")//1.11054170")
-        .description("");
-
-        param("Lon0", m_args.lon0)
-        .defaultValue("0")//0.16976546")
-        .description("");
-
-        param("Height0", m_args.height0)
-        .defaultValue("50")
-        .description("");
-
-        param("DesiredVelocity", m_args.dvelocity)
         .defaultValue("0")
         .description("");
 
-        param("SampleTime", m_args.T)
-        .defaultValue("0.1")
-        .description("Sample time");
+        param("Lon0", m_args.lon0)
+        .defaultValue("0")
+        .description("");
 
-        param("testMode", m_args.testmode)
+        param("Height0", m_args.height0)
+        .defaultValue("100")
+        .description("");
+
+        param("DesiredVelocity", m_args.V_d)
+        .defaultValue("10")
+        .description("Desired Velocity in m/s");
+
+        param("TestMode", m_args.testMode)
         .defaultValue("true")
         .description("Test Mode");
+
+        param("TestHeading", m_args.testHeading)
+        .defaultValue("0")
+        .description("Test Heading in degrees");
 
         //! Bind incoming IMC message:
         bind<IMC::DesiredHeading>(this);
@@ -118,27 +113,20 @@ namespace Simulators
       void
       initPos(void)
       {
-        //inf("latlon set");
-
-        //m_current_pos(0) = m_args.lat0;
-        //m_current_pos(1) = m_args.lon0;
 
         // Os:
-        //m_current_lat = 1.091081534; //m_args.lat0;
-        //m_current_lon = 0.19501912872; //m_args.lon0;
+        //m_current_lat = 1.091081534;
+        //m_current_lon = 0.19501912872;
 
         // Other side of fjord:
-        //m_current_lat = 1.1110698474; //m_args.lat0;
-        //m_current_lon = 0.17263353573; //m_args.lon0;
+        //m_current_lat = 1.1110698474;
+        //m_current_lon = 0.17263353573;
 
         // Gloshaugen:
         m_current_lat = 63.418545 * (Math::c_pi/180.0); //1.1110698474;
         m_current_lon = 10.402840 * (Math::c_pi/180.0); //0.17263353573;
 
-        // Init time:
-        m_time_prev = Clock().get();
       }
-
 */
 
       //! Update internal state with new parameter values.
@@ -163,8 +151,8 @@ namespace Simulators
       void
       onResourceAcquisition(void)
       {
-        m_current_lat = m_args.lat0; //* (Math::c_pi/180.0);
-        m_current_lon = m_args.lon0; //* (Math::c_pi/180.0);
+        m_current_lat = m_args.lat0 * (Math::c_pi/180.0);
+        m_current_lon = m_args.lon0 * (Math::c_pi/180.0);
 
       }
 
@@ -183,71 +171,14 @@ namespace Simulators
       void
       consume(const IMC::DesiredHeading *msg)
       {
-        m_psi_receive = *msg;
-
-        //! Calculate next position when new desired heading occurs:
-        //calculateNextPos(m_psi_receive);
-        //inf("Print this");
+        m_psi_d = *msg;
       }
-/*
-      void
-      calculateNextPos(IMC::DesiredHeading psi_arg)
-      {
-        double psi_d;
-        if (m_args.testmode == true)
-        {
-          //! Test heading:
-          psi_d = 0;
-        }else{
-          psi_d = psi_arg.value;
-        }
-
-        //! Get time:
-        double time_current = Clock().get();
-        m_dt = time_current - m_time_prev;
-        m_time_prev = time_current;
-
-
-        //! Calculate next position based on current position, heading and speed:
-        Matrix R = Matrix(2,1,0.0);
-        R(0) = cos(psi_d);
-        R(1) = sin(psi_d);
-
-        //! Only use initial latlon:
-        //Matrix next_pos = m_current_pos + m_args.dvelocity*m_args.T * R;
-
-        //! Calculate displacement:
-        m_displacement = m_args.dvelocity*m_args.T * R;
-        //m_displacement = 2*1*R;
-
-        //! Update current position:
-        //m_displacement = next_pos;
-
-        //! NED to LLH transformation:
-        WGS84::displace(m_displacement(0),m_displacement(1), &m_current_lat, &m_current_lon);
-
-        //! Print current latlon position:
-        //inf("Current lat: %Lf", m_current_lat);
-        //inf("Current lon: %Lf", m_current_lon);
-
-        //! Store next_pos in estate and dispatch estate to IMC message bus:
-        IMC::EstimatedState estate;
-        estate.lat = m_current_lat;
-        estate.lon = m_current_lon;
-        estate.psi = psi_d;
-        dispatch(estate);
-
-
-      }
-
-*/
 
       void
       task(void)
       {
 
-
-        //! Get time:
+        //! Compute timestep dt:
         double dt = Clock().get() - m_time_prev;
         m_time_prev = Clock::get();
 
@@ -257,15 +188,15 @@ namespace Simulators
         }
         //inf("Task freq.: %f", this->getFrequency());
 
+        //! Choose between heading from ES controller or test heading:
         double psi_d;
-        if (m_args.testmode == true)
+        if (m_args.testMode == true)
         {
           //! Test heading:
-          psi_d = 0;
+          psi_d = m_args.testHeading * (Math::c_pi/180.0);
         }else{
-          psi_d = m_psi_receive.value;
+          psi_d = m_psi_d.value;
         }
-
 
         //! Calculate next position based on current position, heading and speed:
         Matrix R = Matrix(2,1,0.0);
@@ -276,8 +207,8 @@ namespace Simulators
         //Matrix next_pos = m_current_pos + m_args.dvelocity*m_args.T * R;
 
         //! Calculate displacement:
-        m_displacement = m_args.dvelocity*dt * R;
-        //m_displacement = 2*1*R;
+        //! Based on simple unicycle equations, m_displacement = x_{k+1} - x_k integrated with forward euler.
+        m_displacement = m_args.V_d*dt * R;
 
         //! Update current position:
         //m_displacement = next_pos;
@@ -298,25 +229,6 @@ namespace Simulators
 
 
       }
-
-
-      /*
-      //! Main loop.
-      void
-      onMain(void)
-      {
-        //! Initiate current position matrix:
-        //initPos();
-
-        while (!stopping())
-        {
-          //! Temporary running this in main instead of in consume() due to no desired heading received
-          calculateNextPos(m_psi_receive);
-
-          waitForMessages(1.0);
-        }
-      }
-       */
     };
   }
 }
