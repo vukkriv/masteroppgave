@@ -44,6 +44,9 @@ namespace Transports
 
       //! Vehicle list
       std::vector<std::string> vehicles;
+
+      //! Timeout on Announce for each vehicle
+      double timeout;
     };
 
     struct Destination
@@ -53,6 +56,7 @@ namespace Transports
       std::string ip;
       std::string port;
       std::string ip_port;
+      double last_timestamp;
     };
 
     struct Task: public DUNE::Tasks::Task
@@ -82,6 +86,10 @@ namespace Transports
         .defaultValue("")
         .description("Vehicles in transport layer (comma separated list with vehicle names)");
 
+        param("Timeout", m_args.timeout)
+        .defaultValue("60")
+        .description("Timeout on Announce message for each vehicle (seconds)");
+
         bind<IMC::Announce>(this);
       }
 
@@ -102,6 +110,7 @@ namespace Transports
             dest.ip = "";
             dest.port = "";
             dest.ip_port = "";
+            dest.last_timestamp = -1;
             m_destinations.push_back(dest);
             trace("intervehicle node '%s' added to desired destinations",m_args.vehicles[i].c_str());
           }
@@ -152,7 +161,6 @@ namespace Transports
         if (allConnected())
         {
           spew("All vehicle discovered and connected");
-          return;
         }
 
         // parse service string
@@ -163,16 +171,35 @@ namespace Transports
           //set ip and port
           for(std::vector<Destination>::iterator it = m_destinations.begin(); it != m_destinations.end(); ++it)
           {
-              if (it->vehicle == resolveSystemId(msg->getSource()) && !it->connected)
+              if (it->vehicle == resolveSystemId(msg->getSource()))
               {
-                it->connected = true;
-                it->ip = m_curr_parsed.ip;
-                it->port = m_curr_parsed.port;
-                it->ip_port = m_curr_parsed.ip_port;
-                inf("new intervehicle node within range '%s' / %s / %s",it->vehicle.c_str(),m_curr_parsed.port.c_str(),m_curr_parsed.ip.c_str());
-                // set Static Destination in UDP transport layer
-                updateDestinations();
+
+                it->last_timestamp = Clock::getSinceEpoch();
+                if (!it->connected)
+                {
+                  it->connected = true;
+                  it->ip = m_curr_parsed.ip;
+                  it->port = m_curr_parsed.port;
+                  it->ip_port = m_curr_parsed.ip_port;
+                  inf("new intervehicle node within range '%s' / %s / %s",it->vehicle.c_str(),m_curr_parsed.port.c_str(),m_curr_parsed.ip.c_str());
+                  // set Static Destination in UDP transport layer
+                  updateDestinations();
+                }
               }
+          }
+        }
+
+        // loop through destinations and check if timeout
+        for(std::vector<Destination>::iterator it = m_destinations.begin(); it != m_destinations.end(); ++it)
+        {
+          //check if timeout
+          if (it->connected && it->last_timestamp != -1 && (Clock::getSinceEpoch() - it->last_timestamp) > m_args.timeout)
+          {
+            //timeout
+            it->connected = false;
+            inf("lost connection to intervehicle node '%s' / %s / %s",it->vehicle.c_str(),it->port.c_str(),it->ip.c_str());
+            // set Static Destination in UDP transport layer
+            updateDestinations();
           }
         }
 
