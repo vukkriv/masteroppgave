@@ -540,9 +540,9 @@ namespace Control
                 || (now - last_print) > 1.0 / m_args.print_frequency)
             {
 
-              if (!m_initialized[FIXEDWING])
-                war("FixedWing not initialized");
-              else if (!m_initialized[CENTROID])
+              if (!m_connected[FIXEDWING])
+                war("FixedWing '%s' not connected",m_vehicles.aircraft.c_str());
+              else if (!m_connected[CENTROID])
                 war("Centroid not connected");
               else
                 war("FixedWing and Centroid is not connected");
@@ -590,7 +590,7 @@ namespace Control
                   {
 
                     if (!m_initialized[FIXEDWING])
-                      war("FixedWing not initialized");
+                      war("FixedWing '%s' not initialized",m_vehicles.aircraft.c_str());
                     else if (!m_initialized[CENTROID])
                       war("Centroid not initialized");
                     else
