@@ -74,7 +74,7 @@ namespace Control
         Matrix m_Rt;
         double m_norm_dzhat;
 
-        IMC::NavigationData zhat_receive;
+        IMC::NavigationData m_navdata;
 
 
 
@@ -165,30 +165,24 @@ namespace Control
         onResourceRelease(void)
         {
         }
-        /*
-        void
-        consume(const IMC::Pressure* msg)
-        {
-          //inf("Pressure is %f", msg->value);
-        }
-         */
-        void
-        consume(const IMC::NavigationData* zhat_send){
-          zhat_receive = *zhat_send;
 
-          calculateNextHeading(zhat_receive);
+        void
+        consume(const IMC::NavigationData* msg){
+          m_navdata = *msg;
+
+          calculateNextHeading(m_navdata);
 
         }
 
         void
-        calculateNextHeading(IMC::NavigationData zhat_arg)
+        calculateNextHeading(IMC::NavigationData navdata_arg)
         {
 
           //inf("Running calcnextheading from consume zhat");
           // Read from IMC message:
-          m_zhat(0) = zhat_arg.custom_x;
-          m_zhat(1) = zhat_arg.custom_y;
-          m_zhat(2) = zhat_arg.custom_z;
+          m_zhat(0) = navdata_arg.custom_x;
+          m_zhat(1) = navdata_arg.custom_y;
+          m_zhat(2) = navdata_arg.custom_z;
 
 
           //inf("zhat is: ");
@@ -210,11 +204,12 @@ namespace Control
 
           //! Wrap heading to the interval (-pi,pi]:
           m_psi_wrap = fmod(m_psi_next(0) - PI, 2*PI) - PI;
+          inf("Desired heading from optimizer: %f", m_psi_wrap);
 
           // Dispatch desired heading:
-          IMC::DesiredHeading psi_send;
-          psi_send.value = m_psi_wrap;
-          dispatch(psi_send);
+          IMC::DesiredHeading psi_d;
+          psi_d.value = m_psi_wrap;
+          dispatch(psi_d);
 
           // Update psi_k:
           m_psi_k = m_psi_next(0);
