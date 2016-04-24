@@ -107,6 +107,7 @@ namespace Control
           desired_z_last(0.0),
           m_first_run(true),
           los_angle(1.0),
+          last_start_z(9999),
           start_time(99999),
           first_waypoint(true),
           m_shifting_waypoint(false)
@@ -202,6 +203,22 @@ namespace Control
             enableControlLoops(IMC::CL_ALTITUDE);
             enableControlLoops(IMC::CL_VERTICAL_RATE);
           }
+
+          if(last_start_z != ts.start.z){
+            if(last_end_z==ts.start.z){
+              first_waypoint = false;
+            }
+            else{
+              first_waypoint = true;
+            }
+          }
+
+          if(ts.start.z == last_end_z){
+            first_waypoint = false;
+          }
+
+          last_end_z = ts.end.z;
+          last_start_z = ts.start.z;
         }
 
         bool
@@ -222,23 +239,9 @@ namespace Control
           if (!m_args.use_controller)
             return;
 
-          if(last_start_z != ts.start.z){
-            if(last_end_z==ts.start.z){
-              first_waypoint = false;
-            }
-            else{
-              first_waypoint = true;
-            }
-          }
-
           //Waypoint- handling
           double start_z = ts.start.z;
           double end_z = ts.end.z;
-
-          //Handle tracking to first waypoint: Need height offset in start.z for the first waypoint, W.I.P
-          if(start_z == last_end_z){
-            first_waypoint = false;
-          }
 
           if(first_waypoint){
             start_z = state.height - start_z;
@@ -326,8 +329,6 @@ namespace Control
           zref.z_units=Z_HEIGHT;
           dispatch(zref);
 
-          last_end_z = end_z;
-          last_start_z = start_z;
           last_glideslope_angle = glideslope_angle;
 
         }
