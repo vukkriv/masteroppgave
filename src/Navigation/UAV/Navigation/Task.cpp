@@ -38,6 +38,45 @@ namespace Navigation
   {
     namespace Navigation
     {
+
+      class MovingAverage
+      {
+      public:
+        MovingAverage(int nSamples, int nRows):
+           curColumn(0),
+           data(Matrix(nRows, nSamples, 0.0))
+          {
+              // Intentionally empty
+          }
+        Matrix getAverage()
+        {
+          // calc average
+          Matrix sum = Matrix(data.rows(), 1, 0.0);
+          for (int j = 0; j<data.columns(); ++j)
+          {
+            sum(0,1) += data(0,j);
+            sum(1,1) += data(1,j);
+            sum(2,1) += data(2,j);
+          }
+          return sum/data.columns();
+        }
+        void newSample(Matrix sample)
+        {
+          // Insert new data at curColumn,
+          data(0,curColumn) = sample(0,1);
+          data(1,curColumn) = sample(1,1);
+          data(2,curColumn) = sample(2,1);
+
+          // Update curColun
+          curColumn = (curColumn++) % data.columns();
+        };
+
+      private:
+        int curColumn;
+        Matrix data;
+
+      };
+
       using DUNE_NAMESPACES;
 
       struct Arguments {
@@ -51,6 +90,7 @@ namespace Navigation
         double antenna_height;
         bool use_position_offset;
         float offset_timeout;
+        int n_samples;
 
       };
 
@@ -80,10 +120,10 @@ namespace Navigation
         bool m_rtk_available;
         //! Position offset in use
         bool m_position_offset_in_use;
-        //! Average between two rtk messages
-        IMC::GpsFixRtk m_rtk_average;
+        //! Average between N rtk messages
+        MovingAverage m_rtk_average;
         //! Difference between rtk fix position and external nav data
-        IMC::GpsFixRtk m_difference_rtk_external;
+        Matrix m_difference_rtk_external;
 
 
         //! Constructor.
@@ -94,7 +134,10 @@ namespace Navigation
           m_rtk_fix_level_activate(IMC::GpsFixRtk::RTK_FIXED),
           m_rtk_fix_level_deactivate(IMC::GpsFixRtk::RTK_FIXED),
           m_rtk_available(false),
-          m_position_offset_in_use(false)
+          m_position_offset_in_use(false),
+          m_rtk_average(m_args.n_samples,3),
+          m_difference_rtk_external(3,1,0.0)
+
         {
 
           param("Use RTK If Available", m_args.use_rtk)
@@ -141,9 +184,12 @@ namespace Navigation
 
           param("Offset Timeout",m_args.offset_timeout)
           .defaultValue("1.0")
-          .minimumValue("0.0")
-          .visibility(Parameter::VISIBILITY_USER)
-          .description("Timeout for use of position offset after loss of internal nav data");
+          .minimumValue("0.0");
+
+          param("N Samples In Moving Average",m_args.n_samples)
+          .defaultValue("2.0")
+          .minimumValue("1.0");
+
           // Default, we use full external state
           m_navsources.mask = (NS_EXTERNAL_FULLSTATE | NS_EXTERNAL_AHRS | NS_EXTERNAL_POSREF);
 
@@ -214,15 +260,31 @@ namespace Navigation
         {
           m_extnav = *navdata;
 
-          updateDifference();
+          if (!m_position_offset_in_use)
+          {
+            updateDifference();
+          }
+
           // Just check if using rtk or not
           if (!usingRtk())
           {
 
             m_estate = *m_extnav.state.get();
+            if (m_position_offset_in_use)
+            {
+              addOffset();
+            }
 
             sendStateAndSource();
           }
+        }
+
+        void
+        addOffset()
+        {
+          m_estate.x = m_estate.x + m_difference_rtk_external(0,0);
+          m_estate.y = m_estate.y + m_difference_rtk_external(1,0);
+          m_estate.z = m_estate.z + m_difference_rtk_external(2,0);
         }
 
 
@@ -273,8 +335,6 @@ namespace Navigation
             return;
           }
 
-          updateRtkAverage(const IMC::GpsFixRtk* rtkfix);
-
           m_rtk = *rtkfix;
 
           if( getDebugLevel() == DEBUG_LEVEL_SPEW)
@@ -282,7 +342,10 @@ namespace Navigation
 
           updateRtkTimers();
 
-
+          if (m_rtk_available)
+          {
+            updateRtkAverage();
+          }
 
           // Just check if using rtk or not
           if (usingRtk())
@@ -332,6 +395,34 @@ namespace Navigation
           {
             spew("Got RTKFix message, but not using it.  ");
           }
+        }
+
+        void
+        updateRtkAverage()
+        {
+          Matrix newSample = Matrix(3,1,0.0);
+          newSample(0,0) = m_rtk.n;
+          newSample(1,0) = m_rtk.e;
+          newSample(2,0) = m_rtk.d;
+          m_rtk_average.newSample(newSample);
+        }
+
+        void
+        updateDifference()
+        {
+          double lat = m_extnav.state.get()->lat;
+          double lon = m_extnav.state.get()->lon;
+          double height = m_extnav.state.get()->height;
+          double n;
+          double e;
+          double d;
+          Coordinates::WGS84::displace(m_extnav.state.get()->x,m_extnav.state.get()->y,m_extnav.state.get()->z,&lat,&lon,&height);
+          Coordinates::WGS84::displacement(m_rtk.base_lat,m_rtk.base_lon,m_rtk.base_height,lat,lon,height,&n,&e,&d);
+          Matrix average = m_rtk_average.getAverage();
+          m_difference_rtk_external(0,0) = average(0,0) - n;
+          m_difference_rtk_external(1,0) = average(1,0) - e;
+          m_difference_rtk_external(2,0) = average(2,0) - d;
+          debug("Difference: n = %f e = %f d = %f",m_difference_rtk_external(0,0),m_difference_rtk_external(1,0),m_difference_rtk_external(2,0));
         }
 
         void
