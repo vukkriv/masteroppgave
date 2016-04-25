@@ -49,6 +49,8 @@ namespace Navigation
         std::string rtk_fix_level_deactivate;
         double base_alt;
         double antenna_height;
+        bool use_position_offset;
+        float offset_timeout;
 
       };
 
@@ -76,6 +78,13 @@ namespace Navigation
         IMC::NavSources m_navsources;
         //! Is RTK available
         bool m_rtk_available;
+        //! Position offset in use
+        bool m_position_offset_in_use;
+        //! Average between two rtk messages
+        IMC::GpsFixRtk m_rtk_average;
+        //! Difference between rtk fix position and external nav data
+        IMC::GpsFixRtk m_difference_rtk_external;
+
 
         //! Constructor.
         //! @param[in] name task name.
@@ -84,7 +93,8 @@ namespace Navigation
           DUNE::Tasks::Task(name, ctx),
           m_rtk_fix_level_activate(IMC::GpsFixRtk::RTK_FIXED),
           m_rtk_fix_level_deactivate(IMC::GpsFixRtk::RTK_FIXED),
-          m_rtk_available(false)
+          m_rtk_available(false),
+          m_position_offset_in_use(false)
         {
 
           param("Use RTK If Available", m_args.use_rtk)
@@ -124,6 +134,16 @@ namespace Navigation
           .visibility(Parameter::VISIBILITY_USER)
           .description("If > 0, apply correction from attitude");
 
+          param("Use Position Offset",m_args.use_position_offset)
+          .defaultValue("false")
+          .visibility(Parameter::VISIBILITY_USER)
+          .description("Use a position offset to minimize the position difference between the external and internal nav data");
+
+          param("Offset Timeout",m_args.offset_timeout)
+          .defaultValue("1.0")
+          .minimumValue("0.0")
+          .visibility(Parameter::VISIBILITY_USER)
+          .description("Timeout for use of position offset after loss of internal nav data");
           // Default, we use full external state
           m_navsources.mask = (NS_EXTERNAL_FULLSTATE | NS_EXTERNAL_AHRS | NS_EXTERNAL_POSREF);
 
@@ -194,6 +214,7 @@ namespace Navigation
         {
           m_extnav = *navdata;
 
+          updateDifference();
           // Just check if using rtk or not
           if (!usingRtk())
           {
@@ -251,6 +272,8 @@ namespace Navigation
             spew("Ignored RtkFix message: Invalid base. ");
             return;
           }
+
+          updateRtkAverage(const IMC::GpsFixRtk* rtkfix);
 
           m_rtk = *rtkfix;
 
