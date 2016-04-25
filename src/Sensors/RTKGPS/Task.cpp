@@ -498,6 +498,7 @@ namespace Sensors
           }
           else if(Q == 2) // FLOAT
           {
+            m_single_solution_counter = 0;
             m_rtkfix.type = IMC::GpsFixRtk::RTK_FLOAT;
           }
           else
