@@ -63,6 +63,8 @@ namespace Plan
     struct Arguments
     {
       FixedWingLoiter fw_loiter;
+      double virtualrunway_approach_distance;
+      double virtualrunway_behind_distance;
       double glideslope_approach_distance;
       double glideslope_distance;
       double glideslope_angle;
@@ -125,6 +127,16 @@ namespace Plan
         .visibility(Parameter::VISIBILITY_USER)
         .units(Units::Meter)
         .defaultValue("300.0");
+
+        param("Virtualrunway Approach_Distance", m_args.virtualrunway_approach_distance)
+        .visibility(Parameter::VISIBILITY_USER)
+        .units(Units::Meter)
+        .defaultValue("100.0");
+
+        param("Virtualrunway Behind_Distance", m_args.virtualrunway_behind_distance)
+        .visibility(Parameter::VISIBILITY_USER)
+        .units(Units::Meter)
+        .defaultValue("70.0");
 
         param("Loiter along-track distance", m_args.fw_loiter.distance_runway)
         .visibility(Parameter::VISIBILITY_USER)
@@ -374,14 +386,13 @@ namespace Plan
         }
       }
 
-      void extractVirtualRunway(IMC::NetRecovery* maneuver){
-
+      void extractVirtualRunway(IMC::NetRecovery* maneuver)
+      {
         double bearing;
         double range;
-
         WGS84::getNEBearingAndRange(maneuver->start_lat,maneuver->start_lon,
                                     maneuver->end_lat,maneuver->end_lon,
-                                             &bearing,&range);
+                                    &bearing,&range);
 
         virtual_runway.VR_heading    = bearing;
         virtual_runway.VR_length     = range;
@@ -395,18 +406,18 @@ namespace Plan
         double height_offset = 0.0;
 
         WGS84::displace(N_offset, E_offset, 0.0,
-                  &lat_offset, &lon_offset, &height_offset);
+                        &lat_offset, &lon_offset, &height_offset);
 
         virtual_runway.VR_center_lat = Angles::degrees(lat_offset);
         virtual_runway.VR_center_lon = Angles::degrees(lon_offset);
         m_args.desired_speed = maneuver->speed;
 
-        inf("VR center lat = %f, VR ceter lon = %f",virtual_runway.VR_center_lat,virtual_runway.VR_center_lon);
-
+        debug("Virtual Runway extracted from maneuver: VR center lat = %f, VR ceter lon = %f",virtual_runway.VR_center_lat,virtual_runway.VR_center_lon);
       }
 
       void
-      requestDubins(){
+      requestDubins()
+      {
         IMC::PlanGeneration msg;
 
         msg.params.append("land_lat=").append(DoubleToString(virtual_runway.VR_center_lat)).append(";");
@@ -424,8 +435,8 @@ namespace Plan
         msg.params.append("final_approach_angle=").append(DoubleToString(0.0)).append(";");
         msg.params.append("glide_slope_angle=").append(DoubleToString(m_args.glideslope_angle)).append(";");
 
-        msg.params.append("dist_behind=").append(DoubleToString((virtual_runway.VR_length/2.0))).append(";");
-        msg.params.append("final_approach=").append(DoubleToString((virtual_runway.VR_length/2.0))).append(";");
+        msg.params.append("dist_behind=").append(DoubleToString(m_args.virtualrunway_behind_distance+(virtual_runway.VR_length/2.0))).append(";");
+        msg.params.append("final_approach=").append(DoubleToString(m_args.virtualrunway_approach_distance+(virtual_runway.VR_length/2.0))).append(";");
 
         msg.params.append("glideslope=").append(DoubleToString(m_args.glideslope_distance)).append(";");
 
@@ -437,9 +448,6 @@ namespace Plan
         msg.params.append("net_WGS84_height=").append(DoubleToString(m_args.netWGS84Height)).append(";");
         msg.params.append("wait_at_loiter=true").append(";");
 
-      //  msg.params += "auxiliary_WPa_side=" + auxiliaryWpaRight + ";";
-      //   msg.params += "ignore_evasive=" + m_args.ignoreEvasive + ";";
-
         msg.params.append("automatic=").append(m_args.automatic_generation).append(";");
 
         msg.params.append("start_turning_circle_counter_clockwise=").append(DoubleToString(m_args.rightStartTurningDirection)).append(";");
@@ -450,8 +458,9 @@ namespace Plan
         msg.plan_id = "land";
 
         dispatch(msg);
-
+        debug("Dubins path to loiter-point requested from LandingPath");
       }
+
       void
       sendFixedWingPlan(const IMC::PlanSpecification* dubins_planspec, IMC::NetRecovery maneuver)
       {
@@ -463,63 +472,26 @@ namespace Plan
         plan_db.request_id = 0;
         debug("Created a new plan DB..");
 
-        debug("Trying to create new PlanSpecification...");
         IMC::PlanSpecification plan_spec = *dubins_planspec;
         debug("Created new PlanSpecification...");
         plan_spec.description = "A fixed wing recovery plan";
         plan_spec.plan_id = dubins_planspec->plan_id + "_fixedwing";
         plan_spec.start_man_id = "1";
 
-//        // Add current loiter as initial maneuver
-//
-//        IMC::PlanManeuver loiter_man;
-//        loiter_man.maneuver_id = 1;
-//
-//        IMC::Loiter man_loit;
-//        man_loit.type = IMC::Loiter::LT_CIRCULAR;
-//        man_loit.direction = IMC::Loiter::LD_CLOCKW;
-//
-//        man_loit.z             = m_args.fw_loiter.altitude;
-//        man_loit.z_units       = IMC::Z_ALTITUDE;
-//        man_loit.speed         = m_args.fw_loiter.speed;
-//        man_loit.speed_units   = IMC::SUNITS_METERS_PS;
-//        man_loit.duration      = m_args.fw_loiter.duration;
-//        man_loit.radius        = m_args.fw_loiter.radius;
-//        man_loit.lat           = m_args.fw_loiter.lat;
-//        man_loit.lon           = m_args.fw_loiter.lon;
-
-        //Calculate go-to approach point based on desired along-track position behind the start point of the virtual runway
-
-//        double bearing;
-//        double range;
-//
-//
-//        WGS84::getNEBearingAndRange(maneuver->start_lat,maneuver->start_lon,
-//                                    maneuver->end_lat,maneuver->end_lon,
-//                                    &bearing,&range);
-//
-//        double z_diff = abs(m_args.fw_loiter.altitude - maneuver->z);
-//        double distance = z_diff / tan(Angles::radians(m_args.fw_loiter.glideslope_angle));
         double z_loiter = virtual_runway.VR_altitude + tan(Angles::radians(m_args.glideslope_angle)) * m_args.glideslope_distance;
-        debug("z_loiter er : %f",z_loiter);
-        debug("Maneuver høyde er: %f",(maneuver.z - maneuver.z_off));
-        debug("Glideslope distanse er : %f",m_args.glideslope_distance);
-        debug("Glideslope angle er: %f",m_args.glideslope_angle);
-        debug("Tangens til glideslope vinkelen: %f",tan(Angles::radians(m_args.glideslope_angle)));
-        //GO-TO Glideslope START POINT
-        double N_offset   = -m_args.glideslope_distance * cos(virtual_runway.VR_heading);
-        double E_offset   = -m_args.glideslope_distance * sin(virtual_runway.VR_heading);
+
+        //*****************************
+        //Goto Glideslope START
+        //****************************
+        double N_offset   = -(m_args.glideslope_distance+m_args.virtualrunway_approach_distance) * cos(virtual_runway.VR_heading);
+        double E_offset   = -(m_args.glideslope_distance+m_args.virtualrunway_approach_distance) * sin(virtual_runway.VR_heading);
         double lat_offset = maneuver.start_lat;
         double lon_offset = maneuver.start_lon;
         double height_offset = 0.0;
 
         WGS84::displace(N_offset, E_offset, 0.0,
-                  &lat_offset, &lon_offset, &height_offset);
+                        &lat_offset, &lon_offset, &height_offset);
 
-        //man_loit.lat = lat_offset;
-        //man_loit.lon = lon_offset;
-
-        // Add goto-point
         IMC::Goto man_goto_glideslope;
 
         man_goto_glideslope.lat           = lat_offset;
@@ -529,23 +501,19 @@ namespace Plan
         man_goto_glideslope.z             = z_loiter;
         man_goto_glideslope.z_units       = IMC::Z_ALTITUDE;
 
+        debug("Goto Glideslope START POINT created...");
 
-        debug("Goto created...");
-
-        //GO-TO APPROACH GLIDESLOPE POINT
-        N_offset   = -(m_args.glideslope_distance+m_args.glideslope_approach_distance) * cos(virtual_runway.VR_heading);
-        E_offset   = -(m_args.glideslope_distance+m_args.glideslope_approach_distance) * sin(virtual_runway.VR_heading);
+        //*****************************
+        //Goto APPROACH GLIDESLOPE
+        //****************************
+        N_offset   = -(m_args.glideslope_distance+m_args.glideslope_approach_distance+m_args.virtualrunway_approach_distance) * cos(virtual_runway.VR_heading);
+        E_offset   = -(m_args.glideslope_distance+m_args.glideslope_approach_distance+m_args.virtualrunway_approach_distance) * sin(virtual_runway.VR_heading);
         lat_offset = maneuver.start_lat;
         lon_offset = maneuver.start_lon;
         height_offset = 0.0;
 
         WGS84::displace(N_offset, E_offset, 0.0,
-                  &lat_offset, &lon_offset, &height_offset);
-
-        //man_loit.lat = lat_offset;
-        //man_loit.lon = lon_offset;
-
-        // Add goto-point
+                        &lat_offset, &lon_offset, &height_offset);
 
         IMC::Goto man_goto_approach_glideslope;
 
@@ -555,11 +523,50 @@ namespace Plan
         man_goto_approach_glideslope.speed_units   = IMC::SUNITS_METERS_PS;
         man_goto_approach_glideslope.z             = z_loiter;
         man_goto_approach_glideslope.z_units       = IMC::Z_ALTITUDE;
-        //
-       // IMC::MessageList<IMC::PlanManeuver>  manlist = plan_spec.maneuvers;
+
+        //****************************
+        // Goto APPROACH VirutalRunway
+        //****************************
+        N_offset   = -(m_args.virtualrunway_approach_distance) * cos(virtual_runway.VR_heading);
+        E_offset   = -(m_args.virtualrunway_approach_distance) * sin(virtual_runway.VR_heading);
+        lat_offset = maneuver.start_lat;
+        lon_offset = maneuver.start_lon;
+        height_offset = 0.0;
+
+        WGS84::displace(N_offset, E_offset, 0.0,
+                        &lat_offset, &lon_offset, &height_offset);
+
+        IMC::Goto man_goto_approach_vr;
+
+        man_goto_approach_vr.lat           = lat_offset;
+        man_goto_approach_vr.lon           = lon_offset;
+        man_goto_approach_vr.speed         = m_args.fw_loiter.speed;
+        man_goto_approach_vr.speed_units   = IMC::SUNITS_METERS_PS;
+        man_goto_approach_vr.z             = virtual_runway.VR_altitude;
+        man_goto_approach_vr.z_units       = IMC::Z_ALTITUDE;
+
+        //****************************
+        // Goto behind VirutalRunway
+        //****************************
+        N_offset   = (m_args.virtualrunway_behind_distance) * cos(virtual_runway.VR_heading);
+        E_offset   = (m_args.virtualrunway_behind_distance) * sin(virtual_runway.VR_heading);
+        lat_offset = maneuver.end_lat;
+        lon_offset = maneuver.end_lon;
+        height_offset = 0.0;
+
+        WGS84::displace(N_offset, E_offset, 0.0,
+                        &lat_offset, &lon_offset, &height_offset);
+
+        IMC::Goto man_goto_behind_vr;
+
+        man_goto_behind_vr.lat           = lat_offset;
+        man_goto_behind_vr.lon           = lon_offset;
+        man_goto_behind_vr.speed         = m_args.fw_loiter.speed;
+        man_goto_behind_vr.speed_units   = IMC::SUNITS_METERS_PS;
+        man_goto_behind_vr.z             = virtual_runway.VR_altitude;
+        man_goto_behind_vr.z_units       = IMC::Z_ALTITUDE;
 
 
-        //
         IMC::PlanManeuver* pman1 = new IMC::PlanManeuver();
         IMC::InlineMessage<IMC::Maneuver> pman1_inline;
         pman1_inline.set(man_goto_approach_glideslope);
@@ -568,22 +575,32 @@ namespace Plan
 
         IMC::PlanManeuver* pman2  = new IMC::PlanManeuver();
         IMC::InlineMessage<IMC::Maneuver> pman2_inline;
-        pman2_inline.set(man_goto_glideslope); // SEGMENTATION FAULT
+        pman2_inline.set(man_goto_glideslope);
         pman2->maneuver_id = "4";
         pman2->data = pman2_inline;
 
-        IMC::PlanManeuver* pman3 = new IMC::PlanManeuver();
+        IMC::PlanManeuver* pman3  = new IMC::PlanManeuver();
         IMC::InlineMessage<IMC::Maneuver> pman3_inline;
-        pman3_inline.set(maneuver);
+        pman3_inline.set(man_goto_approach_vr);
         pman3->maneuver_id = "5";
         pman3->data = pman3_inline;
+
+        IMC::PlanManeuver* pman4 = new IMC::PlanManeuver();
+        IMC::InlineMessage<IMC::Maneuver> pman4_inline;
+        pman4_inline.set(maneuver);
+        pman4->maneuver_id = "6";
+        pman4->data = pman4_inline;
+
+        IMC::PlanManeuver* pman5 = new IMC::PlanManeuver();
+        IMC::InlineMessage<IMC::Maneuver> pman5_inline;
+        pman5_inline.set(man_goto_behind_vr);
+        pman5->maneuver_id = "7";
+        pman5->data = pman5_inline;
 
         IMC::PlanTransition* transition1 = new IMC::PlanTransition;
         transition1->source_man = "2";
         transition1->dest_man   = "3";
         transition1->conditions = "ManeuverIsDone";
-
-        debug("PlanTransition 1 created");
 
         IMC::PlanTransition* transition2 = new IMC::PlanTransition;
         transition2->source_man = "3";
@@ -595,27 +612,34 @@ namespace Plan
         transition3->dest_man   = "5";
         transition3->conditions = "ManeuverIsDone";
 
+        IMC::PlanTransition* transition4 = new IMC::PlanTransition;
+        transition4->source_man = "5";
+        transition4->dest_man   = "6";
+        transition4->conditions = "ManeuverIsDone";
+
+        IMC::PlanTransition* transition5 = new IMC::PlanTransition;
+        transition5->source_man = "6";
+        transition5->dest_man   = "7";
+        transition5->conditions = "ManeuverIsDone";
 
 
-        //IMC::MessageList<IMC::PlanTransition> translist = plan_spec.transitions;
         debug("Push back trans list");
         plan_spec.transitions.push_back(transition1);
         plan_spec.transitions.push_back(transition2);
         plan_spec.transitions.push_back(transition3);
+        plan_spec.transitions.push_back(transition4);
+        plan_spec.transitions.push_back(transition5);
 
         debug("Push back manuvers list");
         plan_spec.maneuvers.push_back(pman1);
         plan_spec.maneuvers.push_back(pman2);
         plan_spec.maneuvers.push_back(pman3);
-
-//        plan_spec.start_man_id = "1";
-//        plan_spec.maneuvers = manlist;
-//        plan_spec.transitions = translist;
+        plan_spec.maneuvers.push_back(pman4);
+        plan_spec.maneuvers.push_back(pman5);
 
         // Set plan
-        debug("Setting plan spec..");
         plan_db.arg.set(plan_spec);
-        debug("plan spec is set");
+        debug("PlanSpecification is set");
         // Send set plan request
         debug("Trying to send planDB");
         dispatch(plan_db);
