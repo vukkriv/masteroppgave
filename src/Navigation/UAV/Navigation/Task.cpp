@@ -110,6 +110,8 @@ namespace Navigation
         Time::Counter<float> m_rtk_wdog_deactivation;
         //! Timer for minimum time needed at activation fix level
         Time::Counter<float> m_rtk_wdog_activation;
+        //! Timer for use of position offset
+        Time::Counter<float> m_offset_wdog_deactivation;
         //! Fix level to activate
         IMC::GpsFixRtk::TypeEnum m_rtk_fix_level_activate;
         //! Fix level to deactivate
@@ -242,6 +244,7 @@ namespace Navigation
           m_rtk_wdog_comm_timeout.setTop(m_args.rtk_tout);
           m_rtk_wdog_deactivation.setTop(m_args.rtk_tout_lowerlevel);
           m_rtk_wdog_activation.setTop(m_args.rtk_min_fix_time);
+          m_offset_wdog_deactivation.setTop(m_args.offset_timeout);
         }
 
         //! Release resources.
@@ -287,7 +290,12 @@ namespace Navigation
           m_estate.z = m_estate.z + m_difference_rtk_external(2,0);
         }
 
-
+        void
+        updateOffsetTimer(void)
+        {
+          if (!m_position_offset_in_use)
+            m_offset_wdog_deactivation.reset();
+        }
 
         void
         updateRtkTimers(void)
@@ -341,6 +349,7 @@ namespace Navigation
             rtkfix->toText(std::cerr);
 
           updateRtkTimers();
+          updateOffsetTimer();
 
           if (m_rtk_available)
           {
@@ -432,7 +441,16 @@ namespace Navigation
           dispatch(m_navsources);
         }
 
-
+        void
+        checkOffsetTimeUpdateUsage()
+        {
+          if (m_offset_wdog_deactivation.overflow())
+          {
+            m_position_offset_in_use = false;
+            m_offset_wdog_deactivation.reset();
+            debug("Usage of position offset timeout.");
+          }
+        }
         void
         checkRtkTimersUpdateAvailable(void)
         {
@@ -478,6 +496,9 @@ namespace Navigation
           while (!stopping())
           {
             waitForMessages(1.0);
+
+            checkOffsetTimeUpdateUsage();
+
             bool was_rtk_available = m_rtk_available;
 
             checkRtkTimersUpdateAvailable();
@@ -505,6 +526,10 @@ namespace Navigation
             {
               disableRtk();
               didChangeUsage = true;
+              if(m_args.use_position_offset)
+              {
+                m_position_offset_in_use = true;
+              }
               inf("Disable RTK. No longer available.");
             }
 
