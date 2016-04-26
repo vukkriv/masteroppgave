@@ -42,33 +42,69 @@ namespace Navigation
       class MovingAverage
       {
       public:
-        MovingAverage(int nSamples, int nRows):
+        MovingAverage():
+            curColumn(0),
+            data(Matrix(1,1,0.0))
+          {
+          // Intentionally empty
+          }
+        /*MovingAverage(int nSamples, int nRows):
            curColumn(0),
            data(Matrix(nRows, nSamples, 0.0))
           {
               // Intentionally empty
+          }*/
+        void
+        setDataMatrix(int nSamples,int nRows)
+        {
+          if (nSamples <=0)
+          {
+            nSamples = 1;
           }
+          if (nRows <=0)
+          {
+            nRows = 1;
+          }
+
+          data.resize(nRows,nSamples);
+        }
+        int
+        getRow()
+        {
+          return data.rows();
+        }
+        int
+        getCol()
+        {
+          return data.columns();
+        }
+        int
+        getCurCol()
+        {
+          return curColumn;
+        }
+
         Matrix getAverage()
         {
           // calc average
           Matrix sum = Matrix(data.rows(), 1, 0.0);
           for (int j = 0; j<data.columns(); ++j)
           {
-            sum(0,1) += data(0,j);
-            sum(1,1) += data(1,j);
-            sum(2,1) += data(2,j);
+            sum(0,0) += data(0,j);
+            sum(1,0) += data(1,j);
+            sum(2,0) += data(2,j);
           }
           return sum/data.columns();
         }
         void newSample(Matrix sample)
         {
           // Insert new data at curColumn,
-          data(0,curColumn) = sample(0,1);
-          data(1,curColumn) = sample(1,1);
-          data(2,curColumn) = sample(2,1);
+          data(0,curColumn) = sample(0,0);
+          data(1,curColumn) = sample(1,0);
+          data(2,curColumn) = sample(2,0);
 
           // Update curColun
-          curColumn = (curColumn++) % data.columns();
+          curColumn = (++curColumn) % data.columns();
         };
 
       private:
@@ -137,7 +173,7 @@ namespace Navigation
           m_rtk_fix_level_deactivate(IMC::GpsFixRtk::RTK_FIXED),
           m_rtk_available(false),
           m_position_offset_in_use(false),
-          m_rtk_average(m_args.n_samples,3),
+          m_rtk_average(),
           m_difference_rtk_external(3,1,0.0)
 
         {
@@ -189,14 +225,13 @@ namespace Navigation
           .minimumValue("0.0");
 
           param("N Samples In Moving Average",m_args.n_samples)
-          .defaultValue("2.0")
-          .minimumValue("1.0");
+          .defaultValue("2")
+          .minimumValue("1");
 
           // Default, we use full external state
           m_navsources.mask = (NS_EXTERNAL_FULLSTATE | NS_EXTERNAL_AHRS | NS_EXTERNAL_POSREF);
 
           m_extnav.state.set(IMC::EstimatedState());
-
 
           bind<IMC::GpsFixRtk>(this);
           bind<IMC::ExternalNavData>(this);
@@ -245,6 +280,7 @@ namespace Navigation
           m_rtk_wdog_deactivation.setTop(m_args.rtk_tout_lowerlevel);
           m_rtk_wdog_activation.setTop(m_args.rtk_min_fix_time);
           m_offset_wdog_deactivation.setTop(m_args.offset_timeout);
+          m_rtk_average.setDataMatrix(m_args.n_samples,3);
         }
 
         //! Release resources.
@@ -263,7 +299,7 @@ namespace Navigation
         {
           m_extnav = *navdata;
 
-          if (!m_position_offset_in_use)
+          if (!m_position_offset_in_use && m_rtk_available && m_args.use_position_offset)
           {
             updateDifference();
           }
@@ -351,7 +387,7 @@ namespace Navigation
           updateRtkTimers();
           updateOffsetTimer();
 
-          if (m_rtk_available)
+          if (m_rtk_available && m_args.use_position_offset)
           {
             updateRtkAverage();
           }
@@ -413,6 +449,20 @@ namespace Navigation
           newSample(0,0) = m_rtk.n;
           newSample(1,0) = m_rtk.e;
           newSample(2,0) = m_rtk.d;
+          // Apply antenna offset
+          if( m_args.antenna_height > 0.03 || m_args.antenna_height < -0.03 )
+          {
+            float ox, oy, oz;
+            BodyFixedFrame::toInertialFrame(m_estate.phi, m_estate.theta, m_estate.psi,
+                                            0.0, 0.0, -m_args.antenna_height,
+                                            &ox, &oy, &oz);
+
+            newSample(0,0) -= ox;
+            newSample(1,0) -= oy;
+            newSample(2,0) -= oz;
+
+            spew("Added antenna offset (ned): %.3f, %.3f, %.3f", ox, oy, oz);
+          }
           m_rtk_average.newSample(newSample);
         }
 
@@ -431,7 +481,7 @@ namespace Navigation
           m_difference_rtk_external(0,0) = average(0,0) - n;
           m_difference_rtk_external(1,0) = average(1,0) - e;
           m_difference_rtk_external(2,0) = average(2,0) - d;
-          debug("Difference: n = %f e = %f d = %f",m_difference_rtk_external(0,0),m_difference_rtk_external(1,0),m_difference_rtk_external(2,0));
+          inf("Difference: n = %f e = %f d = %f",m_difference_rtk_external(0,0),m_difference_rtk_external(1,0),m_difference_rtk_external(2,0));
         }
 
         void
