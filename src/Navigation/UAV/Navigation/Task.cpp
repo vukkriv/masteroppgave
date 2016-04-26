@@ -48,12 +48,6 @@ namespace Navigation
           {
           // Intentionally empty
           }
-        /*MovingAverage(int nSamples, int nRows):
-           curColumn(0),
-           data(Matrix(nRows, nSamples, 0.0))
-          {
-              // Intentionally empty
-          }*/
         void
         setDataMatrix(int nSamples,int nRows)
         {
@@ -63,7 +57,7 @@ namespace Navigation
           }
           if (nRows <=0)
           {
-            nRows = 1;
+            nRows = 3;
           }
 
           data.resize(nRows,nSamples);
@@ -299,11 +293,6 @@ namespace Navigation
         {
           m_extnav = *navdata;
 
-          if (!m_position_offset_in_use && m_rtk_available && m_args.use_position_offset)
-          {
-            updateDifference();
-          }
-
           // Just check if using rtk or not
           if (!usingRtk())
           {
@@ -311,6 +300,7 @@ namespace Navigation
             m_estate = *m_extnav.state.get();
             if (m_position_offset_in_use)
             {
+              inf("Adding offset");
               addOffset();
             }
 
@@ -321,9 +311,10 @@ namespace Navigation
         void
         addOffset()
         {
-          m_estate.x = m_estate.x + m_difference_rtk_external(0,0);
-          m_estate.y = m_estate.y + m_difference_rtk_external(1,0);
-          m_estate.z = m_estate.z + m_difference_rtk_external(2,0);
+          Matrix average = m_rtk_average.getAverage();
+          m_estate.x = m_estate.x + average(0,0);
+          m_estate.y = m_estate.y + average(1,0);
+          m_estate.z = m_estate.z + average(2,0);
         }
 
         void
@@ -389,7 +380,7 @@ namespace Navigation
 
           if (m_rtk_available && m_args.use_position_offset)
           {
-            updateRtkAverage();
+            updateDifference();
           }
 
           // Just check if using rtk or not
@@ -443,12 +434,20 @@ namespace Navigation
         }
 
         void
-        updateRtkAverage()
+        updateDifference()
         {
+          double lat = m_extnav.state.get()->lat;
+          double lon = m_extnav.state.get()->lon;
+          double height = m_extnav.state.get()->height;
+          double n;
+          double e;
+          double d;
+          Coordinates::WGS84::displace(m_extnav.state.get()->x,m_extnav.state.get()->y,m_extnav.state.get()->z,&lat,&lon,&height);
+          Coordinates::WGS84::displacement(m_rtk.base_lat,m_rtk.base_lon,m_rtk.base_height,lat,lon,height,&n,&e,&d);
           Matrix newSample = Matrix(3,1,0.0);
-          newSample(0,0) = m_rtk.n;
-          newSample(1,0) = m_rtk.e;
-          newSample(2,0) = m_rtk.d;
+          newSample(0,0) = m_rtk.n - n;
+          newSample(1,0) = m_rtk.e - e;
+          newSample(2,0) = m_rtk.d - d;
           // Apply antenna offset
           if( m_args.antenna_height > 0.03 || m_args.antenna_height < -0.03 )
           {
@@ -464,24 +463,8 @@ namespace Navigation
             spew("Added antenna offset (ned): %.3f, %.3f, %.3f", ox, oy, oz);
           }
           m_rtk_average.newSample(newSample);
-        }
-
-        void
-        updateDifference()
-        {
-          double lat = m_extnav.state.get()->lat;
-          double lon = m_extnav.state.get()->lon;
-          double height = m_extnav.state.get()->height;
-          double n;
-          double e;
-          double d;
-          Coordinates::WGS84::displace(m_extnav.state.get()->x,m_extnav.state.get()->y,m_extnav.state.get()->z,&lat,&lon,&height);
-          Coordinates::WGS84::displacement(m_rtk.base_lat,m_rtk.base_lon,m_rtk.base_height,lat,lon,height,&n,&e,&d);
           Matrix average = m_rtk_average.getAverage();
-          m_difference_rtk_external(0,0) = average(0,0) - n;
-          m_difference_rtk_external(1,0) = average(1,0) - e;
-          m_difference_rtk_external(2,0) = average(2,0) - d;
-          inf("Difference: n = %f e = %f d = %f",m_difference_rtk_external(0,0),m_difference_rtk_external(1,0),m_difference_rtk_external(2,0));
+          debug("Difference: n = %f e = %f d = %f",average(0,0),average(1,0),average(2,0));
         }
 
         void
@@ -497,8 +480,7 @@ namespace Navigation
           if (m_offset_wdog_deactivation.overflow())
           {
             m_position_offset_in_use = false;
-            m_offset_wdog_deactivation.reset();
-            debug("Usage of position offset timeout.");
+            inf("Usage of position offset timeout.");
           }
         }
         void
@@ -567,7 +549,6 @@ namespace Navigation
               didChangeAvailability = true;
             }
 
-
             // Check if there is a change in rtk usage
             bool didChangeUsage = false;
 
@@ -579,6 +560,7 @@ namespace Navigation
               if(m_args.use_position_offset)
               {
                 m_position_offset_in_use = true;
+                inf("Activating position offset");
               }
               inf("Disable RTK. No longer available.");
             }
@@ -619,7 +601,10 @@ namespace Navigation
             {
               dispatch(m_navsources);
             }
-
+            if (!m_position_offset_in_use)
+            {
+              m_offset_wdog_deactivation.reset();
+            }
 
           }
         }
