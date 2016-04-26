@@ -195,7 +195,7 @@ namespace Navigation
         //! If this is the first rssi value consumed,
         //! initiate zhatm(0,0) (i.e. the rssi estimate) to this rssi value:
         if (m_initflag == false){
-          m_zhatm(0,0) = m_rssi.value;
+          m_zhatm(0,0) = m_rssi.value * 0.5;
           m_initflag = true;
         }
 
@@ -213,6 +213,7 @@ namespace Navigation
         // Inputs to the observer:
         double y_k = rssi_arg.value;
         double psi_est = states_arg.psi; // feedback of actual heading from estimatedstate
+        //inf("psi: %f", psi_est);
         //double psi_est = psi_arg.value; // feedback of desired heading from optimizer
 
         //inf("Pm is: ");
