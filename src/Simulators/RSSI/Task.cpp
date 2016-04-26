@@ -28,6 +28,10 @@
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 #include "math.h"
+#include <stdlib.h>
+#include <stdio.h>
+#include <time.h>
+
 
 namespace Simulators
 {
@@ -35,8 +39,15 @@ namespace Simulators
   {
     using DUNE_NAMESPACES;
 
+    struct Arguments
+    {
+      bool sim_flag;
+    };
+
     struct Task: public DUNE::Tasks::Task
     {
+      //! Task arguments:
+      Arguments m_args;
 
       //double lat_uav;
       //double lon_uav;
@@ -44,7 +55,7 @@ namespace Simulators
       double m_lon_base;
       double m_rssi;
       //double dist;
-      //IMC::GpsFix gpsdata;
+      IMC::GpsFix gpsdata;
       IMC::EstimatedState estate;
       IMC::RSSI m_sim_rssi;
 
@@ -57,7 +68,13 @@ namespace Simulators
         m_rssi(0)
       //dist(0.0)
       {
-        //bind<IMC::GpsFix>(this);
+
+        param("SimFlag", m_args.sim_flag)
+        .defaultValue("true")
+        .description("True if unicycle simulator is used");
+
+
+        bind<IMC::GpsFix>(this);
         bind<IMC::EstimatedState>(this);
       }
 
@@ -97,52 +114,64 @@ namespace Simulators
       {
       }
 
-/*
-      void
-      consume(const IMC::GpsFix* gps){
-        gpsdata = *gps;
-        //inf("gps lat: %f: ", gps->lat);
 
-        calcSimRSSI_gps(gpsdata);
+      void
+      consume(const IMC::GpsFix* gps)
+      {
+        if(!m_args.sim_flag){
+          if(resolveEntity(gps->getSourceEntity()) == "Autopilot"){
+            gpsdata = *gps;
+            //inf("Calculating RSSI based on GpsFix");
+            calcSimRSSI_gps(gpsdata);
+          }
+        }
       }
-*/
+
 
         void
         consume(const IMC::EstimatedState* msg)
         {
           estate = *msg;
 
-          calcSimRSSI(estate);
-
+          if (m_args.sim_flag){
+              calcSimRSSI_ned(estate);
+          }
+          /*
+          else{
+            calcSimRSSI_ned(estate);
+          }
+          */
         }
 
-/*
+
 
       void
-      calcSimRSSI_gps(IMC::GpsFix gpsarg){
-        double lat_uav = gpsarg.lat;
-        double lon_uav = gpsarg.lon;
+      calcSimRSSI_gps(IMC::GpsFix gpsarg)
+      {
+          double lat_uav = gpsarg.lat;
+          double lon_uav = gpsarg.lon;
 
-        double dlat = m_lat_base - lat_uav;
-        double dlon = m_lon_base - lon_uav;
+          double dlat = m_lat_base - lat_uav;
+          double dlon = m_lon_base - lon_uav;
 
-        // Distance from base station to uav (in rad):
-        double dist = sqrt(pow(dlat,2) + pow(dlon,2));
+          // Distance from base station to uav (in rad):
+          double dist = sqrt(pow(dlat,2) + pow(dlon,2));
 
-        // RSSI test formula:
-        double rssi = 100*exp(-dist*100);
+          // RSSI test formula:
+          double rssi = 100*exp(-dist*1000);
 
-        // use RSSI message from IMC
-        IMC::RSSI sim_rssi;
-        sim_rssi.value = rssi;
+          // use RSSI message from IMC
+          IMC::RSSI sim_rssi;
+          sim_rssi.value = rssi;
 
-        dispatch(sim_rssi);
+          dispatch(sim_rssi);
 
       }
-*/
+
 
         void
-        calcSimRSSI(IMC::EstimatedState statearg){
+        calcSimRSSI(IMC::EstimatedState statearg)
+        {
           double lat_uav = statearg.lat;
           double lon_uav = statearg.lon;
 
@@ -165,16 +194,45 @@ namespace Simulators
 
         }
 
+        void
+        calcSimRSSI_ned(IMC::EstimatedState statearg)
+        {
+          double dist_x = statearg.x;
+          double dist_y = statearg.y;
+
+          // Distance from base station to uav (in rad):
+          double dist = sqrt(pow(dist_x,2) + pow(dist_y,2));
+
+          // RSSI test formula:
+          m_rssi = 100*exp(-dist*0.001);
+
+          //! White noise:
+          double rand = randNumber();
+
+          // use RSSI message from IMC
+          //IMC::RSSI sim_rssi;
+          m_sim_rssi.value = m_rssi + rand;
+
+          dispatch(m_sim_rssi);
+
+        }
+
+        //! Generate random number used to simulate white noise.
+        double
+        randNumber(void)
+        {
+         srand(time(NULL));
+         double r = rand() % 10 - 5;
+         return r;
+        }
 
 
       //! Main loop.
       void
       onMain(void)
       {
-
         while (!stopping())
         {
-
           waitForMessages(1.0);
         }
       }
