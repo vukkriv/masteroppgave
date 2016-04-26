@@ -37,10 +37,14 @@ namespace Simulators
 
     struct Arguments
     {
-      //! Initial position of vehicle in llh in rad:
+      //! Initial position of vehicle in llh in deg:
       double lat0;
       double lon0;
       double height0;
+
+      //! Initial displacement of vehicle in meters north and meters east:
+      double x0;
+      double y0;
 
       //! Desired velocity:
       double V_d;
@@ -65,30 +69,47 @@ namespace Simulators
       long double m_current_lat;
       long double m_current_lon;
 
+      //! Base station position (lat-lon):
+      long double m_base_lat;
+      long double m_base_lon;
+
       // Previous and current time:
       double m_time_prev;
       double m_dt;
 
+      //! Estimated state of vehicle:
+      IMC::EstimatedState m_estate;
+
       Task(const std::string& name, Tasks::Context& ctx):
         Periodic(name, ctx),
         m_displacement(2,1,0.0),
-        m_current_lat(0),
-        m_current_lon(0),
+        m_current_lat(0.0),
+        m_current_lon(0.0),
+        m_base_lat(1.11054269),
+        m_base_lon(0.169757722),
         m_time_prev(Clock::get()),
-        m_dt(0)
+        m_dt(0.0)
 
       {
         param("Lat0", m_args.lat0)
-        .defaultValue("0")
+        .defaultValue("0.0")
         .description("");
 
         param("Lon0", m_args.lon0)
-        .defaultValue("0")
+        .defaultValue("0.0")
         .description("");
 
         param("Height0", m_args.height0)
         .defaultValue("100")
         .description("");
+
+        param("X0", m_args.x0)
+        .defaultValue("1200.0")
+        .description("Initial displacement of vehicle in meters north");
+
+        param("Y0", m_args.y0)
+        .defaultValue("1000.0")
+        .description("Initial displacement of vehicle in meters east");
 
         param("DesiredVelocity", m_args.V_d)
         .defaultValue("10")
@@ -99,20 +120,23 @@ namespace Simulators
         .description("Test Mode");
 
         param("TestHeading", m_args.testHeading)
-        .defaultValue("0")
+        .defaultValue("0.0")
         .description("Test Heading in degrees");
 
         //! Bind incoming IMC message:
         bind<IMC::DesiredHeading>(this);
 
         //! Initiate current position matrix:
-        //initPos();
+        initPos();
       }
 
-/*
+
       void
       initPos(void)
       {
+
+        m_estate.lat = m_base_lat;
+        m_estate.lon = m_base_lon;
 
         // Os:
         //m_current_lat = 1.091081534;
@@ -123,11 +147,11 @@ namespace Simulators
         //m_current_lon = 0.17263353573;
 
         // Gloshaugen:
-        m_current_lat = 63.418545 * (Math::c_pi/180.0); //1.1110698474;
-        m_current_lon = 10.402840 * (Math::c_pi/180.0); //0.17263353573;
+        //m_current_lat = 63.418545 * (Math::c_pi/180.0); //1.1110698474;
+        //m_current_lon = 10.402840 * (Math::c_pi/180.0); //0.17263353573;
 
       }
-*/
+
 
       //! Update internal state with new parameter values.
       void
@@ -153,6 +177,9 @@ namespace Simulators
       {
         m_current_lat = m_args.lat0 * (Math::c_pi/180.0);
         m_current_lon = m_args.lon0 * (Math::c_pi/180.0);
+
+        m_displacement(0) = m_args.x0;
+        m_displacement(1) = m_args.y0;
 
       }
 
@@ -194,7 +221,10 @@ namespace Simulators
         {
           //! Test heading:
           psi_d = m_args.testHeading * (Math::c_pi/180.0);
-        }else{
+        }
+        else
+        {
+          //! ES heading:
           psi_d = m_psi_d.value;
         }
 
@@ -207,25 +237,29 @@ namespace Simulators
         //Matrix next_pos = m_current_pos + m_args.dvelocity*m_args.T * R;
 
         //! Calculate displacement:
-        //! Based on simple unicycle equations, m_displacement = x_{k+1} - x_k integrated with forward euler.
-        m_displacement = m_args.V_d*dt * R;
+        //! Based on simple unicycle equations, m_displacement = x_{k+1} - x_k integrated with Forward Euler.
+        //m_displacement = m_args.V_d*dt * R;
+        m_displacement = m_displacement + m_args.V_d*dt * R;
+
 
         //! Update current position:
         //m_displacement = next_pos;
 
         //! NED to LLH transformation:
-        WGS84::displace(m_displacement(0),m_displacement(1), &m_current_lat, &m_current_lon);
+        //WGS84::displace(m_displacement(0),m_displacement(1), &m_current_lat, &m_current_lon);
 
         //! Print current latlon position:
         //inf("Current lat: %Lf", m_current_lat);
         //inf("Current lon: %Lf", m_current_lon);
 
         //! Store next_pos in estate and dispatch estate to IMC message bus:
-        IMC::EstimatedState estate;
-        estate.lat = m_current_lat;
-        estate.lon = m_current_lon;
-        estate.psi = psi_d;
-        dispatch(estate);
+        //IMC::EstimatedState estate;
+        //estate.lat = m_current_lat;
+        //estate.lon = m_current_lon;
+        m_estate.x = m_displacement(0);
+        m_estate.y = m_displacement(1);
+        m_estate.psi = psi_d;
+        dispatch(m_estate);
 
 
       }
