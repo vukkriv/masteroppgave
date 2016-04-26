@@ -154,8 +154,6 @@ namespace Navigation
         bool m_position_offset_in_use;
         //! Average between N rtk messages
         MovingAverage m_rtk_average;
-        //! Difference between rtk fix position and external nav data
-        Matrix m_difference_rtk_external;
 
 
         //! Constructor.
@@ -167,9 +165,7 @@ namespace Navigation
           m_rtk_fix_level_deactivate(IMC::GpsFixRtk::RTK_FIXED),
           m_rtk_available(false),
           m_position_offset_in_use(false),
-          m_rtk_average(),
-          m_difference_rtk_external(3,1,0.0)
-
+          m_rtk_average()
         {
 
           param("Use RTK If Available", m_args.use_rtk)
@@ -378,6 +374,7 @@ namespace Navigation
           updateRtkTimers();
           updateOffsetTimer();
 
+          // Check is a new difference value should be added to the average difference class
           if (m_rtk_available && m_args.use_position_offset)
           {
             updateDifference();
@@ -445,6 +442,7 @@ namespace Navigation
           Coordinates::WGS84::displace(m_extnav.state.get()->x,m_extnav.state.get()->y,m_extnav.state.get()->z,&lat,&lon,&height);
           Coordinates::WGS84::displacement(m_rtk.base_lat,m_rtk.base_lon,m_rtk.base_height,lat,lon,height,&n,&e,&d);
           Matrix newSample = Matrix(3,1,0.0);
+          // Calculating the difference
           newSample(0,0) = m_rtk.n - n;
           newSample(1,0) = m_rtk.e - e;
           newSample(2,0) = m_rtk.d - d;
@@ -463,6 +461,7 @@ namespace Navigation
             spew("Added antenna offset (ned): %.3f, %.3f, %.3f", ox, oy, oz);
           }
           m_rtk_average.newSample(newSample);
+          // For debuging purpose
           Matrix average = m_rtk_average.getAverage();
           debug("Difference: n = %f e = %f d = %f",average(0,0),average(1,0),average(2,0));
         }
