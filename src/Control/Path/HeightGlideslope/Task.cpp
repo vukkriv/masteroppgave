@@ -66,6 +66,48 @@ namespace Control
 
       };
 
+      class ReferenceModel
+            {
+            public:
+              ReferenceModel():
+                A(Matrix(3,3, 0.0)),
+                B(3,1, 0.0),
+                I(3),
+                z(3,1, 0.0),
+                T(0.4),
+                w(1/T),
+                zeta(1.0)
+            {
+                /*
+                 * A = [0    1               0;
+                 *      0    0               1;
+                 *      -w^3 -(2*zeta+1)*w^2 -(2*zeta+1)*w]
+                 */
+                A(0,1)=1;
+                A(1,2)=1;
+                A(2,0)=-w*-w*-w;
+                A(2,1)=-(2*zeta+1)*w*w;
+                A(2,2)=-(2*zeta+1)*w;
+
+                /*
+                 * B = [0
+                 *      0;
+                 *      w^3]
+                 */
+                B(2,0)=w*w*w;
+                I(3);
+            }
+
+            public:
+              Matrix A;
+              Matrix B;
+              Matrix I;
+              Matrix z;
+              double T; //Time-constant
+              double w; //natural frequency
+              double zeta; //Relative damping ratio
+            };
+
       struct Task: public DUNE::Control::PathController
       {
         Arguments m_args;
@@ -85,14 +127,13 @@ namespace Control
         bool m_first_run;
         double los_angle;
         double start_time;
-        bool first_waypoint;
         double last_end_z;
         double last_start_z;
+        bool first_waypoint;
         bool m_shifting_waypoint;
         double state_z_shifting;
         double last_glideslope_angle;
-
-
+        ReferenceModel m_refmodel;
 
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
@@ -107,8 +148,8 @@ namespace Control
           desired_z_last(0.0),
           m_first_run(true),
           los_angle(1.0),
-          last_start_z(9999),
           start_time(99999),
+          last_start_z(9999),
           first_waypoint(true),
           m_shifting_waypoint(false)
 
@@ -203,7 +244,7 @@ namespace Control
             enableControlLoops(IMC::CL_ALTITUDE);
             enableControlLoops(IMC::CL_VERTICAL_RATE);
           }
-
+          //Check if tracking to first waypoint
           if(last_start_z != ts.start.z){
             if(last_end_z==ts.start.z){
               first_waypoint = false;
@@ -267,13 +308,21 @@ namespace Control
 
           if (m_first_run){
             desired_z_last = zref.value;
+            m_refmodel.z(0,0)=zref.value;
             m_first_run = false;
           }
+
+          //*****************************************
+          // Reference model WIP, replacing LP filter
+          //*****************************************
+          //m_refmodel.z= (m_refmodel.I + (ts.delta*m_refmodel.A))*m_refmodel.z + (ts.delta*m_refmodel.B) * zref.value;
+          //desired_z_last = m_refmodel.z(0,0);
 
           //LP-Filter for desired z. Prevents jump in Z_ref in transition to tracking a new waypoint!
           double lp_degree = 0.97;
           desired_z_last = lp_degree*desired_z_last + (1-lp_degree)*zref.value;
-          last_glideslope_angle =0.99*last_glideslope_angle + (1-0.99)*glideslope_angle;
+          double lp_glideslope_angle = 0.7;
+          last_glideslope_angle =lp_glideslope_angle*last_glideslope_angle + (1-lp_glideslope_angle)*glideslope_angle;
           zref.value = desired_z_last;
           glideslope_angle = last_glideslope_angle;
 
