@@ -73,8 +73,8 @@ namespace Control
                 A(Matrix(3,3, 0.0)),
                 B(3,1, 0.0),
                 I(3),
-                z(3,1, 0.0),
-                T(0.4),
+                x(3,1, 0.0),
+                T(0.7),
                 w(1/T),
                 zeta(1.0)
             {
@@ -97,12 +97,11 @@ namespace Control
                 B(2,0)=w*w*w;
                 I(3);
             }
-
             public:
               Matrix A;
               Matrix B;
               Matrix I;
-              Matrix z;
+              Matrix x;
               double T; //Time-constant
               double w; //natural frequency
               double zeta; //Relative damping ratio
@@ -132,8 +131,8 @@ namespace Control
         bool first_waypoint;
         bool m_shifting_waypoint;
         double state_z_shifting;
-        double last_glideslope_angle;
-        ReferenceModel m_refmodel;
+        ReferenceModel m_refmodel_z;
+        ReferenceModel m_refmodel_gamma;
 
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
@@ -244,9 +243,12 @@ namespace Control
             enableControlLoops(IMC::CL_ALTITUDE);
             enableControlLoops(IMC::CL_VERTICAL_RATE);
           }
+
           //Check if tracking to first waypoint
-          if(last_start_z != ts.start.z){
-            if(last_end_z==ts.start.z){
+          double start_z = ts.start.z;
+
+          if(last_start_z != start_z){
+            if(last_end_z == start_z){
               first_waypoint = false;
             }
             else{
@@ -254,7 +256,7 @@ namespace Control
             }
           }
 
-          if(ts.start.z == last_end_z){
+          if(start_z == last_end_z){
             first_waypoint = false;
           }
 
@@ -305,41 +307,39 @@ namespace Control
             zref.value = tan(glideslope_angle)*(ts.track_length - ts.range) + abs(start_z); //Current desired z
             zref.value = trimValue(zref.value,tan(glideslope_angle)*(ts.track_length)+ abs(start_z),abs(start_z));
           }
-
           if (m_first_run){
-            desired_z_last = zref.value;
-            m_refmodel.z(0,0)=zref.value;
+            m_refmodel_z.x(0,0)     = zref.value;
+            m_refmodel_gamma.x(0,0) = glideslope_angle;
             m_first_run = false;
           }
 
-          //*****************************************
-          // Reference model WIP, replacing LP filter
-          //*****************************************
-          //m_refmodel.z= (m_refmodel.I + (ts.delta*m_refmodel.A))*m_refmodel.z + (ts.delta*m_refmodel.B) * zref.value;
-          //desired_z_last = m_refmodel.z(0,0);
+       //   if(ts.loitering){
+       //     zref.value = ts.loiter.center.z;
+       //     glideslope_angle = 0.0;
+       //     inf("Loiter-z: %f",ts.loiter.center.z);
+       //     inf("end-z : %f",ts.end.z);
+       //     inf("start-z : %f",ts.start.z);
+       //   }
 
-          //LP-Filter for desired z. Prevents jump in Z_ref in transition to tracking a new waypoint!
-          double lp_degree = 0.97;
-          desired_z_last = lp_degree*desired_z_last + (1-lp_degree)*zref.value;
-          double lp_glideslope_angle = 0.7;
-          last_glideslope_angle =lp_glideslope_angle*last_glideslope_angle + (1-lp_glideslope_angle)*glideslope_angle;
-          zref.value = desired_z_last;
-          glideslope_angle = last_glideslope_angle;
+          //****************************************************
+          // Reference model for desired Z and flight-path angle
+          //****************************************************
+
+          m_refmodel_z.x = (m_refmodel_z.I + (ts.delta*m_refmodel_z.A))*m_refmodel_z.x + (ts.delta*m_refmodel_z.B) * zref.value;
+          zref.value = m_refmodel_z.x(0,0);
+
+          m_refmodel_gamma.x = (m_refmodel_gamma.I + (ts.delta*m_refmodel_gamma.A))*m_refmodel_gamma.x + (ts.delta*m_refmodel_gamma.B) * glideslope_angle;
+          glideslope_angle = m_refmodel_gamma.x(0,0);
 
 
-          double h_error = (zref.value - (state.height - state.z))*cos(glideslope_angle); // H_error w.r.t flight-path
-
+          //Calculate height error along glideslope
+          double h_error = (zref.value - (state.height - state.z))*cos(glideslope_angle);
           spew("H_error: %f",h_error);
 
           //Integrator
           double timestep = m_last_step.getDelta();
           m_integrator = m_integrator + timestep*h_error;
-          m_integrator = trimValue(m_integrator,-2,2); //Anti wind-up at 2 degrees
-
-
-          //double h_app = Vg*m_args.k_hv; //LOS Approach distance
-          //  double h_error_trimmed = trimValue(abs(h_error),0,m_args.k_r); //Force the look-ahead distance to be within a circle with radius m_args.k_r
-          //  double h_app = sqrt(m_args.k_r*m_args.k_r - h_error_trimmed*h_error_trimmed);
+          m_integrator = trimValue(m_integrator,-1,1); //Anti wind-up at 1 meter
 
 
           //Calculate look-ahead distance based on glide-slope up, down or straight line
@@ -358,15 +358,15 @@ namespace Control
           else{//Straight line
             double h_error_trimmed = trimValue(abs(h_error),0.0,m_args.k_r_line-0.5); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             double h_app = sqrt(m_args.k_r_line*m_args.k_r_line - h_error_trimmed*h_error_trimmed);
-            los_angle = atan2(m_args.k_ph_line*h_error + m_args.k_ih_line*m_integrator,h_app); //Calculate LOS-angle glideslope down
+            los_angle = atan2(m_args.k_ph_line*h_error + m_args.k_ih_line*m_integrator,h_app); //Calculate LOS-angle straight line
             spew("Glideslope LINE ! %f",glideslope_angle);
           }
-          //Limit los_angle based on saturation limit for climb-rate.
-          los_angle = trimValue(los_angle,-0.15,0.15);
+
+          los_angle = trimValue(los_angle,-Angles::radians(3.0),Angles::radians(3.0));
           spew("Los_angle: %f",los_angle*(180/3.14159265));
 
           double gamma_cmd = glideslope_angle + los_angle; //Commanded flight path angle
-          double h_dot_desired = Vg*sin(gamma_cmd);		 //Convert commanded flight path angle to demanded vertical-rate.
+          double h_dot_desired = Vg*sin(gamma_cmd);        //Convert commanded flight path angle to demanded vertical-rate.
 
           m_vrate.value = h_dot_desired;
 
@@ -377,9 +377,6 @@ namespace Control
           dispatch(m_vrate);
           zref.z_units=Z_HEIGHT;
           dispatch(zref);
-
-          last_glideslope_angle = glideslope_angle;
-
         }
       };
     }
