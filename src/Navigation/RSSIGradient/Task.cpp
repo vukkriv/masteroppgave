@@ -195,7 +195,7 @@ namespace Navigation
         //! If this is the first rssi value consumed,
         //! initiate zhatm(0,0) (i.e. the rssi estimate) to this rssi value:
         if (m_initflag == false){
-          m_zhatm(0,0) = m_rssi.value * 0.5;
+          m_zhatm(0,0) = m_rssi.value * 0.9;
           m_initflag = true;
         }
 
