@@ -107,6 +107,8 @@ namespace Navigation
 
       };
 
+
+
       using DUNE_NAMESPACES;
 
       struct Arguments {
@@ -118,9 +120,10 @@ namespace Navigation
         std::string rtk_fix_level_deactivate;
         double base_alt;
         double antenna_height;
-        bool use_position_offset;
-        float offset_timeout;
-        int n_samples;
+        bool shortRtkLoss_enable;
+        float shortRtkLoss__activate;
+        float shortRtkLoss__deactivate;
+        int shortRtkLoss_n_samples;
 
       };
 
@@ -140,8 +143,10 @@ namespace Navigation
         Time::Counter<float> m_rtk_wdog_deactivation;
         //! Timer for minimum time needed at activation fix level
         Time::Counter<float> m_rtk_wdog_activation;
-        //! Timer for use of position offset
-        Time::Counter<float> m_offset_wdog_deactivation;
+        //! Timer for deactivation of short rtk loss compensator
+        Time::Counter<float> m_shortRtkLoss_wdog_deactivation;
+        //! Timer for activation of short rtk loss compensator
+        Time::Counter<float> m_shortRtkLoss_wdog_activation;
         //! Fix level to activate
         IMC::GpsFixRtk::TypeEnum m_rtk_fix_level_activate;
         //! Fix level to deactivate
@@ -151,7 +156,7 @@ namespace Navigation
         //! Is RTK available
         bool m_rtk_available;
         //! Position offset in use
-        bool m_position_offset_in_use;
+        bool m_shortRtkLoss_in_use;
         //! Average between N rtk messages
         MovingAverage m_rtk_average;
 
@@ -164,8 +169,7 @@ namespace Navigation
           m_rtk_fix_level_activate(IMC::GpsFixRtk::RTK_FIXED),
           m_rtk_fix_level_deactivate(IMC::GpsFixRtk::RTK_FIXED),
           m_rtk_available(false),
-          m_position_offset_in_use(false),
-          m_rtk_average()
+          m_shortRtkLoss_in_use(false)
         {
 
           param("Use RTK If Available", m_args.use_rtk)
@@ -205,18 +209,30 @@ namespace Navigation
           .visibility(Parameter::VISIBILITY_USER)
           .description("If > 0, apply correction from attitude");
 
-          param("Use Position Offset",m_args.use_position_offset)
+          param("Short RtkFix Loss Compensator - Enable",m_args.shortRtkLoss_enable)
           .defaultValue("false")
           .visibility(Parameter::VISIBILITY_USER)
           .description("Use a position offset to minimize the position difference between the external and internal nav data");
 
-          param("Offset Timeout",m_args.offset_timeout)
-          .defaultValue("1.0")
+          param("Short RtkFix Loss Compensator - Time activation",m_args.shortRtkLoss__activate)
+                    .defaultValue("0.2")
+                    .minimumValue("0.0");
+
+          param("Short RtkFix Loss Compensator - Time deactivation",m_args.shortRtkLoss__deactivate)
+          .defaultValue("2.0")
           .minimumValue("0.0");
 
-          param("N Samples In Moving Average",m_args.n_samples)
-          .defaultValue("2")
+          param("Short RtkFix Loss Compensator - N samples to average",m_args.shortRtkLoss_n_samples)
+          .defaultValue("10")
           .minimumValue("1");
+
+
+          // param:
+          /*"Short RtkFix Loss Compensator - Enable"
+          "Short RtkFix Loss Compensator - Time deactivation"
+          "Short RtkFix Loss Compensator - N samples to average"
+
+          m_args.shortRtkLoss_enable*/
 
           // Default, we use full external state
           m_navsources.mask = (NS_EXTERNAL_FULLSTATE | NS_EXTERNAL_AHRS | NS_EXTERNAL_POSREF);
@@ -269,8 +285,9 @@ namespace Navigation
           m_rtk_wdog_comm_timeout.setTop(m_args.rtk_tout);
           m_rtk_wdog_deactivation.setTop(m_args.rtk_tout_lowerlevel);
           m_rtk_wdog_activation.setTop(m_args.rtk_min_fix_time);
-          m_offset_wdog_deactivation.setTop(m_args.offset_timeout);
-          m_rtk_average.setDataMatrix(m_args.n_samples,3);
+          m_shortRtkLoss_wdog_deactivation.setTop(m_args.shortRtkLoss__deactivate);
+          m_shortRtkLoss_wdog_activation.setTop(m_args.shortRtkLoss__activate);
+          m_rtk_average.setDataMatrix(m_args.shortRtkLoss_n_samples,3);
         }
 
         //! Release resources.
@@ -290,15 +307,21 @@ namespace Navigation
           m_extnav = *navdata;
 
           // Just check if using rtk or not
+          if (usingRtk())
+          {
+            if (m_args.shortRtkLoss_enable && m_shortRtkLoss_in_use)
+            {
+              inf("Adding offset");
+              m_estate = *m_extnav.state.get();
+              addOffset();
+
+              sendStateAndSource();
+            }
+          }
           if (!usingRtk())
           {
 
             m_estate = *m_extnav.state.get();
-            if (m_position_offset_in_use)
-            {
-              inf("Adding offset");
-              addOffset();
-            }
 
             sendStateAndSource();
           }
@@ -314,10 +337,10 @@ namespace Navigation
         }
 
         void
-        updateOffsetTimer(void)
+        updateShortRtkLossTimer(void)
         {
-          if (!m_position_offset_in_use)
-            m_offset_wdog_deactivation.reset();
+          if (m_args.shortRtkLoss_enable)
+            m_shortRtkLoss_wdog_activation.reset();
         }
 
         void
@@ -372,10 +395,9 @@ namespace Navigation
             rtkfix->toText(std::cerr);
 
           updateRtkTimers();
-          updateOffsetTimer();
 
           // Check is a new difference value should be added to the average difference class
-          if (m_rtk_available && m_args.use_position_offset)
+          if (m_rtk_available && m_args.shortRtkLoss_enable && m_rtk.type==IMC::GpsFixRtk::RTK_FIXED)
           {
             updateDifference();
           }
@@ -421,6 +443,7 @@ namespace Navigation
             }
 
             sendStateAndSource();
+            updateShortRtkLossTimer();
 
             spew("Sending state using RTK. ");
           }
@@ -463,7 +486,7 @@ namespace Navigation
           m_rtk_average.newSample(newSample);
           // For debuging purpose
           Matrix average = m_rtk_average.getAverage();
-          debug("Difference: n = %f e = %f d = %f",average(0,0),average(1,0),average(2,0));
+          inf("Difference: n = %f e = %f d = %f",average(0,0),average(1,0),average(2,0));
         }
 
         void
@@ -474,12 +497,23 @@ namespace Navigation
         }
 
         void
-        checkOffsetTimeUpdateUsage()
+        checkShortRtkLossTimers()
         {
-          if (m_offset_wdog_deactivation.overflow())
+          bool was_in_use = m_shortRtkLoss_in_use;
+          if (was_in_use && m_shortRtkLoss_wdog_deactivation.overflow())
           {
-            m_position_offset_in_use = false;
-            inf("Usage of position offset timeout.");
+            m_shortRtkLoss_in_use = false;
+            inf("Usage of short rtk fix loss compensator timeout.");
+          }
+          if (!was_in_use && m_shortRtkLoss_wdog_activation.overflow())
+          {
+            m_shortRtkLoss_in_use = true;
+            inf("Activating short rtk fix loss compensator timeout.");
+          }
+          if(was_in_use && !m_shortRtkLoss_wdog_activation.overflow() && ! m_shortRtkLoss_wdog_deactivation.overflow())
+          {
+            m_shortRtkLoss_in_use = false;
+            inf("Usage of short rtk fix loss compensator disables due to new rtk message.");
           }
         }
         void
@@ -528,8 +562,6 @@ namespace Navigation
           {
             waitForMessages(1.0);
 
-            checkOffsetTimeUpdateUsage();
-
             bool was_rtk_available = m_rtk_available;
 
             checkRtkTimersUpdateAvailable();
@@ -556,11 +588,6 @@ namespace Navigation
             {
               disableRtk();
               didChangeUsage = true;
-              if(m_args.use_position_offset)
-              {
-                m_position_offset_in_use = true;
-                inf("Activating position offset");
-              }
               inf("Disable RTK. No longer available.");
             }
 
@@ -580,6 +607,20 @@ namespace Navigation
               inf("Disable RTK. Disabled by parameter. ");
             }
 
+            if(m_args.shortRtkLoss_enable && usingRtk())
+            {
+              checkShortRtkLossTimers();
+              if (!m_shortRtkLoss_in_use)
+              {
+                m_shortRtkLoss_wdog_deactivation.reset();
+              }
+            }
+            else
+            {
+              m_shortRtkLoss_in_use = false;
+              m_shortRtkLoss_wdog_activation.reset();
+              m_shortRtkLoss_wdog_deactivation.reset();
+            }
             // Passthrough scenarios: use           &&  available &&  using
             //                        (use || !use) && !available && !using
             //
@@ -600,11 +641,6 @@ namespace Navigation
             {
               dispatch(m_navsources);
             }
-            if (!m_position_offset_in_use)
-            {
-              m_offset_wdog_deactivation.reset();
-            }
-
           }
         }
       };
