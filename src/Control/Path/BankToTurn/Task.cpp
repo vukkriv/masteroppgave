@@ -98,6 +98,7 @@ namespace Control
             IMC::ControlLoops cloops;
             cloops.enable = IMC::ControlLoops::CL_ENABLE;
             cloops.mask = IMC::CL_ROLL;
+            cloops.scope_ref = c_loops->scope_ref;
             dispatch(cloops);
             inf("ControlLoops CL_ROLL sent");
           }
@@ -114,19 +115,21 @@ namespace Control
           else				// Vehicle heading
             heading = Angles::degrees(es->psi);
 
-          PID();
+          //PID();
         }
 
         void
         consume(const IMC::DesiredHeading* dh)
         {
-          if(resolveEntity(dh->getSourceEntity()) == "Path Control"){
+          if(resolveEntity(dh->getSourceEntity()) == "RSSI Extremum Optimizer"){
             d_heading = Angles::degrees(dh->value);
+            PID();
+            //inf("Calculation roll_d based on ES psi_d");
           }
         }
 
         void
-        PID()
+        PID(void)
         {
           // Calculation of delta time (dt)
           double now = Clock().get();
@@ -154,10 +157,10 @@ namespace Control
           //		}
 
 
-          double error            = Angles::degrees(Angles::normalizeRadian(Angles::radians(d_heading - heading)));
+          double error = Angles::degrees(Angles::normalizeRadian(Angles::radians(d_heading - heading)));
 
           if(prev_error != 0)
-            derivative       	= (error - prev_error)/dt;
+            derivative = (error - prev_error)/dt;
 
           // Anti Windup
           if(m_args.Ti != 0){
