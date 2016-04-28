@@ -670,6 +670,7 @@ namespace Navigation
                 case CallSource::ExternalNav:
                   break;
                 case CallSource::Rtk:
+                  m_shortRtkLoss_wdog_activation.reset();
                   useRtk();
                   sendStateAndSource();
                   break;
@@ -715,18 +716,55 @@ namespace Navigation
           switch (nextState)
           {
             case NavState::Init:
-              // do init stoff
+              m_estate = *m_extnav.state.get();
+              sendStateAndSource();
               break;
             case NavState::UseExternal:
+              m_rtk_wdog_comm_timeout.reset();
               // something
               break;
             case NavState::RtkReady:
+              if(nextState==NavState::UseRtk)
+              {
+                enableRtk();
+                usingRtk();
+                sendStateAndSource();
+                m_shortRtkLoss_wdog_activation.reset();
+              }
               break;
             case NavState::UseRtk:
+              if (nextState == NavState::UseShortLossComp)
+              {
+                m_estate = *m_extnav.state.get();
+                addOffset();
+                sendStateAndSource();
+                m_shortRtkLoss_wdog_deactivation.reset();
+              }
+              else
+              {
+                disableRtk();
+                m_estate = *m_extnav.state.get();
+                sendStateAndSource();
+                m_rtk_wdog_comm_timeout.reset();//?
+              }
               break;
-            case NavState::UseRtkLow:
-              break;
+            case NavState::UseShortLossComp:
+              if (nextState == NavState::RtkReady)
+              {
+                usingRtk();
+                sendStateAndSource();
+                m_shortRtkLoss_wdog_activation.reset();
+              }
+              else
+              {
+                disableRtk();
+                m_estate = *m_extnav.state.get();
+                sendStateAndSource();
+                m_rtk_wdog_comm_timeout.reset();//?
+              }
+
           }
+          m_current_state = nextState;
         }
         //! Main loop.
         void
