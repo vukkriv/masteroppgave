@@ -852,14 +852,14 @@ namespace Control
         {
           bool aircraftOff = false;
           bool netOff = false;
-          if (abs(m_p_path_mean[FIXEDWING](1)) >= m_args.eps_ct_a(0)
-              || abs(m_p_path_mean[FIXEDWING](2)) >= m_args.eps_ct_a(1))
+          if (std::abs(m_p_path_mean[FIXEDWING](1)) >= m_args.eps_ct_a(0)
+              || std::abs(m_p_path_mean[FIXEDWING](2)) >= m_args.eps_ct_a(1))
           {
             aircraftOff = true;
           }
           Matrix p_n = getNetPosition(m_p_path);
-          if (abs(p_n(1)) >= m_args.eps_ct_n(0)
-              || abs(p_n(2)) >= m_args.eps_ct_n(1))
+          if (std::abs(p_n(1)) >= m_args.eps_ct_n(0)
+              || std::abs(p_n(2)) >= m_args.eps_ct_n(1))
           {
             netOff = true;
           }
@@ -910,8 +910,8 @@ namespace Control
           if (   m_v_path[FIXEDWING](0) > 0
               && m_p_path[FIXEDWING](0) < 0
               && m_p_path[FIXEDWING](0) > -m_args.max_px_app
-              && abs(m_p_path[FIXEDWING](1)) < m_args.max_py_app
-              && abs(m_v_path[FIXEDWING](1)) < m_args.max_vy_app)
+              && std::abs(m_p_path[FIXEDWING](1)) < m_args.max_py_app
+              && std::abs(m_v_path[FIXEDWING](1)) < m_args.max_vy_app)
             return true;
           return false;
         }
@@ -926,7 +926,7 @@ namespace Control
           if (m_args.use_mean_window_aircraft)
             delta_p = delta_p_path_x_mean;
 
-          if (abs(delta_p) <= m_startCatch_radius)
+          if (std::abs(delta_p) <= m_startCatch_radius)
           {
             return true;
           }
@@ -967,7 +967,7 @@ namespace Control
         void
         updateStartRadius()
         {
-          double v_a = abs(m_v_path[FIXEDWING](0));
+          double v_a = std::abs(m_v_path[FIXEDWING](0));
           m_startCatch_radius = calcStartRadius(v_a, 0, m_u_ref, m_ad,
                                                   m_args.m_coll_r);
           if (m_startCatch_radius == -1)
@@ -1042,7 +1042,7 @@ namespace Control
                 r_n_delta_t);
             Delta_r_impact = 0;
           }
-          double r_start = abs(
+          double r_start = std::abs(
               r_impact - v_a * (deltaT_n + Delta_r_impact / v_ref_n));
 
           static double startPrint = 0;
