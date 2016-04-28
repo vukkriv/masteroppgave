@@ -1075,8 +1075,8 @@ namespace Control
         updateMatrixA()
         {
           spew("Update A matrix");
-        	m_refsim.A(0,0) = -(m_args.refsim.surge_d/m_args.refsim.surge_m)*abs(m_refsim.getDesSpeed()); //quadratic drag term
-        	//m_Amatrix[0] = -(m_args.refsim.surge_d/m_args.refsim.surge_m)*abs(m_refsim.getDesSpeed()); //quadratic drag term
+        	m_refsim.A(0,0) = -(m_args.refsim.surge_d/m_args.refsim.surge_m)*std::abs(m_refsim.getDesSpeed()); //quadratic drag term
+        	//m_Amatrix[0] = -(m_args.refsim.surge_d/m_args.refsim.surge_m)*std::abs(m_refsim.getDesSpeed()); //quadratic drag term
             //m_refsim.A = Matrix(m_Amatrix, 3, 3);
         	spew("A matrix updated");
         }
