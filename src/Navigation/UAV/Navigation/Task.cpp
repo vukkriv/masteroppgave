@@ -38,6 +38,22 @@ namespace Navigation
   {
     namespace Navigation
     {
+      enum State
+      {
+        Init,
+        UseExternal,
+        RtkReady,
+        UseRtk,
+        UseRtkLow,
+        UseShortRtkLossComp
+      };
+
+      enum Source
+      {
+        ExternalNav,
+        Rtk,
+        Main
+      };
 
       class MovingAverage
       {
