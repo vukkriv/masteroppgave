@@ -83,10 +83,13 @@ namespace Maneuver
         m_vehicle = getVehicle(resolveSystemId(m_maneuver.getSource()));
         debug("Vehicle: %d",(int)m_vehicle);
 
-    	  // First disable all
-    	  setControl(0);
-        // Enable control loops
-        setControl(IMC::CL_PATH);
+        if (m_vehicle != FIXEDWING)
+        {
+          //First disable all
+          setControl(0);
+          // Enable control loops
+          setControl(IMC::CL_PATH);
+        }
 
         switch(m_vehicle)
         {
@@ -151,7 +154,10 @@ namespace Maneuver
       {
         inf("NetRecoveryState STOP, maneuver is done");
         signalCompletion();
-        setControl(0); // Becouse f* the other controllers.        
+        if (m_vehicle != FIXEDWING)
+        {
+          setControl(0);
+        }
       }
 
       void 
