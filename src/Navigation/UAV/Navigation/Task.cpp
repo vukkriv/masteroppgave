@@ -49,9 +49,9 @@ namespace Navigation
 
       typedef enum CallSource
       {
-        ExternalNav,
-        Rtk,
-        Main
+        ExternalNav=0,
+        Rtk=1,
+        Main=2
       } CallSource;
 
       class MovingAverage
@@ -570,9 +570,10 @@ namespace Navigation
                     // Reset timer
                     m_rtk_wdog_activation.reset();
                   }
+                  m_rtk_wdog_comm_timeout.reset();
                   break;
                 case Main:
-                  if (m_rtk_wdog_activation.overflow())
+                  if (m_rtk_wdog_activation.overflow() && !m_rtk_wdog_comm_timeout.overflow())
                   {
                     setState(RtkReady);
                   }
@@ -585,6 +586,7 @@ namespace Navigation
               {
                 case ExternalNav:
                   m_estate = *m_extnav.state.get();
+                  sendStateAndSource();
                   break;
                 case Rtk:
                   if (m_rtk.type==IMC::GpsFixRtk::RTK_NONE)
@@ -622,6 +624,7 @@ namespace Navigation
                   else
                   {
                     m_shortRtkLoss_wdog_activation.reset();
+                    updateDifference();
                     useRtk();
                     sendStateAndSource();
                   }
@@ -630,6 +633,10 @@ namespace Navigation
                   if (m_shortRtkLoss_wdog_activation.overflow())
                   {
                     setState(UseShortLossComp);
+                  }
+                  else if (!m_args.use_rtk)
+                  {
+                    setState(RtkReady);
                   }
                   break;
               }
@@ -643,7 +650,7 @@ namespace Navigation
                   sendStateAndSource();
                   break;
                 case Rtk:
-                  if (m_rtk.type!=IMC::GpsFixRtk::RTK_NONE)
+                  if (m_rtk.type>=m_rtk_fix_level_deactivate)
                   {
                     setState(UseRtk);
                   }
@@ -665,17 +672,22 @@ namespace Navigation
         setState(NavState nextState)
         {
           NavState currState = m_current_state;
+          inf("Current state %d",currState);
+          inf("Next state %d",nextState);
           switch (currState)
           {
             case Init:
+              // Next state UseExternal
+              m_rtk_wdog_activation.reset();
+              m_rtk_wdog_comm_timeout.reset();
               m_estate = *m_extnav.state.get();
               sendStateAndSource();
               break;
             case UseExternal:
+              // Next state RtkReady
               m_rtk_wdog_comm_timeout.reset();
               m_navsources.available_mask |= NS_GNSS_RTK;
               dispatch(m_navsources);
-              // something
               break;
             case RtkReady:
               if(nextState==UseRtk)
@@ -687,6 +699,9 @@ namespace Navigation
               }
               else
               {
+                // Next state UseExternal
+                m_rtk_wdog_activation.reset();
+                m_rtk_wdog_comm_timeout.reset();
                 m_navsources.available_mask &= ~NS_GNSS_RTK;
                 dispatch(m_navsources);
               }
@@ -709,6 +724,7 @@ namespace Navigation
               }
               else
               {
+                // Next state UseExternal, however not in use
                 disableRtk();
                 m_navsources.available_mask &= ~NS_GNSS_RTK;
                 m_estate = *m_extnav.state.get();
@@ -716,7 +732,7 @@ namespace Navigation
               }
               break;
             case UseShortLossComp:
-              if (nextState == RtkReady)
+              if (nextState == UseRtk)
               {
                 useRtk();
                 sendStateAndSource();
@@ -724,7 +740,10 @@ namespace Navigation
               }
               else
               {
+                // Next state UseExternal
                 disableRtk();
+                m_rtk_wdog_activation.reset();
+                m_rtk_wdog_comm_timeout.reset();
                 m_navsources.available_mask &= ~NS_GNSS_RTK;
                 m_estate = *m_extnav.state.get();
                 sendStateAndSource();
