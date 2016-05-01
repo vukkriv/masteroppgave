@@ -74,6 +74,7 @@ namespace Simulators
 
         param("Fix Level", m_args.fix_level)
         .values("Fix,Float,None")
+        .visibility(Parameter::VISIBILITY_USER)
         .defaultValue("Fix");
 
         param("Base System Name", m_args.base_sys_name)
