@@ -47,6 +47,24 @@ namespace Navigation
         UsingShortLossComp=4
       } NavState;
 
+      static std::string getNavStateString(NavState state) {
+        switch(state)
+        {
+          case Init:
+            return "Init";
+          case UsingExternal:
+            return "UsingExernal";
+          case RtkReady:
+            return "RtkReady";
+          case UsingRtk:
+            return "UsingRtk";
+          case UsingShortLossComp:
+            return "UsingShortLossComp";
+          default:
+            return "Invalid State. ";
+        }
+      }
+
       typedef enum CallSource
       {
         ExternalNav=0,
@@ -95,7 +113,6 @@ namespace Navigation
 
         Matrix getAverage()
         {
-          // calc average
           Matrix sum = Matrix(data.rows(), 1, 0.0);
           for (int j = 0; j<data.columns(); ++j)
           {
@@ -113,7 +130,8 @@ namespace Navigation
           data(2,curColumn) = sample(2,0);
 
           // Update curColun
-          curColumn = (++curColumn) % data.columns();
+          ++curColumn;
+          curColumn = (curColumn) % data.columns();
         };
 
       private:
@@ -134,7 +152,7 @@ namespace Navigation
         double antenna_height;
         bool shortRtkLoss_enable;
         float shortRtkLoss_activate_timeout;
-        float shortRtkLoss_max_time; // timer something
+        float shortRtkLoss_max_time;
         int shortRtkLoss_n_samples;
 
       };
@@ -159,6 +177,7 @@ namespace Navigation
         Time::Counter<float> m_shortRtkLoss_wdog_max_timer;
         //! Timer for activation of short rtk loss compensator
         Time::Counter<float> m_shortRtkLoss_wdog_activation_timer;
+        //!
         //! Fix level to activate
         IMC::GpsFixRtk::TypeEnum m_rtk_fix_level_activate;
         //! Fix level to deactivate
@@ -169,8 +188,8 @@ namespace Navigation
         bool m_rtk_available;
         //! Position offset in use
         bool m_shortRtkLoss_in_use;
-        //! Average between N rtk messages
-        MovingAverage m_rtk_average;
+        //! Moving average class that contain N samples of the average difference between rtk and external
+        MovingAverage m_compensator;
         //! Current State
         NavState m_current_state;
 
@@ -241,14 +260,6 @@ namespace Navigation
           .defaultValue("10")
           .minimumValue("1");
 
-
-          // param:
-          /*"Short RtkFix Loss Compensator - Enable"
-          "Short RtkFix Loss Compensator - Time deactivation"
-          "Short RtkFix Loss Compensator - N samples to average"
-
-          m_args.shortRtkLoss_enable*/
-
           // Default, we use full external state
           m_navsources.mask = (NS_EXTERNAL_FULLSTATE | NS_EXTERNAL_AHRS | NS_EXTERNAL_POSREF);
 
@@ -302,7 +313,7 @@ namespace Navigation
           m_rtk_wdog_activation.setTop(m_args.rtk_min_fix_time);
           m_shortRtkLoss_wdog_max_timer.setTop(m_args.shortRtkLoss_max_time);
           m_shortRtkLoss_wdog_activation_timer.setTop(m_args.shortRtkLoss_activate_timeout);
-          m_rtk_average.setDataMatrix(m_args.shortRtkLoss_n_samples,3);
+          m_compensator.setDataMatrix(m_args.shortRtkLoss_n_samples,3);
         }
 
         //! Release resources.
@@ -310,11 +321,6 @@ namespace Navigation
         onResourceRelease(void)
         {
         }
-
-        /*bool usingRtk()
-        {
-          return (m_navsources.mask & IMC::NS_GNSS_RTK);
-        }*/
 
         void
         consume(const IMC::ExternalNavData* navdata)
@@ -326,46 +332,11 @@ namespace Navigation
         void
         addOffset()
         {
-          Matrix average = m_rtk_average.getAverage();
-          m_estate.x = m_estate.x + average(0,0);
-          m_estate.y = m_estate.y + average(1,0);
-          m_estate.z = m_estate.z + average(2,0);
+          Matrix compensator = m_compensator.getAverage();
+          m_estate.x = m_estate.x + compensator(0,0);
+          m_estate.y = m_estate.y + compensator(1,0);
+          m_estate.z = m_estate.z + compensator(2,0);
         }
-
-        /*void
-        updateShortRtkLossTimer(void)
-        {
-          if (m_args.shortRtkLoss_enable)
-            m_shortRtkLoss_wdog_activation.reset();
-        }*/
-
-        /*void
-        updateRtkTimers(void)
-        {
-
-          if (m_rtk_wdog_comm_timeout.overflow())
-            m_rtk_wdog_activation.reset();
-
-          if (m_rtk.type >= m_rtk_fix_level_deactivate)
-            m_rtk_wdog_comm_timeout.reset();
-
-
-          if (m_rtk_available)
-          {
-
-            if (m_rtk.type >= m_rtk_fix_level_activate)
-              m_rtk_wdog_deactivation.reset();
-          }
-          else
-          {
-            // RTK is currenty not available.
-            if (m_rtk.type < m_rtk_fix_level_activate)
-            {
-              // Not high enough fix level, resetting timer.
-              m_rtk_wdog_activation.reset();
-            }
-          }
-        }*/
 
         void
         consume(const IMC::GpsFixRtk* rtkfix)
@@ -475,10 +446,10 @@ namespace Navigation
 
             spew("Added antenna offset (ned): %.3f, %.3f, %.3f", ox, oy, oz);
           }
-          m_rtk_average.newSample(newSample);
+          m_compensator.newSample(newSample);
           // For debuging purpose
-          Matrix average = m_rtk_average.getAverage();
-          inf("Difference: n = %f e = %f d = %f",average(0,0),average(1,0),average(2,0));
+          Matrix average = m_compensator.getAverage();
+          spew("Difference: n = %f e = %f d = %f",average(0,0),average(1,0),average(2,0));
         }
 
         void
@@ -487,50 +458,6 @@ namespace Navigation
           dispatch(m_estate);
           dispatch(m_navsources);
         }
-
-        /*void
-        checkShortRtkLossTimers()
-        {
-          bool was_in_use = m_shortRtkLoss_in_use;
-          if (was_in_use && m_shortRtkLoss_wdog_deactivation.overflow())
-          {
-            m_shortRtkLoss_in_use = false;
-            inf("Usage of short rtk fix loss compensator timeout.");
-          }
-          if (!was_in_use && m_shortRtkLoss_wdog_activation.overflow())
-          {
-            m_shortRtkLoss_in_use = true;
-            inf("Activating short rtk fix loss compensator timeout.");
-          }
-          if(was_in_use && !m_shortRtkLoss_wdog_activation.overflow() && ! m_shortRtkLoss_wdog_deactivation.overflow())
-          {
-            m_shortRtkLoss_in_use = false;
-            inf("Usage of short rtk fix loss compensator disables due to new rtk message.");
-          }
-        }
-        void*/
-        /*checkRtkTimersUpdateAvailable(void)
-        {
-          bool was_rtk_available = m_rtk_available;
-
-          if ( was_rtk_available && m_rtk_wdog_comm_timeout.overflow())
-          {
-            m_rtk_available = false;
-            debug("GPS RTK Unavailable: Timeout. ");
-          }
-
-          if ( was_rtk_available && m_rtk_wdog_deactivation.overflow())
-          {
-            m_rtk_available = false;
-            debug("GPS RTK Unavailable: To long time in lower fix type. ");
-          }
-
-          if (!was_rtk_available && m_rtk_wdog_activation.overflow() && !m_rtk_wdog_comm_timeout.overflow())
-          {
-            m_rtk_available = true;
-            inf("GPS RTK Available. ");
-          }
-        }*/
 
         void
         enableRtk(void)
@@ -656,7 +583,6 @@ namespace Navigation
               }
               break;
           }
-
         }
 
         //! Transition into next state
@@ -664,8 +590,9 @@ namespace Navigation
         setState(NavState nextState)
         {
           NavState currState = m_current_state;
-          inf("Current state %d",currState);
-          inf("Next state %d",nextState);
+
+          inf("Switching from %s to %s. ",
+              getNavStateString(currState).c_str(), getNavStateString(nextState).c_str());
           switch (nextState)
           {
             case Init:
@@ -710,86 +637,6 @@ namespace Navigation
             waitForMessages(0.1);
 
             updateState(Main);
-            /*bool was_rtk_available = m_rtk_available;
-
-            checkRtkTimersUpdateAvailable();
-
-            // Check if there is a change in rtk availability
-            bool didChangeAvailability = false;
-
-            if (was_rtk_available != m_rtk_available && m_rtk_available)
-            {
-              m_navsources.available_mask |= NS_GNSS_RTK;
-              didChangeAvailability = true;
-            }
-            else if (was_rtk_available != m_rtk_available && ~m_rtk_available)
-            {
-              m_navsources.available_mask &= ~NS_GNSS_RTK;
-              didChangeAvailability = true;
-            }
-
-            // Check if there is a change in rtk usage
-            bool didChangeUsage = false;
-
-            // If not available, and are using, disable. (don't care m_args.use_rtk)
-            if (!m_rtk_available && usingRtk())
-            {
-              disableRtk();
-              didChangeUsage = true;
-              inf("Disable RTK. No longer available.");
-            }
-
-            // If should use, is available and not currently using
-            else if (m_args.use_rtk && m_rtk_available && !usingRtk())
-            {
-              enableRtk();
-              didChangeUsage = true;
-              inf("Enabled use of RTK.");
-            }
-
-            // If not supposed to use, and are currently using, disable. availability don't care.
-            else if (!m_args.use_rtk && usingRtk())
-            {
-              disableRtk();
-              didChangeUsage = true;
-              inf("Disable RTK. Disabled by parameter. ");
-            }
-
-            if(m_args.shortRtkLoss_enable && usingRtk())
-            {
-              checkShortRtkLossTimers();
-              if (!m_shortRtkLoss_in_use)
-              {
-                m_shortRtkLoss_wdog_deactivation.reset();
-              }
-            }
-            else
-            {
-              m_shortRtkLoss_in_use = false;
-              m_shortRtkLoss_wdog_activation.reset();
-              m_shortRtkLoss_wdog_deactivation.reset();
-            }
-            // Passthrough scenarios: use           &&  available &&  using
-            //                        (use || !use) && !available && !using
-            //
-            // Three states => 8 total states. All covered.
-
-            // Check if we have a switch to report
-            if (didChangeUsage)
-            {
-
-              dispatch(m_navsources);
-
-              // Reset all timers
-              m_rtk_wdog_activation.reset();
-              m_rtk_wdog_deactivation.reset();
-              m_rtk_wdog_comm_timeout.reset();
-            }
-            else if (didChangeAvailability && ~didChangeUsage)
-            {
-              dispatch(m_navsources);
-            }
-            */
           }
         }
       };
