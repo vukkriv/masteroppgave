@@ -49,6 +49,27 @@ namespace Control
       //! UTC seconds for 2015-01-01 to check for clock synch
       const int UTC_SECS_2015 = 1420070400;
 
+      struct GainScheduler
+      {
+        //! Enable link gain scheduler
+        bool enable;
+
+        //! Link gain when in-formation
+        double gain_close;
+
+        //! Link gain when large link error
+        double gain_far;
+
+        //! Sigmoid constant
+        double sigmoid_const;
+
+        //! Desired link error switching distance
+        double switch_distance;
+
+        //! Steepness factor of slope between far and close link gain
+        double slope;
+      };
+
       struct Arguments
       {
         //! Use Formation Controller
@@ -154,6 +175,9 @@ namespace Control
 
         //! Link gains
         Matrix m_delta;
+
+        //! Gain scheduling parameters
+        GainScheduler m_gain_scheduler;
 
         //! Desired difference variables
         Matrix m_z_d;
@@ -625,7 +649,29 @@ namespace Control
           }
           printMatrix(m_delta);
         }
+        void
+        configParseLinkGainScheduling(const IMC::CoordConfig* config)
+        {
+          debug("New link gain scheduling parameters.");
+          const IMC::MessageList<IMC::CoordLinkGainScheduler>* link_gain_scheduler = &config->link_gains_scheduling;
+          IMC::MessageList<IMC::CoordLinkGainScheduler>::const_iterator i_itr;
 
+          if (link_gain_scheduler->size() > 1)
+          {
+            war("Only one scheduler for all links supported, using the first CoordLinkGainScheduler message");
+          }
+          i_itr = link_gain_scheduler->begin();
+
+          m_gain_scheduler.enable = (*i_itr)->enable_scheduler;
+          m_gain_scheduler.gain_close = (*i_itr)->gain_close;
+          m_gain_scheduler.gain_far = (*i_itr)->gain_far;
+          m_gain_scheduler.switch_distance = (*i_itr)->switch_distance;
+          m_gain_scheduler.slope = (*i_itr)->slope;
+
+          //! calculate sigmoid-function constant (to ensure correct end-points of gain-scheduler)
+          double temp_c = std::exp(-m_gain_scheduler.slope*m_gain_scheduler.switch_distance);
+          m_gain_scheduler.sigmoid_const = m_gain_scheduler.gain_close*(temp_c + 1) - temp_c*m_gain_scheduler.gain_far;
+        }
         void
         consume(const IMC::CoordConfig* config)
         {
@@ -656,6 +702,8 @@ namespace Control
               configParseIncidence(config);
               // Parse link gains
               configParseLinkGains(config);
+              // Parse gain scheduling params
+              configParseLinkGainScheduling(config);
             }
             updateFormationParameters();
             if (!m_configured)
@@ -1064,13 +1112,44 @@ namespace Control
           Matrix z_tilde = m_z - m_z_d;
 
           // Calculate formation velocity component
-          for (unsigned int link = 0; link < m_L; link++)
-          {
-            u_form -= m_D(m_i, link) * m_delta(link) * z_tilde.column(link);
-          }
+          static double last_print;
 
+          if (m_gain_scheduler.enable)
+          {
+            double gain = sigmoidGain(z_tilde);
+
+            double now = Clock::getSinceEpoch();
+            if (!m_args.print_frequency || !last_print
+                || (now - last_print) > 1.0 / m_args.print_frequency)
+            {
+              trace("Link gain = %f",gain);
+              trace("Z_tilde_n = %f",z_tilde.norm_2());
+              last_print = now;
+            }
+
+            for (unsigned int link = 0; link < m_L; link++)
+            {
+              u_form -= m_D(m_i, link) * gain * z_tilde.column(link);
+            }
+          }
+          else
+          {
+            for (unsigned int link = 0; link < m_L; link++)
+            {
+              u_form -= m_D(m_i, link) * m_delta(link) * z_tilde.column(link);
+            }
+          }
           //spew("u_form: [%1.1f, %1.1f, %1.1f]", u_form(0), u_form(1), u_form(2));
           return u_form;
+        }
+
+        //! Calculate collision avoidance velocity
+        double
+        sigmoidGain(Matrix z_tilde)
+        {
+          double z_t_norm = z_tilde.norm_2();
+          double temp = double(1) + std::exp(-m_gain_scheduler.slope*(z_t_norm - m_gain_scheduler.switch_distance));
+          return m_gain_scheduler.sigmoid_const + (m_gain_scheduler.gain_far-m_gain_scheduler.sigmoid_const)/temp;
         }
 
         //! Calculate collision avoidance velocity
