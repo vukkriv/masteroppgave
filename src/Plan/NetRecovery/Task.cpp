@@ -46,6 +46,18 @@ namespace Plan
       double distance_runway;
     };
 
+    struct Vehicles
+        {
+          int no_vehicles;
+          std::string aircraft;
+          std::vector<std::string> copters;
+        };
+
+    enum Vehicle
+    {
+      FIXEDWING = 0, COPTER_MASTER, COPTER_SLAVE, INVALID = -1
+    };
+
     struct VirtualRunway //Landingpath
     {
       IMC::NetRecovery nr;
@@ -80,6 +92,8 @@ namespace Plan
     struct Task: public DUNE::Tasks::Task
     {
       Arguments m_args;
+      Vehicle m_vehicle;
+      Vehicles m_vehicles;
       VirtualRunway   virtual_runway;
 
       //! Last plan control state
@@ -285,10 +299,21 @@ namespace Plan
                 debug("NetRecovery maneuver set request dispatched from Neptus");
                 IMC::Maneuver* man = (*it)->data.get();
                 IMC::NetRecovery* nr = static_cast<IMC::NetRecovery*>(man);
+                saveVehicles(nr->aircraft,nr->multicopters.c_str());
+                m_vehicle = getVehicle(resolveSystemId(nr->getSource()));
+                debug("Vehicle: %d",(int)m_vehicle);
+                if(m_vehicle != FIXEDWING)
+                {
+                  IMC::PlanDB fixedwingDB = *msg;
+                  dispatch(fixedwingDB); // Send PlanDB with the NetRecovery maneuver to the fixedwing.
+                }
+                else
+                {
                 virtual_runway.nr = *nr;
                 extractVirtualRunway(nr);
                 requestDubins(); //Request dubins-path from uav position to loiter.
                 debug("Dubins requested!");
+                }
               //  sendFixedWingPlan(planspec->plan_id,nr);
               //  debug("Sent FixedWing NetRecovery plan");
                 break;
@@ -666,6 +691,45 @@ namespace Plan
 
         // Return the underlying string
         return oss.str();
+      }
+
+      void
+      saveVehicles(std::string aircraft, std::string copters)
+      {
+        m_vehicles.aircraft = aircraft;
+        m_vehicles.copters  = std::vector<std::string>();
+        std::stringstream lineStream(copters);
+        std::string copter;
+        while (std::getline(lineStream, copter, ','))
+        {
+          m_vehicles.copters.push_back(copter);
+        }
+
+        debug("Aircraft: %s", m_vehicles.aircraft.c_str());
+        for (unsigned int i = 0; i < m_vehicles.copters.size(); i++)
+        {
+          debug("Multicopter[%d]: %s", i, m_vehicles.copters[i].c_str());
+        }
+      }
+
+      Vehicle
+      getVehicle(std::string src_entity)
+      {
+        if (src_entity == m_vehicles.aircraft)
+        {
+          return FIXEDWING;
+        }
+        for (unsigned int i = 0; i < m_vehicles.copters.size(); i++)
+        {
+          if (src_entity == m_vehicles.copters[i])
+          {
+            if (i == 0)
+              return COPTER_MASTER;
+            else
+              return COPTER_SLAVE;
+          }
+        }
+        return INVALID;
       }
 
       //! Main loop.
