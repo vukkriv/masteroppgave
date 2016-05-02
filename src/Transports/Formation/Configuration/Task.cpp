@@ -45,7 +45,7 @@ namespace Transports
         bool enable;
 
         //! Link gain when in-formation
-        double gain_in_formation;
+        double gain_close;
 
         //! Link gain when large link error
         double gain_far;
@@ -129,6 +129,7 @@ namespace Transports
         IMC::CoordIncidenceAgent m_incidence_agent;
         IMC::CoordIncidenceLink m_incidence_link;
         IMC::CoordLinkGain m_link_gain;
+        IMC::CoordLinkGainScheduler m_link_gain_scheduler;
 
         //! Constructor.
         //! @param[in] name task name.
@@ -171,7 +172,7 @@ namespace Transports
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Enable link gains scheduling.");
 
-          param("Gain Scheduling -- Gain in-formation", m_args.gain_scheduler.gain_in_formation)
+          param("Gain Scheduling -- Gain in-formation", m_args.gain_scheduler.gain_close)
           .defaultValue("False")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Enable link gains scheduling.");
@@ -242,7 +243,12 @@ namespace Transports
           if (paramChanged(m_args.formation_systems) ||
               paramChanged(m_args.desired_formation) ||
               paramChanged(m_args.incidence_matrix) ||
-              paramChanged(m_args.link_gains)
+              paramChanged(m_args.link_gains) ||
+              paramChanged(m_args.gain_scheduler.enable) ||
+              paramChanged(m_args.gain_scheduler.gain_close) ||
+              paramChanged(m_args.gain_scheduler.gain_far) ||
+              paramChanged(m_args.gain_scheduler.slope) ||
+              paramChanged(m_args.gain_scheduler.switch_distance)
               )
           {
             debug("m_config.update = true");
@@ -394,6 +400,26 @@ namespace Transports
                 m_config.link_gains.push_back(m_link_gain);
               }
             }
+            //! link gain scheduling
+            m_config.link_gains_scheduling.clear();
+            m_link_gain_scheduler.clear();
+            m_link_gain_scheduler.enable_scheduler = m_args.gain_scheduler.enable;
+            if (m_args.gain_scheduler.enable)
+            {
+              m_link_gain_scheduler.gain_close = m_args.gain_scheduler.gain_close;
+              m_link_gain_scheduler.gain_far = m_args.gain_scheduler.gain_far;
+              m_link_gain_scheduler.switch_distance = m_args.gain_scheduler.switch_distance;
+              m_link_gain_scheduler.slope = m_args.gain_scheduler.slope;
+            }
+            else
+            {
+              m_link_gain_scheduler.gain_close = 0;
+              m_link_gain_scheduler.gain_far = 0;
+              m_link_gain_scheduler.switch_distance = 0;
+              m_link_gain_scheduler.slope = 0;
+            }
+            m_config.link_gains_scheduling.push_back(m_link_gain_scheduler);
+
             dispatch(m_config);
             debug("CoordConfig dispatched from update");
           }
