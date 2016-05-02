@@ -39,6 +39,24 @@ namespace Transports
       //! Vector for System Mapping.
       typedef std::vector<uint32_t> Systems;
 
+      struct GainScheduler
+      {
+        //! Enable link gain scheduler
+        bool enable;
+
+        //! Link gain when in-formation
+        double gain_in_formation;
+
+        //! Link gain when large link error
+        double gain_far;
+
+        //! Desired link error switching distance
+        double switch_distance;
+
+        //! Steepness factor of slope between far and close link gain
+        double slope;
+      };
+
       struct Arguments
       {
         //! Send Formation Centroid
@@ -55,6 +73,9 @@ namespace Transports
 
         //! Link gains
         Matrix link_gains;
+
+        //! Gain scheduling
+        GainScheduler gain_scheduler;
 
         //! Disable formation velocity
         bool disable_formation_velocity;
@@ -144,6 +165,31 @@ namespace Transports
           .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Gains assigned to formation links.");
+
+          param("Gain Scheduling -- Enable", m_args.gain_scheduler.enable)
+          .defaultValue("False")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Enable link gains scheduling.");
+
+          param("Gain Scheduling -- Gain in-formation", m_args.gain_scheduler.gain_in_formation)
+          .defaultValue("False")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Enable link gains scheduling.");
+
+          param("Gain Scheduling -- Gain far", m_args.gain_scheduler.gain_far)
+          .defaultValue("False")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Enable link gains scheduling.");
+
+          param("Gain Scheduling -- Switch distance", m_args.gain_scheduler.switch_distance)
+          .defaultValue("False")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Enable link gains scheduling.");
+
+          param("Gain Scheduling -- Slope", m_args.gain_scheduler.slope)
+          .defaultValue("False")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Enable link gains scheduling.");
 
           param("Disable Formation Velocity", m_args.disable_formation_velocity)
           .defaultValue("false")
