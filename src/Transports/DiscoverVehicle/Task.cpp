@@ -63,7 +63,6 @@ namespace Transports
     {
       Arguments m_args;
 
-      unsigned int m_N;
       std::vector<Destination> m_destinations;
       Destination m_curr_parsed;
 
@@ -71,8 +70,7 @@ namespace Transports
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Task(name, ctx),
-        m_N(0)
+        DUNE::Tasks::Task(name, ctx)
       {
         param("Transport Entity Label", m_args.layer_entlab)
         .defaultValue("")
@@ -97,7 +95,7 @@ namespace Transports
       void
       onUpdateParameters(void)
       {
-        m_N = static_cast<unsigned int>(m_args.vehicles.size())-1;
+        unsigned int m_N = static_cast<unsigned int>(m_args.vehicles.size())-1;
         m_destinations = std::vector<Destination>(m_N);
         m_destinations.clear();
         for (unsigned int i=0; i < m_N + 1; i++)
