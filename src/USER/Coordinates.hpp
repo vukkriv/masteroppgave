@@ -1,5 +1,5 @@
 //***************************************************************************
-// Copyright 2007-2016 Universidade do Porto - Faculdade de Engenharia      *
+// Copyright 2007-2015 Universidade do Porto - Faculdade de Engenharia      *
 // Laboratório de Sistemas e Tecnologia Subaquática (LSTS)                  *
 //***************************************************************************
 // This file is part of DUNE: Unified Navigation Environment.               *
@@ -25,23 +25,20 @@
 // Author: Kristian Klausen                                                 *
 //***************************************************************************
 
-#ifndef USER_DUNE_HPP_INCLUDED_
-#define USER_DUNE_HPP_INCLUDED_
+#ifndef USER_COORDINATES_HPP_INCLUDED_
+#define USER_COORDINATES_HPP_INCLUDED_
 
-// USER module headers.
-#include <USER/Control.hpp>
-#include <USER/Coordinates.hpp>
-
-
-//! DUNE: Uniform Navigational Environment.
 namespace DUNE
-{ }
+{
+  //! %Coordinates related routines and classes.
+  namespace Coordinates
+  { 
+  }
+}
 
-//! Convenience macro to import DUNE's most commonly used namespaces
-//! into global scope. Use it like this: 'using USER_NAMESPACES;'
-#define USER_NAMESPACES                         \
-  namespace DUNE;                               \
-  using namespace DUNE::Cooordinates            \
-  using namespace DUNE::Control              
+
+#include <USER/Coordinates/WGS84.hpp>
+
+
 
 #endif
