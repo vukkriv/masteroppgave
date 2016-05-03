@@ -117,13 +117,27 @@ namespace Navigation
         Matrix getAverage()
         {
           Matrix sum = Matrix(data.rows(), 1, 0.0);
-          for (int j = 0; j<data.columns(); ++j)
+          if (filledData)
           {
-            sum(0,0) += data(0,j);
-            sum(1,0) += data(1,j);
-            sum(2,0) += data(2,j);
+            for (int j = 0; j<data.columns(); ++j)
+            {
+              sum(0,0) += data(0,j);
+              sum(1,0) += data(1,j);
+              sum(2,0) += data(2,j);
+            }
+            return sum/data.columns();
           }
-          return sum/data.columns();
+          else
+          {
+            for (int j = 0; j<curColumn+1; ++j)
+            {
+              sum(0,0) += data(0,j);
+              sum(1,0) += data(1,j);
+              sum(2,0) += data(2,j);
+            }
+            return sum/(curColumn+1);
+          }
+
         }
         void newSample(Matrix sample)
         {
@@ -134,12 +148,15 @@ namespace Navigation
 
           // Update curColumn
           ++curColumn;
+          if (curColumn%data.columns()==0 && !filledData)
+            filledData = true;
           curColumn = (curColumn) % data.columns();
         };
 
       private:
         int curColumn;
         Matrix data;
+        bool filledData;
       };
 
       using DUNE_NAMESPACES;
@@ -382,7 +399,7 @@ namespace Navigation
         }
 
         void
-        useRtk()
+        fillStateRtk()
         {
           // First fill most field.
           m_estate = *m_extnav.state.get();
@@ -415,19 +432,52 @@ namespace Navigation
           if (m_rtk.type<m_rtk_fix_level_deactivate)
             return;
 
-          double lat = m_extnav.state.get()->lat;
-          double lon = m_extnav.state.get()->lon;
-          double height = m_extnav.state.get()->height;
-          double n;
-          double e;
-          double d;
-          Coordinates::WGS84_Accurate::displace(m_extnav.state.get()->x,m_extnav.state.get()->y,m_extnav.state.get()->z,&lat,&lon,&height);
-          Coordinates::WGS84_Accurate::displacement(m_rtk.base_lat,m_rtk.base_lon,m_rtk.base_height,lat,lon,height,&n,&e,&d);
+          //double lat = m_extnav.state.get()->lat;
+          //double lon = m_extnav.state.get()->lon;
+          //double height = m_extnav.state.get()->height;
+
+          double lat = m_rtk.base_lat;
+          double lon = m_rtk.base_lon;
+          double height = m_rtk.base_height;
+          double n,e,d;
+
+          // Fill llh coordinates of current ExtNav pos.
+          //Coordinates::WGS84::displace(m_extnav.state.get()->x,m_extnav.state.get()->y,m_extnav.state.get()->z,
+           //                             &lat,&lon,&height);
+
+
+          //Coordinates::WGS84::displacement(m_rtk.base_lat,m_rtk.base_lon,m_rtk.base_height,
+          //                                lat,lon,height,
+          //                                &n,&e,&d);
+
+          // Fill llh coordinates of current RTK pos.
+          inf("rtk N=%f E=%f D=%f",m_rtk.n,m_rtk.e,m_rtk.d);
+          inf("Base lat=%f lon=%f height=%f",lat,lon,height);
+          Coordinates::WGS84::displace(m_rtk.n,m_rtk.e,m_rtk.d,
+                                      &lat,&lon,&height);
+
+          inf("Rtk after lat=%f lon=%f height=%f",lat,lon,height);
+          height = m_rtk.base_height-m_rtk.d;
+          inf("Manual calulation of heigh = %f",height);
+          Coordinates::WGS84::displacement(m_extnav.state.get()->lat,m_extnav.state.get()->lon,m_extnav.state.get()->height,
+                                          lat,lon,height,
+                                          &n,&e,&d);
+          // Fill sample matrix with the difference between rtk and external state
           Matrix newSample = Matrix(3,1,0.0);
           // Calculating the difference
-          newSample(0,0) = m_rtk.n - n;
-          newSample(1,0) = m_rtk.e - e;
-          newSample(2,0) = m_rtk.d - d;
+          //newSample(0,0) = m_rtk.n - n;
+          //newSample(1,0) = m_rtk.e - e;
+          //newSample(2,0) = m_rtk.d - d;
+
+          // Debug
+
+          /*n = m_rtk.n;
+          e = m_rtk.e;
+          d = m_rtk.d;*/
+
+          newSample(0,0) = n - m_extnav.state.get()->x;
+          newSample(1,0) = e - m_extnav.state.get()->y;
+          newSample(2,0) = d - m_extnav.state.get()->z;
           // Apply antenna offset
           if( m_args.antenna_height > 0.03 || m_args.antenna_height < -0.03 )
           {
@@ -442,10 +492,11 @@ namespace Navigation
 
             spew("Added antenna offset (ned): %.3f, %.3f, %.3f", ox, oy, oz);
           }
+          // Add new sample to the short loss compensator
           m_compensator.newSample(newSample);
           // For debuging purpose
           Matrix average = m_compensator.getAverage();
-          spew("Difference: n = %f e = %f d = %f",average(0,0),average(1,0),average(2,0));
+          inf("Difference: n = %f e = %f d = %f",average(0,0),average(1,0),average(2,0));
         }
 
         void
@@ -467,6 +518,19 @@ namespace Navigation
         {
           m_navsources.mask &= ~NS_GNSS_RTK;
           m_navsources.mask |= (NS_EXTERNAL_FULLSTATE | NS_EXTERNAL_POSREF);
+        }
+
+        void
+        setNavSourceAvailable(bool available)
+        {
+          if (available)
+          {
+            m_navsources.available_mask |= NS_GNSS_RTK;
+          }
+          else
+          {
+            m_navsources.available_mask &= ~NS_GNSS_RTK;
+          }
         }
         //! Update the state machine
         void
@@ -556,7 +620,7 @@ namespace Navigation
                   else
                   {
                     m_state_time.reset();
-                    useRtk();
+                    fillStateRtk();
                     sendStateAndSource();
                   }
                   break;
@@ -623,7 +687,7 @@ namespace Navigation
               break;
             case UsingExternal:
               disableRtk();
-              m_navsources.available_mask &= ~NS_GNSS_RTK;
+              setNavSourceAvailable(false);
               m_state_time.setTop(m_args.rtk_min_fix_time);
               m_estate = *m_extnav.state.get();
               sendStateAndSource();
@@ -631,12 +695,12 @@ namespace Navigation
             case RtkReady:
               disableRtk();
               m_state_time.setTop(m_args.rtk_timeout_lower_level);
-              m_navsources.available_mask |= NS_GNSS_RTK;
+              setNavSourceAvailable(true);
               dispatch(m_navsources);
               break;
             case UsingRtk:
               enableRtk();
-              useRtk();
+              fillStateRtk();
               sendStateAndSource();
               if (m_args.shortRtkLoss_enable)
               {
