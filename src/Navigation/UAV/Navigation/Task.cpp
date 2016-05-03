@@ -32,6 +32,9 @@
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 
+// USER headers
+#include <USER/DUNE.hpp>
+
 namespace Navigation
 {
   namespace UAV
@@ -418,8 +421,8 @@ namespace Navigation
           double n;
           double e;
           double d;
-          Coordinates::WGS84::displace(m_extnav.state.get()->x,m_extnav.state.get()->y,m_extnav.state.get()->z,&lat,&lon,&height);
-          Coordinates::WGS84::displacement(m_rtk.base_lat,m_rtk.base_lon,m_rtk.base_height,lat,lon,height,&n,&e,&d);
+          Coordinates::WGS84_Accurate::displace(m_extnav.state.get()->x,m_extnav.state.get()->y,m_extnav.state.get()->z,&lat,&lon,&height);
+          Coordinates::WGS84_Accurate::displacement(m_rtk.base_lat,m_rtk.base_lon,m_rtk.base_height,lat,lon,height,&n,&e,&d);
           Matrix newSample = Matrix(3,1,0.0);
           // Calculating the difference
           newSample(0,0) = m_rtk.n - n;
