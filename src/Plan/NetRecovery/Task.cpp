@@ -234,12 +234,20 @@ namespace Plan
       void
       consume(const IMC::PlanDB* msg)
       {
+        if (msg->getSource() == getSystemId())
+        {
         trace("Got PlanDB:\n from '%s' at '%s'\n to '%s' at '%d'\n",
               resolveEntity(msg->getSourceEntity()).c_str(),
               resolveSystemId(msg->getSource()),
               resolveSystemId(msg->getDestination()),
               msg->getDestinationEntity());
-
+        }
+        else
+        {
+          trace("Got PlanDB:\n from '%s'\n to '%s'\n",
+                resolveSystemId(msg->getSource()),
+                resolveSystemId(msg->getDestination()));
+        }
         if(msg->plan_id == "land" && msg->op == IMC::PlanDB::DBOP_SET && msg->type == IMC::PlanDB::DBT_REQUEST){
           debug("Received requested dubinspath");
           const IMC::PlanSpecification* dubins_planspec = static_cast<const IMC::PlanSpecification*>(msg->arg.get());
@@ -302,9 +310,13 @@ namespace Plan
                 saveVehicles(nr->aircraft,nr->multicopters.c_str());
                 m_vehicle = getVehicle(resolveSystemId(nr->getSource()));
                 debug("Vehicle: %d",(int)m_vehicle);
-                if(m_vehicle != FIXEDWING)
+                if(m_vehicle == INVALID)
                 {
                   IMC::PlanDB fixedwingDB = *msg;
+                  fixedwingDB.setDestination(resolveSystemName(nr->aircraft));
+                  fixedwingDB.setSourceEntity(getEntityId());
+                  fixedwingDB.setSource(getSystemId());
+                  trace("Send PlanDB:\n from '%s'",resolveEntity(fixedwingDB.getSourceEntity()).c_str());
                   dispatch(fixedwingDB); // Send PlanDB with the NetRecovery maneuver to the fixedwing.
                 }
                 else
