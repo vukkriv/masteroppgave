@@ -28,6 +28,9 @@
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 
+// USER headers
+#include <USER/DUNE.hpp>
+
 namespace Simulators
 {
   namespace GPSRTK
@@ -195,10 +198,10 @@ namespace Simulators
           double lat = m_navdata.state->lat;
           double lon = m_navdata.state->lon;
           double height = m_navdata.state->height;
-          Coordinates::WGS84::displace(m_rtk.n,m_rtk.e,m_rtk.d,
+          Coordinates::WGS84_Accurate::displace(m_rtk.n,m_rtk.e,m_rtk.d,
                                       &lat,&lon,&height);
           double dx,dy,dz;
-          WGS84::displacement(m_rtk.base_lat, m_rtk.base_lon, m_rtk.base_height,
+          WGS84_Accurate::displacement(m_rtk.base_lat, m_rtk.base_lon, m_rtk.base_height,
                               lat, lon, height,
                               &dx, &dy, &dz);
 
