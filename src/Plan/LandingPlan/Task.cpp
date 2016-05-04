@@ -29,6 +29,9 @@
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 
+// USER headers
+#include <USER/DUNE.hpp>
+
 #include <vector>
 #include <cmath>
 //#define PI 3.1415926535897932384626433832795
@@ -415,9 +418,9 @@ namespace Plan
         double state_lat = m_estate.lat;
         double state_lon = m_estate.lon;
         double state_height = m_estate.height;
-        //! Find WP1 lat lon
-        Coordinates::WGS84::displace(m_landParameteres.WP1(0,0),m_landParameteres.WP1(1,0),&wp1_lat,&wp1_lon);
-        Coordinates::WGS84::displace(m_estate.x,m_estate.y,m_estate.z,&state_lat,&state_lon,&state_height);
+        //! Find WP1 lat lon from the net position
+        Coordinates::WGS84_Accurate::displace(m_landParameteres.WP1(0,0),m_landParameteres.WP1(1,0),&wp1_lat,&wp1_lon);
+        Coordinates::WGS84_Accurate::displace(m_estate.x,m_estate.y,m_estate.z,&state_lat,&state_lon,&state_height);
         //! Find m_estate coordinates relative to net lat lon
         Coordinates::WGS84::displacement(m_landArg.net_lat,m_landArg.net_lon,m_landArg.net_height,state_lat,state_lon,state_height,&Xs(0,0),&Xs(1,0),&Xs(2,0));
         Coordinates::WGS84::displacement(state_lat,state_lon,state_height,wp1_lat,wp1_lon,wp1_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
@@ -505,10 +508,11 @@ namespace Plan
         double loiter_lon = m_landParameteres.state_lon;
         double loiter_h = m_landParameteres.state_height;
         debug("loiter_h %f OCFz %f ",loiter_h,m_landParameteres.OCFz);
-        Coordinates::WGS84::displace(m_landParameteres.OCF(0,0),m_landParameteres.OCF(1,0),m_landParameteres.OCFz,&loiter_lat,&loiter_lon,&loiter_h);
+        Coordinates::WGS84_Accurate::displace(m_landParameteres.OCF(0,0),m_landParameteres.OCF(1,0),m_landParameteres.OCFz,
+                                              &loiter_lat,&loiter_lon,&loiter_h);
         loiter.lat = loiter_lat;
         loiter.lon = loiter_lon;
-        loiter.z = m_landParameteres.state_height-m_landParameteres.OCFz;
+        loiter.z = loiter_h;
         loiter.z_units = IMC::Z_HEIGHT;
         loiter.speed = m_landArg.speed_WP2;
         loiter.speed_units = IMC::SUNITS_METERS_PS;
@@ -548,7 +552,7 @@ namespace Plan
         double wp_lat = m_landArg.net_lat;
         double wp_lon = m_landArg.net_lon;
         double wp_h = m_landArg.net_WGS84_height - WP(2,0);
-        Coordinates::WGS84::displace(WP(0,0),WP(1,0),&wp_lat,&wp_lon);
+        Coordinates::WGS84_Accurate::displace(WP(0,0),WP(1,0),&wp_lat,&wp_lon);
         gotoWP.lat = wp_lat;
         gotoWP.lon = wp_lon;
         gotoWP.z = wp_h;
