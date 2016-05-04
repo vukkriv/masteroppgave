@@ -439,14 +439,10 @@ namespace Navigation
           double n,e,d;
 
           // Fill llh coordinates of current RTK pos.
-          inf("rtk N=%f E=%f D=%f",m_rtk.n,m_rtk.e,m_rtk.d);
-          inf("Base lat=%f lon=%f height=%f",lat,lon,height);
           Coordinates::WGS84_Accurate::displace(m_rtk.n,m_rtk.e,m_rtk.d,
                                       &lat,&lon,&height);
 
-          inf("Rtk after lat=%f lon=%f height=%f",lat,lon,height);
-          //height = m_rtk.base_height-m_rtk.d;
-          inf("Manual calulation of heigh = %f",m_rtk.base_height-m_rtk.d);
+          // Find the ned position of the rtk solution in the external nav frame
           Coordinates::WGS84_Accurate::displacement(m_extnav.state.get()->lat,m_extnav.state.get()->lon,m_extnav.state.get()->height,
                                           lat,lon,height,
                                           &n,&e,&d);
