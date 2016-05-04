@@ -57,54 +57,6 @@ namespace DUNE
     class WGS84_Accurate
     {
     public:
-
-      //! Compute North-East-Down displacement between two WGS-84
-      //! coordinates.
-      //!
-      //! @param[in] rlat reference WGS-84 latitude (rad).
-      //! @param[in] rlon reference WGS-84 longitude (rad).
-      //! @param[in] rhae reference WGS-84 coordinate height (m).
-      //! @param[in] lat Offset coordinate WGS-84 latitude (rad).
-      //! @param[in] lon Offset coordinate WGS-84 longitude (rad).
-      //! @param[in] hae Offset coordinate height (m).
-      //! @param[out] n storage for North offset (x-coordinate in NED
-      //!             referential).
-      //! @param[out] e storage for East offset (y-coordinate in NED
-      //!             referential).
-      //! @param[out] d storage for Down offset (z-coordinate in NED
-      //!             referential).
-      template <typename Ta, typename Tb, typename Tc, typename Td, typename Te>
-      static void
-      displacement(Ta rlat, Ta rlon, Tb rhae,
-                   Tc lat, Tc lon, Td hae,
-                   Te* n, Te* e, Te* d = NULL)
-      {
-        double cs[6] = {0.0};
-
-        toECEF(rlat, rlon, rhae, &cs[0], &cs[1], &cs[2]);
-        toECEF(lat, lon, hae, &cs[3], &cs[4], &cs[5]);
-
-        double ox = cs[3] - cs[0];
-        double oy = cs[4] - cs[1];
-        double oz = cs[5] - cs[2];
-        double slat = std::sin(rlat);
-        double clat = std::cos(rlat);
-        double slon = std::sin(rlon);
-        double clon = std::cos(rlon);
-
-        // North.
-        if (n != NULL)
-          *n = -slat * clon * ox - slat * slon * oy + clat * oz;
-
-        // East.
-        if (e != NULL)
-          *e = -slon * ox + clon * oy;
-
-        // Down.
-        if (d != NULL)
-          *d = -clat * clon * ox - clat * slon * oy - slat * oz;
-      }
-
       //! Displace a geodetic coordinate in the NED frame
       //! according to given offsets.
       //!
@@ -173,7 +125,7 @@ namespace DUNE
 
 
 
-    //private:
+    private:
       //! Convert WGS-84 coordinates to ECEF (Earch Center Earth Fixed) coordinates.
       //!
       //! @param[in] lat WGS-84 latitude (rad).
