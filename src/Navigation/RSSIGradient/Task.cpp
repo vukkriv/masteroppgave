@@ -44,12 +44,14 @@ namespace Navigation
 
     struct Arguments
     {
-      //! Forgetting factor:
+      //! Forgetting factor.
       double lambda;
       //! inv. prop. to raduis of circling motion:
       double omega;
-      //! Sampling time:
+      //! Sampling time.
       double T;
+      //! Use dropped rssi detection.
+      bool use_drop_detect;
     };
 
     struct Task: public DUNE::Tasks::Task
@@ -67,6 +69,8 @@ namespace Navigation
       Matrix m_Pm;
       Matrix m_A;
       Matrix m_R;
+      double m_rssi_prev;
+      double m_yk;
 
       //! Flag used to initiate zhatm:
       bool m_initflag;
@@ -95,6 +99,8 @@ namespace Navigation
         //m_psi(0.0)
         m_A(3,3,0.0),
         m_R(2,1,0.0),
+        m_rssi_prev(0.0),
+        m_yk(0.0),
         m_initflag(false)
       {
 
@@ -110,6 +116,9 @@ namespace Navigation
         .defaultValue("0.1")
         .description("Sampling time");
 
+        param("UseDropDetection", m_args.use_drop_detect)
+        .defaultValue("true")
+        .description("Use dropped RSSI detection");
 
         //! Bind incoming IMC messages:
         bind<IMC::DesiredHeading>(this);
@@ -196,6 +205,8 @@ namespace Navigation
         //! initiate zhatm(0,0) (i.e. the rssi estimate) to this rssi value:
         if (m_initflag == false){
           m_zhatm(0,0) = m_rssi.value * 0.9;
+          //m_rssi_prev = m_rssi.value;
+          m_yk = m_rssi.value;
           m_initflag = true;
         }
 
@@ -211,7 +222,31 @@ namespace Navigation
         //inf("Running observer");
 
         // Inputs to the observer:
-        double y_k = rssi_arg.value;
+
+        if (m_args.use_drop_detect)
+        {
+          //inf("Use drop detection");
+          if (rssi_arg.value < 0.5) //< 0.1 * m_yk) //rssi_prev) //! Meaning that the rssi measurement is most likely dropped
+          {
+            //double y_k = m_rssi_prev;
+            //! Let m_yk remain the same.
+            inf("Dropped RSSI measurement detected.");
+
+          }
+          else
+          {
+            m_yk = rssi_arg.value;
+            //double y_k = rssi_arg.value;
+            //! Update m_rssi_prev.
+            //m_rssi_prev = rssi_arg.value;
+          }
+        }
+        else
+        {
+          //double y_k = rssi_arg.value;
+          m_yk = rssi_arg.value;
+        }
+
         double psi_est = states_arg.psi; // feedback of actual heading from estimatedstate
         //inf("psi: %f", psi_est);
         //double psi_est = psi_arg.value; // feedback of desired heading from optimizer
@@ -224,7 +259,7 @@ namespace Navigation
 
         temp(0) = (1/(1-m_args.lambda)) + (1/m_args.lambda)*m_Pm(0,0);
         m_L = (1/m_args.lambda)*m_Pm*transpose(m_C)*inverse(temp);
-        m_zhat = m_zhatm + m_L*(y_k - m_zhatm(0,0));
+        m_zhat = m_zhatm + m_L*(m_yk - m_zhatm(0,0));
         //std::cout << zhat;
 
         IMC::NavigationData navdata;
