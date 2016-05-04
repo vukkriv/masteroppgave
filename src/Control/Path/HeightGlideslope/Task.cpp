@@ -97,6 +97,22 @@ namespace Control
           B(2,0)=w*w*w;
           I(3);
       }
+        void updateRefmodel()
+        {
+          A(0,1)=1;
+          A(1,2)=1;
+          A(2,0)=-w*-w*-w;
+          A(2,1)=-(2*zeta+1)*w*w;
+          A(2,2)=-(2*zeta+1)*w;
+          B(2,0)=w*w*w;
+          I(3);
+        }
+        void setTimeconstant(double Tconst){
+          T = Tconst;
+          w = 1/Tconst;
+          updateRefmodel();
+        }
+
       public:
         Matrix A;
         Matrix B;
@@ -165,9 +181,9 @@ namespace Control
 
         {
           param("Height bandwidth", m_args.phi_h)
-        			            .units(Units::Meter)
-        			            .defaultValue("20")
-        			            .description("Limit distance above and bellow desired height from which maximum control is used");
+          .units(Units::Meter)
+          .defaultValue("20")
+          .description("Limit distance above and bellow desired height from which maximum control is used");
 
           param("Vertical Rate maximum gain", m_args.k_vr)
           .defaultValue("0.15")
@@ -388,7 +404,7 @@ namespace Control
             spew("Glideslope LINE ! %f",glideslope_angle);
           }
 
-          los_angle = trimValue(los_angle,-Angles::radians(4.0),Angles::radians(4.0));
+          los_angle = trimValue(los_angle,-Angles::radians(7.0),Angles::radians(7.0));
           inf("Los_angle: %f",los_angle*(180/3.14159265));
 
           double gamma_cmd = glideslope_angle + los_angle; //Commanded flight path angle
