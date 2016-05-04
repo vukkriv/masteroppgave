@@ -24,6 +24,10 @@
 //***************************************************************************
 // Author: Kjetilhs                                                         *
 //***************************************************************************
+// The method used to calculate the Dubins path is based on the algorithm   *
+// found in "Cooperative path planning of unmanned aerial vehicles". The    *
+// method used is the external circle 2-D path.                             *
+//***************************************************************************
 
 // This task generates a dubins path that can be used for landing
 // DUNE headers.
@@ -34,7 +38,6 @@
 
 #include <vector>
 #include <cmath>
-//#define PI 3.1415926535897932384626433832795
 
 namespace Plan
 {
@@ -60,14 +63,10 @@ namespace Plan
       double length_glideslope;
       //! Length of approach
       double length_approach_glideslope;
-      //! Length of waypoint behind the nett
-      double b1;
       //! Angle of attack
       double gamma_a;
       //! Angle of descent
       double gamma_d;
-      //! Net position
-      Matrix Net;
       //! Net orientation
       double netHeading;
       //! Net lat
@@ -98,7 +97,6 @@ namespace Plan
       bool rightFinishTurningCircle;
       //! Wait at loiter
       bool wait_at_loiter;
-
     };
 
     struct LandingPath
@@ -352,10 +350,11 @@ namespace Plan
         fPath.lon = m_landParameteres.state_lon;
         fPath.z = m_landParameteres.state_height;
 
-        inf("Current lat: %f current lon: %f current height: %f",fPath.lat,fPath.lon,fPath.z);
+        debug("Current lat: %f current lon: %f current height: %f",fPath.lat,fPath.lon,fPath.z);
         fPath.z_units = IMC::Z_HEIGHT;
         fPath.speed = m_landArg.speed_WP1;
         fPath.speed_units = IMC::SUNITS_METERS_PS;
+
         addPathPoint(path,&fPath);
         maneuverList.push_back(fPath);
 
@@ -445,8 +444,8 @@ namespace Plan
         }
         inf("Dubins path has been created");
         //! Create a lateral path
-        lateralPath(Xs,Xf,OCF,CounterClockwiseF,path);
-        inf("Created lateral path");
+        longitudinalPath(Xs,Xf,OCF,CounterClockwiseF,path);
+        inf("Created longitudinal path");
         //! Store parameter that has been used in the construction of the path
         m_landParameteres.OCF = OCF;
         m_landParameteres.clockwise = !CounterClockwiseF;
@@ -457,9 +456,9 @@ namespace Plan
         return true;
       }
 
-      //! Create a lateral path to be added to the Dubins path
+      //! Create a longitudinal path to be added to the Dubins path
       void
-      lateralPath(Matrix Xs,Matrix Xf,Matrix OCF,bool CounterClokwiseF,std::vector<Matrix> &path)
+      longitudinalPath(Matrix Xs,Matrix Xf,Matrix OCF,bool CounterClokwiseF,std::vector<Matrix> &path)
       {
         if (Xf(2,0)<Xs(2,0))
         {
@@ -644,7 +643,6 @@ namespace Plan
         else
         {
           inf("Creating a user specified path");
-          //inf("Start circle %d, Start direction %d Finish circle %d",m_landArg.rigthStartTurningCircle,m_landArg.rightStartTurningDirection,m_landArg.rightFinishTurningCircle);
           //! Define start turning circle center (Ocs)
           if (m_landArg.rightStartTurningDirection)
           {
@@ -877,8 +875,10 @@ namespace Plan
       bool
       dubinsParameteres(Matrix Ocs,Matrix Ocf,double Rs,double Rf,bool TurnS,bool TurnF,Matrix& Pchi,Matrix& PN)
       {
+        // Start circle center
         double Xcs = Ocs(0,0);
         double Ycs = Ocs(1,0);
+        // Finish circle center
         double Xcf = Ocf(0,0);
         double Ycf = Ocf(1,0);
 
@@ -922,6 +922,7 @@ namespace Plan
       void
       arcAngle(const double theta0,const double theta1,const bool Right,double &theta)
       {
+        // Ensure that the arc is constructed in the correct direction
         if (Right)
           {
             if(Angles::normalizeRadian(theta1-theta0)<=0)
@@ -1038,23 +1039,25 @@ namespace Plan
         double descentAngle = m_landArg.gamma_d;
         bool correctHeight = false;
         Path[0](2,0) = x0(2,0);
-        double D;
+        double distance;
         inf("Start height %f desired height %f",x0(2,0),WP(2,0));
         for (unsigned i=0;i<Path.size()-1;i++)
         {
-          D = sqrt(std::pow(Path[i+1](0,0)-Path[i](0,0),2)+std::pow(Path[i+1](1,0)-Path[i](1,0),2));
-          debug("The distance D = %f",D);
-          debug("New angle %f descent angel %f",std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),D),2)),std::sqrt(std::pow(descentAngle,2)));
-          if (!correctHeight && std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),D),2))<std::sqrt(std::pow(descentAngle,2)))
+          // Calculate the distance to the next point
+          distance = sqrt(std::pow(Path[i+1](0,0)-Path[i](0,0),2)+std::pow(Path[i+1](1,0)-Path[i](1,0),2));
+          debug("The distance D = %f",distance);
+          debug("New angle %f descent angel %f",std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),distance),2)),std::sqrt(std::pow(descentAngle,2)));
+          // Check if the correct can be reach at next point with an angle equal or less then max descentAngle
+          if (!correctHeight && std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),distance),2))<std::sqrt(std::pow(descentAngle,2)))
           {
             correctHeight = true;
             inf("Reached correct height");
-            descentAngle = std::atan2(WP(2,0)-Path[i](2,0),D);
-            Path[i+1](2,0) = Path[i](2,0)+D*tan(descentAngle);
+            descentAngle = std::atan2(WP(2,0)-Path[i](2,0),distance);
+            Path[i+1](2,0) = Path[i](2,0)+distance*tan(descentAngle);
           }
           else if (!correctHeight)
           {
-            Path[i+1](2,0) = Path[i](2,0) + D*tan(descentAngle);
+            Path[i+1](2,0) = Path[i](2,0) + distance*tan(descentAngle);
           }
           else
           {
@@ -1084,33 +1087,33 @@ namespace Plan
         Matrix WPS0 = Path.back();
         double xnn = OF(0,0) + m_landArg.Rf*cos(theta0+theta(0,1));
         double ynn = OF(1,0) + m_landArg.Rf*sin(theta0+theta(0,1));
-        double D = std::sqrt(std::pow(xnn-WPS0(0,0),2)+std::pow(ynn-WPS0(1,0),2));
-        double znn = WPS0(2,0)+D*std::tan(descentAngle);
+        double distance = std::sqrt(std::pow(xnn-WPS0(0,0),2)+std::pow(ynn-WPS0(1,0),2));
+        double znn = WPS0(2,0)+distance*std::tan(descentAngle);
         Matrix WPS1 = Matrix(3,1,0.0);
         WPS1(0,0) = xnn;
         WPS1(1,0) = ynn;
         WPS1(2,0) = znn;
-        inf("Next height %f",m_estate.height-znn);
-        inf("Desired height %f",m_landArg.netHeading-dHeight);
+        debug("Next height %f",m_estate.height-znn);
+        debug("Desired height %f",m_landArg.netHeading-dHeight);
         int n = 2;
         Path.push_back(WPS1);
-        inf("theta has %d elements",theta.size());
+        debug("theta has %d elements",theta.size());
         debug("Glide angle is %f",descentAngle);
         int max_iter = 1000;
         int cur_iter = 0;
         while(!correctHeight && cur_iter < max_iter)
         {
           ++cur_iter;
-          if (std::sqrt(std::pow(std::atan2(dHeight-WPS1(2,0),D),2))<std::sqrt(std::pow(descentAngle,2)))
+          if (std::sqrt(std::pow(std::atan2(dHeight-WPS1(2,0),distance),2))<std::sqrt(std::pow(descentAngle,2)))
           {
-            descentAngle = std::atan2(dHeight-WPS1(2,0),D);
+            descentAngle = std::atan2(dHeight-WPS1(2,0),distance);
             correctHeight = true;
           }
           WPS0 = WPS1;
           xnn = OF(0,0) + m_landArg.Rf*cos(theta0+theta(0,n));
           ynn = OF(1,0) + m_landArg.Rf*sin(theta0+theta(0,n));
-          D = std::sqrt(std::pow(xnn-WPS0(0,0),2)+std::pow(ynn-WPS0(1,0),2));
-          znn = WPS0(2,0)+D*std::tan(descentAngle);
+          distance = std::sqrt(std::pow(xnn-WPS0(0,0),2)+std::pow(ynn-WPS0(1,0),2));
+          znn = WPS0(2,0)+distance*std::tan(descentAngle);
           debug("Next height %f",znn);
           WPS1(0,0) = xnn;
           WPS1(1,0) = ynn;
