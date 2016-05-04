@@ -129,7 +129,10 @@ namespace DUNE
         toECEF(*lat, *lon, *hae, &x, &y, &z);
 
         // Compute Geocentric latitude
-        double phi = std::atan2(z, std::sqrt(x * x + y * y));
+        //double phi = std::atan2(z, std::sqrt(x * x + y * y));
+        double N = computeRn(*lat);
+        double p = std::sqrt(x * x + y * y);
+        double phi = std::atan2(z,p*(1 - c_wgs84_e2 * N / (N + *hae)));
 
         // Compute all needed sine and cosine terms for conversion.
         double slon = std::sin(*lon);
@@ -170,7 +173,7 @@ namespace DUNE
 
 
 
-    private:
+    //private:
       //! Convert WGS-84 coordinates to ECEF (Earch Center Earth Fixed) coordinates.
       //!
       //! @param[in] lat WGS-84 latitude (rad).
@@ -195,7 +198,8 @@ namespace DUNE
 
         *x = (rn + hae) * cos_lat * cos_lon;
         *y = (rn + hae) * cos_lat * sin_lon;
-        *z = (((1.0 - c_wgs84_e2) * rn) + hae) * sin_lat;
+        *z = (rn*(c_wgs84_b/c_wgs84_a)*(c_wgs84_b/c_wgs84_a)+hae)*sin_lat;
+        //*z = (((1.0 - c_wgs84_e2) * rn) + hae) * sin_lat;
       }
 
       //! Convert ECEF (x,y,z) to WGS-84 (lat, lon, hae).
@@ -214,19 +218,22 @@ namespace DUNE
         assert(lon != 0);
         assert(hae != 0);
 
-        double p = std::sqrt(x * x + y * y);
         *lon = std::atan2(y, x);
-        *lat = std::atan2(z / p, 0.01);
-        double n = computeRn(*lat);
-        *hae = p / std::cos(*lat) - n;
-        double old_hae = -1e-9;
-        double num = z / p;
+        double eps = 1;
+        double n = 0;
+        double p = std::sqrt(x * x + y * y);
+        *lat = std::atan2(z, p*(1-c_wgs84_e2));
 
-        while (std::fabs(*hae - old_hae) > 1e-4)
+
+        double lat0 = -1e-9;
+
+        while (eps > 1e-10)
         {
-          old_hae = *hae;
-          double den = 1 - c_wgs84_e2 * n / (n + *hae);
-          *lat = std::atan2(num, den);
+          n = computeRn(*lat);
+          *hae = p / std::cos(*lat) - n;
+          lat0 = *lat;
+          *lat = std::atan2(z,p*(1 - c_wgs84_e2 * n / (n + *hae)));
+          eps = std::abs(*lat-lat0);
           n = computeRn(*lat);
           *hae = p / std::cos(*lat) - n;
         }
@@ -242,8 +249,10 @@ namespace DUNE
       computeRn(Type lat)
       {
         double lat_sin = std::sin(lat);
-        return c_wgs84_a / std::sqrt(1 - c_wgs84_e2 * (lat_sin * lat_sin));
-      }
+        double lat_cos = std::cos(lat);
+        return (c_wgs84_a*c_wgs84_a) /
+               std::sqrt((c_wgs84_a*c_wgs84_a)*(lat_cos*lat_cos) + (c_wgs84_b*c_wgs84_b) * (lat_sin * lat_sin));
+    }
     };
   }
 }
