@@ -494,6 +494,33 @@ namespace Plan
             trans.source_man = last_man.maneuver_id;
             plan_spec.transitions.push_back(trans);
           }
+          else
+          {
+            // Create start actions
+            IMC::SetEntityParameters eparam_start;
+            IMC::EntityParameter param_t;
+
+            eparam_start.name = "Path Control";
+            param_t.name = "Override Time Of Arrival Factor";
+            param_t.value = "1.0";
+            eparam_start.params.push_back(param_t);
+
+            man_spec.start_actions.push_back(eparam_start);
+
+            eparam_start.name = "Longitudinal Controller";
+            param_t.name = "Override Time Of Arrival Factor";
+            param_t.value = "1.0";
+            eparam_start.params.push_back(param_t);
+
+            man_spec.start_actions.push_back(eparam_start);
+
+            eparam_start.name = "Tracking Altitude Controller";
+            param_t.name = "Override Time Of Arrival Factor";
+            param_t.value = "1.0";
+            eparam_start.params.push_back(param_t);
+
+            man_spec.start_actions.push_back(eparam_start);
+          }
           last_man = man_spec;
           plan_spec.maneuvers.push_back(man_spec);
         }
