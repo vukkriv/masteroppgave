@@ -443,7 +443,7 @@ namespace Navigation
                                       &lat,&lon,&height);
 
           // Find the ned position of the rtk solution in the external nav frame
-          Coordinates::WGS84_Accurate::displacement(m_extnav.state.get()->lat,m_extnav.state.get()->lon,m_extnav.state.get()->height,
+          Coordinates::WGS84::displacement(m_extnav.state.get()->lat,m_extnav.state.get()->lon,m_extnav.state.get()->height,
                                           lat,lon,height,
                                           &n,&e,&d);
           // Fill sample matrix with the difference between rtk and external state
