@@ -80,7 +80,8 @@ namespace Navigation
       public:
         MovingAverage():
             curColumn(0),
-            data(Matrix(1,1,0.0))
+            data(Matrix(1,1,0.0)),
+            filledData(false)
           {
           // Intentionally empty
           }
@@ -432,48 +433,26 @@ namespace Navigation
           if (m_rtk.type<m_rtk_fix_level_deactivate)
             return;
 
-          //double lat = m_extnav.state.get()->lat;
-          //double lon = m_extnav.state.get()->lon;
-          //double height = m_extnav.state.get()->height;
-
           double lat = m_rtk.base_lat;
           double lon = m_rtk.base_lon;
           double height = m_rtk.base_height;
           double n,e,d;
 
-          // Fill llh coordinates of current ExtNav pos.
-          //Coordinates::WGS84::displace(m_extnav.state.get()->x,m_extnav.state.get()->y,m_extnav.state.get()->z,
-           //                             &lat,&lon,&height);
-
-
-          //Coordinates::WGS84::displacement(m_rtk.base_lat,m_rtk.base_lon,m_rtk.base_height,
-          //                                lat,lon,height,
-          //                                &n,&e,&d);
-
           // Fill llh coordinates of current RTK pos.
           inf("rtk N=%f E=%f D=%f",m_rtk.n,m_rtk.e,m_rtk.d);
           inf("Base lat=%f lon=%f height=%f",lat,lon,height);
-          Coordinates::WGS84::displace(m_rtk.n,m_rtk.e,m_rtk.d,
+          Coordinates::WGS84_Accurate::displace(m_rtk.n,m_rtk.e,m_rtk.d,
                                       &lat,&lon,&height);
 
           inf("Rtk after lat=%f lon=%f height=%f",lat,lon,height);
-          height = m_rtk.base_height-m_rtk.d;
-          inf("Manual calulation of heigh = %f",height);
-          Coordinates::WGS84::displacement(m_extnav.state.get()->lat,m_extnav.state.get()->lon,m_extnav.state.get()->height,
+          //height = m_rtk.base_height-m_rtk.d;
+          inf("Manual calulation of heigh = %f",m_rtk.base_height-m_rtk.d);
+          Coordinates::WGS84_Accurate::displacement(m_extnav.state.get()->lat,m_extnav.state.get()->lon,m_extnav.state.get()->height,
                                           lat,lon,height,
                                           &n,&e,&d);
           // Fill sample matrix with the difference between rtk and external state
           Matrix newSample = Matrix(3,1,0.0);
           // Calculating the difference
-          //newSample(0,0) = m_rtk.n - n;
-          //newSample(1,0) = m_rtk.e - e;
-          //newSample(2,0) = m_rtk.d - d;
-
-          // Debug
-
-          /*n = m_rtk.n;
-          e = m_rtk.e;
-          d = m_rtk.d;*/
 
           newSample(0,0) = n - m_extnav.state.get()->x;
           newSample(1,0) = e - m_extnav.state.get()->y;
@@ -496,7 +475,7 @@ namespace Navigation
           m_compensator.newSample(newSample);
           // For debuging purpose
           Matrix average = m_compensator.getAverage();
-          inf("Difference: n = %f e = %f d = %f",average(0,0),average(1,0),average(2,0));
+          spew("Difference: n = %f e = %f d = %f",newSample(0,0),newSample(1,0),newSample(2,0));
         }
 
         void
