@@ -201,7 +201,7 @@ namespace Simulators
           Coordinates::WGS84_Accurate::displace(m_rtk.n,m_rtk.e,m_rtk.d,
                                       &lat,&lon,&height);
           double dx,dy,dz;
-          WGS84_Accurate::displacement(m_rtk.base_lat, m_rtk.base_lon, m_rtk.base_height,
+          WGS84::displacement(m_rtk.base_lat, m_rtk.base_lon, m_rtk.base_height,
                               lat, lon, height,
                               &dx, &dy, &dz);
 
