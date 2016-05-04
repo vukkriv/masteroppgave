@@ -37,6 +37,8 @@ namespace Simulators
     struct Arguments
     {
       bool sim_flag;
+      double noise_amp;
+      bool drop_meas;
     };
 
     struct Task: public DUNE::Tasks::Periodic
@@ -62,6 +64,14 @@ namespace Simulators
         param("SimFlag", m_args.sim_flag)
         .defaultValue("true")
         .description("True if unicycle simulator is used");
+
+        param("NoiseAmp", m_args.noise_amp)
+        .defaultValue("0.1")
+        .description("Size of white noise on RSSI");
+
+        param("UseDropMeas", m_args.drop_meas)
+        .defaultValue("true")
+        .description("True if drop of RSSI measurements should be used");
 
 
         bind<IMC::GpsFix>(this);
@@ -162,8 +172,26 @@ namespace Simulators
         //! White noise:
         double rand = randNumber();
 
-        // use RSSI message from IMC
-        m_sim_rssi.value = m_rssi + 0.1*rand;
+        //! If dropped measurements should be simulated.
+        if (m_args.drop_meas)
+        {
+          //! Simulate dropped measurements:
+          if (rand == 1) // Should happend 10% of the time.
+          {
+            m_sim_rssi.value = 0;
+          }
+          else
+          {
+            m_sim_rssi.value = m_rssi + m_args.noise_amp*rand;
+          }
+        }
+        else
+        {
+          m_sim_rssi.value = m_rssi + m_args.noise_amp*rand;
+        }
+
+
+        //! Dispatch to IMC bus.
         dispatch(m_sim_rssi);
 
 
