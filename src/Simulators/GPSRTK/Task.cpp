@@ -28,6 +28,9 @@
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 
+// USER headers
+#include <USER/DUNE.hpp>
+
 namespace Simulators
 {
   namespace GPSRTK
@@ -74,6 +77,7 @@ namespace Simulators
 
         param("Fix Level", m_args.fix_level)
         .values("Fix,Float,None")
+        .visibility(Parameter::VISIBILITY_USER)
         .defaultValue("Fix");
 
         param("Base System Name", m_args.base_sys_name)
@@ -191,18 +195,23 @@ namespace Simulators
         if (m_got_base_pos)
         {
           // Recalculate position.
+          double lat = m_navdata.state->lat;
+          double lon = m_navdata.state->lon;
+          double height = m_navdata.state->height;
+          Coordinates::WGS84_Accurate::displace(m_rtk.n,m_rtk.e,m_rtk.d,
+                                      &lat,&lon,&height);
           double dx,dy,dz;
-          WGS84::displacement(m_rtk.base_lat, m_rtk.base_lon, m_rtk.base_height,
-                              m_navdata.state->lat, m_navdata.state->lon, m_navdata.state->height,
+          WGS84_Accurate::displacement(m_rtk.base_lat, m_rtk.base_lon, m_rtk.base_height,
+                              lat, lon, height,
                               &dx, &dy, &dz);
 
           // NB: This is now done at every iteration. Since these rarely change, dx,dy,dz will remain same
           // as long as the lat refs do not change, and some logic could be written to check this.
           // But since it's just a desktop simulation, don'tcare.
 
-          m_rtk.n += dx;
-          m_rtk.e += dy;
-          m_rtk.d += dz;
+          m_rtk.n = dx;
+          m_rtk.e = dy;
+          m_rtk.d = dz;
         }
         else if(!m_args.require_base)
         {
