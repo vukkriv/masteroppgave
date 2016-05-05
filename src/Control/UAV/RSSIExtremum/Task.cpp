@@ -50,8 +50,8 @@ namespace Control
         double eta;
         //! inv. prop. to raduis of circling motion:
         double omega;
-        //! Sampling time:
-        double T;
+        //! Sampling time: // Not necessary anymore
+        //double T;
       };
 
       struct Task: public DUNE::Tasks::Task
@@ -111,9 +111,9 @@ namespace Control
           .defaultValue("0.1")
           .description("Proportional to inv. radius of circles");
 
-          param("T", m_args.T)
-          .defaultValue("0.1")
-          .description("Sampling time");
+          //param("T", m_args.T)
+          //.defaultValue("0.1")
+          //.description("Sampling time");
 
           //! Bind incoming IMC messages:
           bind<IMC::NavigationData>(this);
