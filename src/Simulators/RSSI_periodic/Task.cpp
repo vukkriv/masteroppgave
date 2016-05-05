@@ -166,7 +166,7 @@ namespace Simulators
           double dist = sqrt(pow(dlat,2) + pow(dlon,2));
 
           // RSSI test formula:
-          m_rssi = 100*exp(-dist*1000);
+          m_rssi = 100*exp(-dist*2000);
         }
 
         //! White noise:
