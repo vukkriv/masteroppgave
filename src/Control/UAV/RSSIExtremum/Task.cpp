@@ -74,6 +74,11 @@ namespace Control
         Matrix m_Rt;
         double m_norm_dzhat;
 
+        // Previous and current time:
+        double m_time_prev;
+        double m_dt;
+
+
         IMC::NavigationData m_navdata;
 
 
@@ -89,7 +94,9 @@ namespace Control
           m_one(1,1,1),
           m_Dzhat(2,1,0.0),
           m_Rt(1,2,0.0),
-          m_norm_dzhat(0.0)
+          m_norm_dzhat(0.0),
+          m_time_prev(Clock::get()),
+          m_dt(0.0)
         {
           //! Parameters:
           param("Kappa", m_args.kappa)
@@ -177,13 +184,23 @@ namespace Control
           m_zhat(1) = navdata_arg.custom_y;
           m_zhat(2) = navdata_arg.custom_z;
 
+          //! Compute timestep dt:
+          double dt = Clock().get() - m_time_prev;
+          m_time_prev = Clock::get();
 
-          //inf("zhat is: ");
-          //std::cout << zhat;
+          //inf("Sample time is: %f", dt);
+
+          /*
+          if (dt > 2*(1/this->Periodic::getFrequency()))
+          {
+            debug("Warning: Missed time. Should be %f, was %f", 1/this->getFrequency(), dt);
+          }
+          //inf("Task freq.: %f", this->getFrequency());
+          */
 
           // Rotation matrix:
-          m_R(0) = cos(m_psi_k + 0.5*m_args.omega*m_args.T);
-          m_R(1) = sin(m_psi_k + 0.5*m_args.omega*m_args.T);
+          m_R(0) = cos(m_psi_k + 0.5*m_args.omega*dt);
+          m_R(1) = sin(m_psi_k + 0.5*m_args.omega*dt);
 
           m_Rt = transpose(m_R);
 
@@ -193,7 +210,7 @@ namespace Control
           m_norm_dzhat = m_Dzhat.norm_2();
 
           // Calculate next optimal heading:
-          m_psi_next = m_psi_m + m_args.omega*m_args.T*(m_one-m_Rt*(m_Dzhat)*((m_args.kappa*m_args.eta)/(m_args.eta + m_args.kappa*m_norm_dzhat)));
+          m_psi_next = m_psi_m + m_args.omega*dt*(m_one-m_Rt*(m_Dzhat)*((m_args.kappa*m_args.eta)/(m_args.eta + m_args.kappa*m_norm_dzhat)));
 
           //! Wrap heading to the interval (-pi,pi]:
           m_psi_wrap = fmod(m_psi_next(0) - PI, 2*PI) - PI;
@@ -207,14 +224,6 @@ namespace Control
           // Update psi_k:
           m_psi_k = m_psi_next(0);
 
-          //return m_psi_next(0);
-
-          /*
-          //! (Scaled) estimated gradient:
-          est_gradient(0) = zhat(1);
-          est_gradient(1) = zhat(2);
-
-           */
         }
 
 
@@ -224,18 +233,8 @@ namespace Control
         onMain(void)
         {
 
-
-          //IMC::DesiredHeading psi_send;
-          //psi_send.value = 0;
-
           while (!stopping())
           {
-            //calculateNextHeading(zhat_receive);
-            //dispatch(psi_send);
-            //inf("Psi is: %f", psi_send.value);
-
-            //Delay::wait(1.0);    // Wait doing nothing.
-
             waitForMessages(1.0);
           }
         }
