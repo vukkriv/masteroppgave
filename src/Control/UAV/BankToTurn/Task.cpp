@@ -8,7 +8,7 @@ using DUNE_NAMESPACES;
 
 namespace Control
 {
-  namespace Path
+  namespace UAV
   {
     namespace BankToTurn
     {
