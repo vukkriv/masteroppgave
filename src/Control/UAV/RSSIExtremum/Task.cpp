@@ -40,6 +40,11 @@ namespace Control
     {
       using DUNE_NAMESPACES;
 
+      //! Controllable loops.
+      static const uint32_t c_controllable = IMC::CL_PATH;
+      //! Required loops.
+      static const uint32_t c_required = IMC::CL_YAW;
+
       #define PI 3.141592653589793
 
       struct Arguments
@@ -52,9 +57,11 @@ namespace Control
         double omega;
         //! Sampling time: // Not necessary anymore
         //double T;
+
+        bool use_controller;
       };
 
-      struct Task: public DUNE::Tasks::Task
+      struct Task: public BasicUAVAutopilot
       {
         //! Task arguments
         Arguments m_args;
@@ -83,7 +90,7 @@ namespace Control
 
 
         Task(const std::string& name, Tasks::Context& ctx):
-          DUNE::Tasks::Task(name, ctx),
+          BasicUAVAutopilot(name, ctx, c_controllable, c_required),
           m_D(2,3,0.0),
           m_R(2,1,0.0),
           m_zhat(3,1,0.0),
@@ -111,6 +118,12 @@ namespace Control
           .defaultValue("0.1")
           .description("Proportional to inv. radius of circles");
 
+          param("Path Controller", m_args.use_controller)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .defaultValue("false")
+          .description("Enable Extremum seeking Controller");
+
           //param("T", m_args.T)
           //.defaultValue("0.1")
           //.description("Sampling time");
@@ -121,6 +134,13 @@ namespace Control
           //! Initiate matrices:
           initMatrices();
 
+        }
+
+        //! Implementation of pure virtual function from superclass.
+        virtual void
+        onEstimatedState(const double timestep, const IMC::EstimatedState* msg)
+        {
+           //! Do nothing here, since EstimatedState is not needed in this task.
         }
 
         void
@@ -168,6 +188,10 @@ namespace Control
 
         void
         consume(const IMC::NavigationData* msg){
+          if (!isActive())
+          {
+            return;
+          }
           m_navdata = *msg;
           //inf("Optimizer: Navdata received");
           calculateNextHeading(m_navdata);
@@ -226,17 +250,11 @@ namespace Control
 
         }
 
-
-
-        //! Main loop.
         void
-        onMain(void)
+        task(void)
         {
-
-          while (!stopping())
-          {
-            waitForMessages(1.0);
-          }
+          if(!m_args.use_controller)
+            return;
         }
       };
     }
