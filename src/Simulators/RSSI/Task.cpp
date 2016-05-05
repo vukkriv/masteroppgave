@@ -30,7 +30,7 @@
 
 namespace Simulators
 {
-  namespace RSSI_periodic
+  namespace RSSI
   {
     using DUNE_NAMESPACES;
 
