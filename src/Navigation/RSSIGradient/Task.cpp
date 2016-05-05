@@ -75,6 +75,10 @@ namespace Navigation
       //! Flag used to initiate zhatm:
       bool m_initflag;
 
+      // Previous and current time:
+      double m_time_prev;
+      double m_dt;
+
       //double m_psi;
 
       IMC::DesiredHeading m_psi_d;
@@ -101,7 +105,9 @@ namespace Navigation
         m_R(2,1,0.0),
         m_rssi_prev(0.0),
         m_yk(0.0),
-        m_initflag(false)
+        m_initflag(false),
+        m_time_prev(Clock::get()),
+        m_dt(0.0)
       {
 
         param("Lambda", m_args.lambda)
@@ -186,6 +192,7 @@ namespace Navigation
         m_estates = *states;
         //psi = states->psi;
         //inf("heading is: %f", states->psi);
+        //estimateStatevector(m_rssi, m_estates);
       }
 
       void
@@ -211,7 +218,6 @@ namespace Navigation
         }
 
         // When a new rssi measurement occurs, estimate and dispatch a new m_zhat:
-        //estimateStatevector(rssi_receive,states_receive);
         estimateStatevector(m_rssi, m_estates);
       }
 
@@ -219,7 +225,10 @@ namespace Navigation
       void
       estimateStatevector(IMC::RSSI rssi_arg, IMC::EstimatedState states_arg) //IMC::DesiredHeading psi_arg)//)
       {
-        //inf("Running observer");
+
+        //! Compute timestep dt:
+        double dt = Clock().get() - m_time_prev;
+        m_time_prev = Clock::get();
 
         // Inputs to the observer:
 
@@ -228,9 +237,9 @@ namespace Navigation
           //inf("Use drop detection");
           if (rssi_arg.value < 0.5) //< 0.1 * m_yk) //rssi_prev) //! Meaning that the rssi measurement is most likely dropped
           {
-            //double y_k = m_rssi_prev;
             //! Let m_yk remain the same.
-            inf("Dropped RSSI measurement detected.");
+            //double y_k = m_rssi_prev;
+            //inf("Dropped RSSI measurement detected.");
 
           }
           else
@@ -277,7 +286,7 @@ namespace Navigation
         m_R(1,0) = sin(psi_est);
 
         // Observer prediction step:
-        Matrix temp3 = m_args.omega*m_args.T*transpose(m_R);
+        Matrix temp3 = m_args.omega*dt*transpose(m_R);
         m_A(0,1) = temp3(0);
         m_A(0,2) = temp3(1);
         m_zhatm = m_A*m_zhat;
