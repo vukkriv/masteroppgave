@@ -150,6 +150,7 @@ namespace Control
           m_D(1,2) = 1;
         }
 
+        /*
         //! Update internal state with new parameter values.
         void
         onUpdateParameters(void)
@@ -174,17 +175,12 @@ namespace Control
         {
         }
 
-        //! Initialize resources.
-        void
-        onResourceInitialization(void)
-        {
-        }
-
         //! Release resources.
         void
         onResourceRelease(void)
         {
         }
+        */
 
         void
         consume(const IMC::NavigationData* msg){
