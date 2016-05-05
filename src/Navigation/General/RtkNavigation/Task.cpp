@@ -38,12 +38,60 @@ namespace Navigation
 
       struct Task: public DUNE::Tasks::Task
       {
+        //! Accumulated EstimatedState message
+        IMC::EstimatedState m_estate;
+        //! Last received RTK Fix message
+        IMC::GpsFixRtk m_rtk;
+
         //! Constructor.
         //! @param[in] name task name.
         //! @param[in] ctx context.
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Tasks::Task(name, ctx)
         {
+          bind<IMC::GpsFixRtk>(this);
+        }
+
+        void
+        consume(const IMC::GpsFixRtk* rtkfix)
+        {
+          // Only care about fixes from ourselves
+          if (rtkfix->getSource() != getSystemId())
+            return;
+
+          // Only care if position is valid
+          if (!(rtkfix->validity & IMC::GpsFixRtk::RFV_VALID_POS))
+            return;
+
+          // Only care if Base pos is valid
+          if (!(rtkfix->validity & IMC::GpsFixRtk::RFV_VALID_BASE))
+          {
+            spew("Ignored RtkFix message: Invalid base. ");
+            return;
+          }
+
+          m_rtk = *rtkfix;
+
+          fillEstimatedState();
+        }
+
+        void
+        fillEstimatedState()
+        {
+          m_estate.x = m_rtk.n;
+          m_estate.y = m_rtk.e;
+          m_estate.z = m_rtk.d;
+
+          m_estate.lat = m_rtk.base_lat;
+          m_estate.lon = m_rtk.base_lon;
+          m_estate.height = m_rtk.base_height;
+
+          if (m_rtk.validity == IMC::GpsFixRtk::RFV_VALID_VEL)
+          {
+            m_estate.vx = m_rtk.v_n;
+            m_estate.vy = m_rtk.v_e;
+            m_estate.vz = m_rtk.v_d;
+          }
         }
 
         //! Update internal state with new parameter values.
