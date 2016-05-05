@@ -48,8 +48,8 @@ namespace Navigation
       double lambda;
       //! inv. prop. to raduis of circling motion:
       double omega;
-      //! Sampling time.
-      double T;
+      //! Sampling time. // Not necessary anymore
+      // double T;
       //! Use dropped rssi detection.
       bool use_drop_detect;
     };
@@ -79,18 +79,13 @@ namespace Navigation
       double m_time_prev;
       double m_dt;
 
-      //double m_psi;
+
 
       IMC::DesiredHeading m_psi_d;
       IMC::RSSI m_rssi;
       IMC::EstimatedState m_estates;
 
-      //IMC::NavigationData zhat_send;
 
-      //! Constructor.
-
-      //! @param[in] name task name.
-      //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Task(name, ctx),
         m_C(1,3,0.0),
@@ -100,7 +95,6 @@ namespace Navigation
         m_zhatm(3,1,0.0),
         m_P(3,3,0.0),
         m_Pm(3,3,0.0),
-        //m_psi(0.0)
         m_A(3,3,0.0),
         m_R(2,1,0.0),
         m_rssi_prev(0.0),
@@ -118,9 +112,9 @@ namespace Navigation
         .defaultValue("0.1")
         .description("Proportional to inv. radius of circles");
 
-        param("T", m_args.T)
-        .defaultValue("0.1")
-        .description("Sampling time");
+        //param("T", m_args.T)
+        //.defaultValue("0.1")
+        //.description("Sampling time");
 
         param("UseDropDetection", m_args.use_drop_detect)
         .defaultValue("true")
@@ -238,16 +232,15 @@ namespace Navigation
           if (rssi_arg.value < 0.5) //< 0.1 * m_yk) //rssi_prev) //! Meaning that the rssi measurement is most likely dropped
           {
             //! Let m_yk remain the same.
-            //double y_k = m_rssi_prev;
             //inf("Dropped RSSI measurement detected.");
 
           }
           else
           {
+            //! Update m_yk.
             m_yk = rssi_arg.value;
-            //double y_k = rssi_arg.value;
-            //! Update m_rssi_prev.
-            //m_rssi_prev = rssi_arg.value;
+
+
           }
         }
         else
@@ -257,11 +250,7 @@ namespace Navigation
         }
 
         double psi_est = states_arg.psi; // feedback of actual heading from estimatedstate
-        //inf("psi: %f", psi_est);
         //double psi_est = psi_arg.value; // feedback of desired heading from optimizer
-
-        //inf("Pm is: ");
-        //std::cout << Pm;
 
         // Update estimate:
         Matrix temp = Matrix(1,1,0.0);
@@ -280,7 +269,7 @@ namespace Navigation
         Matrix temp2 = m_I-(m_L*m_C);
 
         m_P = (1/m_args.lambda)*(temp2)*m_Pm*transpose(temp2) + ((1/(1-m_args.lambda))*m_L*transpose(m_L));
-        //std::cout << m_P;
+
 
         m_R(0,0) = cos(psi_est);
         m_R(1,0) = sin(psi_est);
@@ -292,20 +281,14 @@ namespace Navigation
         m_zhatm = m_A*m_zhat;
         m_Pm = m_A*m_P*transpose(m_A);
 
-        //return m_zhat;
-        // Initialize zhat and Pm?
-        //return(zhat);
-
       }
 
       //! Main loop.
       void
       onMain(void)
       {
-
         while (!stopping())
         {
-
           waitForMessages(1.0);
         }
       }
