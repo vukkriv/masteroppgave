@@ -95,6 +95,7 @@ namespace Plan
       Vehicle m_vehicle;
       Vehicles m_vehicles;
       VirtualRunway   virtual_runway;
+      bool dubins_requested;
 
       //! Last plan control state
       IMC::PlanControlState m_last_pcs;
@@ -103,7 +104,8 @@ namespace Plan
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Task(name, ctx)
+        DUNE::Tasks::Task(name, ctx),
+        dubins_requested(false)
       {
         param("Loiter Altitude", m_args.fw_loiter.altitude)
         .visibility(Parameter::VISIBILITY_USER)
@@ -248,7 +250,7 @@ namespace Plan
                 resolveSystemId(msg->getSource()),
                 resolveSystemId(msg->getDestination()));
         }
-        if(msg->plan_id == "land" && msg->op == IMC::PlanDB::DBOP_SET && msg->type == IMC::PlanDB::DBT_REQUEST){
+        if(msg->plan_id == "land" && msg->op == IMC::PlanDB::DBOP_SET && msg->type == IMC::PlanDB::DBT_REQUEST && dubins_requested){
           debug("Received requested dubinspath");
           const IMC::PlanSpecification* dubins_planspec = static_cast<const IMC::PlanSpecification*>(msg->arg.get());
           debug("Extracting PlanSpecification..");
@@ -324,6 +326,7 @@ namespace Plan
                 virtual_runway.nr = *nr;
                 extractVirtualRunway(nr);
                 requestDubins(); //Request dubins-path from uav position to loiter.
+                dubins_requested = true;
                 debug("Dubins requested!");
                 }
               //  sendFixedWingPlan(planspec->plan_id,nr);
@@ -515,7 +518,7 @@ namespace Plan
         plan_spec.plan_id = dubins_planspec->plan_id + "_fixedwing";
         plan_spec.start_man_id = "1";
 
-        double z_loiter = virtual_runway.VR_altitude + tan(Angles::radians(m_args.glideslope_angle)) * m_args.glideslope_distance;
+        double z_loiter = virtual_runway.VR_altitude + std::tan(Angles::radians(m_args.glideslope_angle)) * m_args.glideslope_distance;
 
         //*****************************
         //Goto Glideslope START
@@ -524,10 +527,9 @@ namespace Plan
         double E_offset   = -(m_args.glideslope_distance+m_args.virtualrunway_approach_distance) * sin(virtual_runway.VR_heading);
         double lat_offset = maneuver.start_lat;
         double lon_offset = maneuver.start_lon;
-        double height_offset = 0.0;
 
-        WGS84::displace(N_offset, E_offset, 0.0,
-                        &lat_offset, &lon_offset, &height_offset);
+        WGS84::displace(N_offset, E_offset,
+                        &lat_offset, &lon_offset);
 
         IMC::Goto man_goto_glideslope;
 
@@ -536,7 +538,7 @@ namespace Plan
         man_goto_glideslope.speed         = m_args.fw_loiter.speed;
         man_goto_glideslope.speed_units   = IMC::SUNITS_METERS_PS;
         man_goto_glideslope.z             = z_loiter;
-        man_goto_glideslope.z_units       = IMC::Z_ALTITUDE;
+        man_goto_glideslope.z_units       = IMC::Z_HEIGHT;
 
         debug("Goto Glideslope START POINT created...");
 
@@ -547,10 +549,9 @@ namespace Plan
         E_offset   = -(m_args.glideslope_distance+m_args.glideslope_approach_distance+m_args.virtualrunway_approach_distance) * sin(virtual_runway.VR_heading);
         lat_offset = maneuver.start_lat;
         lon_offset = maneuver.start_lon;
-        height_offset = 0.0;
 
-        WGS84::displace(N_offset, E_offset, 0.0,
-                        &lat_offset, &lon_offset, &height_offset);
+        WGS84::displace(N_offset, E_offset,
+                        &lat_offset, &lon_offset);
 
         IMC::Goto man_goto_approach_glideslope;
 
@@ -559,7 +560,7 @@ namespace Plan
         man_goto_approach_glideslope.speed         = m_args.fw_loiter.speed;
         man_goto_approach_glideslope.speed_units   = IMC::SUNITS_METERS_PS;
         man_goto_approach_glideslope.z             = z_loiter;
-        man_goto_approach_glideslope.z_units       = IMC::Z_ALTITUDE;
+        man_goto_approach_glideslope.z_units       = IMC::Z_HEIGHT;
 
         //****************************
         // Goto APPROACH VirutalRunway
@@ -568,10 +569,10 @@ namespace Plan
         E_offset   = -(m_args.virtualrunway_approach_distance) * sin(virtual_runway.VR_heading);
         lat_offset = maneuver.start_lat;
         lon_offset = maneuver.start_lon;
-        height_offset = 0.0;
 
-        WGS84::displace(N_offset, E_offset, 0.0,
-                        &lat_offset, &lon_offset, &height_offset);
+
+        WGS84::displace(N_offset, E_offset,
+                        &lat_offset, &lon_offset);
 
         IMC::Goto man_goto_approach_vr;
 
@@ -580,7 +581,7 @@ namespace Plan
         man_goto_approach_vr.speed         = m_args.fw_loiter.speed;
         man_goto_approach_vr.speed_units   = IMC::SUNITS_METERS_PS;
         man_goto_approach_vr.z             = virtual_runway.VR_altitude;
-        man_goto_approach_vr.z_units       = IMC::Z_ALTITUDE;
+        man_goto_approach_vr.z_units       = IMC::Z_HEIGHT;
 
         //****************************
         // Goto behind VirutalRunway
@@ -589,10 +590,10 @@ namespace Plan
         E_offset   = (m_args.virtualrunway_behind_distance) * sin(virtual_runway.VR_heading);
         lat_offset = maneuver.end_lat;
         lon_offset = maneuver.end_lon;
-        height_offset = 0.0;
 
-        WGS84::displace(N_offset, E_offset, 0.0,
-                        &lat_offset, &lon_offset, &height_offset);
+
+        WGS84::displace(N_offset, E_offset,
+                        &lat_offset, &lon_offset);
 
         IMC::Goto man_goto_behind_vr;
 
@@ -601,7 +602,7 @@ namespace Plan
         man_goto_behind_vr.speed         = m_args.fw_loiter.speed;
         man_goto_behind_vr.speed_units   = IMC::SUNITS_METERS_PS;
         man_goto_behind_vr.z             = virtual_runway.VR_altitude;
-        man_goto_behind_vr.z_units       = IMC::Z_ALTITUDE;
+        man_goto_behind_vr.z_units       = IMC::Z_HEIGHT;
 
 
         IMC::PlanManeuver* pman1 = new IMC::PlanManeuver();
