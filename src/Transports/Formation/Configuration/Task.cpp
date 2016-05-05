@@ -53,8 +53,11 @@ namespace Transports
         //! Desired link error switching distance
         double switch_distance;
 
-        //! Steepness factor of slope between far and close link gain
-        double slope;
+        //! Desired percent of in-formation gain.
+        double distance_percent_gain_close;
+
+        //! Desired error link distance at <distance_percent_gain_close> in-formation gain.
+        double percent_gain_close;
       };
 
       struct Arguments
@@ -187,10 +190,15 @@ namespace Transports
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Enable link gains scheduling.");
 
-          param("Gain Scheduling -- Slope", m_args.gain_scheduler.slope)
-          .defaultValue("False")
+          param("Gain Scheduling -- Percent of gain", m_args.gain_scheduler.percent_gain_close)
+          .defaultValue("90.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Enable link gains scheduling.");
+          .description("Desired error link distance at percent of in-formation gain.");
+
+          param("Gain Scheduling -- Distance at % gain", m_args.gain_scheduler.distance_percent_gain_close)
+          .defaultValue("1.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Desired error link distance at percent of in-formation gain.");
 
           param("Disable Formation Velocity", m_args.disable_formation_velocity)
           .defaultValue("false")
@@ -247,7 +255,8 @@ namespace Transports
               paramChanged(m_args.gain_scheduler.enable) ||
               paramChanged(m_args.gain_scheduler.gain_close) ||
               paramChanged(m_args.gain_scheduler.gain_far) ||
-              paramChanged(m_args.gain_scheduler.slope) ||
+              paramChanged(m_args.gain_scheduler.distance_percent_gain_close) ||
+              paramChanged(m_args.gain_scheduler.percent_gain_close) ||
               paramChanged(m_args.gain_scheduler.switch_distance)
               )
           {
@@ -409,7 +418,10 @@ namespace Transports
               m_link_gain_scheduler.gain_close = m_args.gain_scheduler.gain_close;
               m_link_gain_scheduler.gain_far = m_args.gain_scheduler.gain_far;
               m_link_gain_scheduler.switch_distance = m_args.gain_scheduler.switch_distance;
-              m_link_gain_scheduler.slope = m_args.gain_scheduler.slope;
+
+              double temp = std::log((double)(100/m_args.gain_scheduler.percent_gain_close) -1);
+              double slope = -(double(1.0)/std::abs(m_args.gain_scheduler.switch_distance - m_args.gain_scheduler.distance_percent_gain_close))*temp;
+              m_link_gain_scheduler.slope = slope;
             }
             else
             {
