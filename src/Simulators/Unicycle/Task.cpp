@@ -65,10 +65,6 @@ namespace Simulators
       //! Displacement from last position:
       Matrix m_displacement;
 
-      //! Current vehicle position (lat-lon):
-      long double m_current_lat;
-      long double m_current_lon;
-
       //! Base station position (lat-lon):
       long double m_base_lat;
       long double m_base_lon;
@@ -83,8 +79,6 @@ namespace Simulators
       Task(const std::string& name, Tasks::Context& ctx):
         Periodic(name, ctx),
         m_displacement(2,1,0.0),
-        m_current_lat(0.0),
-        m_current_lon(0.0),
         m_base_lat(1.11054269),
         m_base_lon(0.169757722),
         m_time_prev(Clock::get()),
@@ -175,8 +169,6 @@ namespace Simulators
       void
       onResourceAcquisition(void)
       {
-        m_current_lat = m_args.lat0 * (Math::c_pi/180.0);
-        m_current_lon = m_args.lon0 * (Math::c_pi/180.0);
 
         m_displacement(0) = m_args.x0;
         m_displacement(1) = m_args.y0;
@@ -228,34 +220,15 @@ namespace Simulators
           psi_d = m_psi_d.value;
         }
 
-        //! Calculate next position based on current position, heading and speed:
+        //! Calculate displacement:
+        //! Based on simple unicycle equations, m_displacement = x_{k+1} - x_k
+        //! integrated with Forward Euler.
         Matrix R = Matrix(2,1,0.0);
         R(0) = cos(psi_d);
         R(1) = sin(psi_d);
-
-        //! Only use initial latlon:
-        //Matrix next_pos = m_current_pos + m_args.dvelocity*m_args.T * R;
-
-        //! Calculate displacement:
-        //! Based on simple unicycle equations, m_displacement = x_{k+1} - x_k integrated with Forward Euler.
-        //m_displacement = m_args.V_d*dt * R;
         m_displacement = m_displacement + m_args.V_d*dt * R;
 
-
-        //! Update current position:
-        //m_displacement = next_pos;
-
-        //! NED to LLH transformation:
-        //WGS84::displace(m_displacement(0),m_displacement(1), &m_current_lat, &m_current_lon);
-
-        //! Print current latlon position:
-        //inf("Current lat: %Lf", m_current_lat);
-        //inf("Current lon: %Lf", m_current_lon);
-
-        //! Store next_pos in estate and dispatch estate to IMC message bus:
-        //IMC::EstimatedState estate;
-        //estate.lat = m_current_lat;
-        //estate.lon = m_current_lon;
+        //! Store next_pos in m_estate and dispatch estate to IMC message bus:
         m_estate.x = m_displacement(0);
         m_estate.y = m_displacement(1);
         m_estate.psi = psi_d;
