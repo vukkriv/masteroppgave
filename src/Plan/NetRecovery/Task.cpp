@@ -62,8 +62,8 @@ namespace Plan
     {
       IMC::NetRecovery nr;
 
-      fp64_t VR_center_lat;
-      fp64_t VR_center_lon;
+      double VR_center_lat;
+      double VR_center_lon;
       double VR_heading;
       double VR_length;
       double VR_altitude;
@@ -111,9 +111,9 @@ namespace Plan
         .visibility(Parameter::VISIBILITY_USER)
         .defaultValue("50");
 
-        param("Loiter Speed", m_args.fw_loiter.speed)
+        param("Desired Speed", m_args.desired_speed)
         .visibility(Parameter::VISIBILITY_USER)
-        .defaultValue("20");
+        .defaultValue("18");
 
         param("Loiter Radius first", m_args.fw_loiter.radius_first)
         .description("Lateral turning radius of UAV at first circle (m)")
@@ -234,6 +234,20 @@ namespace Plan
       }
 
       void
+      consume(IMC::CoordinatedNetRecovery coordinated_nr)
+      {
+        if( coordinated_nr.getDestination() == getSystemId()
+            && coordinated_nr.getSource()   != getSystemId())
+        {
+          IMC::NetRecovery* net_recovery = coordinated_nr.netrecovery.get();
+          extractVirtualRunway(net_recovery);
+          requestDubins(); //Request dubins-path from uav position to loiter.
+          dubins_requested = true;
+          debug("Dubins requested!");
+        }
+      }
+
+      void
       consume(const IMC::PlanDB* msg)
       {
         if (msg->getSource() == getSystemId())
@@ -257,9 +271,9 @@ namespace Plan
 
           sendFixedWingPlan(dubins_planspec,virtual_runway.nr);
           debug("Sent FixedWing NetRecovery plan");
-
-
         }
+
+
 
         //msg->toText(std::cout);
         // Ignore if not reply for this entity
@@ -312,25 +326,17 @@ namespace Plan
                 saveVehicles(nr->aircraft,nr->multicopters.c_str());
                 m_vehicle = getVehicle(resolveSystemId(nr->getSource()));
                 debug("Vehicle: %d",(int)m_vehicle);
-                if(m_vehicle == INVALID)
+                if(m_vehicle == INVALID) //PlanDB from Neptus
                 {
-                  IMC::PlanDB fixedwingDB = *msg;
-                  fixedwingDB.setDestination(resolveSystemName(nr->aircraft));
-                  fixedwingDB.setSourceEntity(getEntityId());
-                  fixedwingDB.setSource(getSystemId());
-                  trace("Send PlanDB:\n from '%s'",resolveEntity(fixedwingDB.getSourceEntity()).c_str());
-                  dispatch(fixedwingDB); // Send PlanDB with the NetRecovery maneuver to the fixedwing.
+                  IMC::CoordinatedNetRecovery fixedwing_cnr;
+                  fixedwing_cnr.netrecovery.set(nr);
+
+                  fixedwing_cnr.setDestination(resolveSystemName(nr->aircraft));
+                  fixedwing_cnr.setSourceEntity(getEntityId());
+                  fixedwing_cnr.setSource(getSystemId());
+                  trace("Send CoordinatedNetRecovery:\n from '%s'",resolveEntity(fixedwing_cnr.getSourceEntity()).c_str());
+                  dispatch(fixedwing_cnr); // Send CoordinatedNetRecovery to fixedwing from copter.
                 }
-                else
-                {
-                virtual_runway.nr = *nr;
-                extractVirtualRunway(nr);
-                requestDubins(); //Request dubins-path from uav position to loiter.
-                dubins_requested = true;
-                debug("Dubins requested!");
-                }
-              //  sendFixedWingPlan(planspec->plan_id,nr);
-              //  debug("Sent FixedWing NetRecovery plan");
                 break;
               }
             }
@@ -438,19 +444,17 @@ namespace Plan
         virtual_runway.VR_length     = range;
         virtual_runway.VR_altitude   = (maneuver->z + maneuver->z_off);
 
-        double N_offset   = virtual_runway.VR_length/2 * cos(virtual_runway.VR_heading);
-        double E_offset   = virtual_runway.VR_length/2 * sin(virtual_runway.VR_heading);
+        double N_offset   = virtual_runway.VR_length/2 * std::cos(virtual_runway.VR_heading);
+        double E_offset   = virtual_runway.VR_length/2 * std::sin(virtual_runway.VR_heading);
 
         double lat_offset = maneuver->start_lat;
         double lon_offset = maneuver->start_lon;
-        double height_offset = 0.0;
 
-        WGS84::displace(N_offset, E_offset, 0.0,
-                        &lat_offset, &lon_offset, &height_offset);
+        WGS84::displace(N_offset, E_offset,
+                        &lat_offset, &lon_offset);
 
-        virtual_runway.VR_center_lat = Angles::degrees(lat_offset);
-        virtual_runway.VR_center_lon = Angles::degrees(lon_offset);
-        m_args.desired_speed = maneuver->speed;
+        virtual_runway.VR_center_lat = lat_offset;
+        virtual_runway.VR_center_lon = lon_offset;
 
         debug("Virtual Runway extracted from maneuver: VR center lat = %f, VR ceter lon = %f",virtual_runway.VR_center_lat,virtual_runway.VR_center_lon);
       }
@@ -460,8 +464,8 @@ namespace Plan
       {
         IMC::PlanGeneration msg;
 
-        msg.params.append("land_lat=").append(DoubleToString(virtual_runway.VR_center_lat)).append(";");
-        msg.params.append("land_lon=").append(DoubleToString(virtual_runway.VR_center_lon)).append(";");
+        msg.params.append("land_lat=").append(DoubleToString(Angles::degrees(virtual_runway.VR_center_lat))).append(";");
+        msg.params.append("land_lon=").append(DoubleToString(Angles::degrees(virtual_runway.VR_center_lon))).append(";");
 
         msg.params.append("land_heading=").append(DoubleToString(Angles::degrees(Angles::normalizeRadian(virtual_runway.VR_heading+Math::c_pi)))).append(";");
 
@@ -700,7 +704,11 @@ namespace Plan
         std::ostringstream oss;
 
         // Works just like cout
+        oss.precision(20);
         oss<< number;
+
+        std::string debugstring = oss.str();
+        debug("debugstring = %s", debugstring.c_str());
 
         // Return the underlying string
         return oss.str();
