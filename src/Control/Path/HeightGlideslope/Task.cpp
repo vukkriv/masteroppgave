@@ -352,23 +352,23 @@ namespace Control
             zref.value = ts.loiter.center.z;
             glideslope_angle = 0.0;
             last_loiter_z = ts.loiter.center.z;
-            inf("Loiter-z: %f",ts.loiter.center.z);
-            inf("end-z : %f",ts.end.z);
-            inf("start-z : %f",ts.start.z);
+            debug("Loiter-z: %f",ts.loiter.center.z);
+            debug("end-z : %f",ts.end.z);
+            debug("start-z : %f",ts.start.z);
           }
           else{
-          inf("end-z : %f",ts.end.z);
-          inf("start-z : %f",ts.start.z);
+          debug("end-z : %f",ts.end.z);
+          debug("start-z : %f",ts.start.z);
           }
 
           //****************************************************
           // Reference model for desired Z and flight-path angle
           //****************************************************
-          inf("Z-ref before filter: %f",zref.value);
+          debug("Z-ref before filter: %f",zref.value);
           m_refmodel_z.x = (m_refmodel_z.I + (ts.delta*m_refmodel_z.A))*m_refmodel_z.x + (ts.delta*m_refmodel_z.B) * zref.value;
           zref.value = m_refmodel_z.x(0,0);
 
-          inf("glideslope before filter: %f",glideslope_angle);
+          debug("glideslope before filter: %f",glideslope_angle);
 
           m_refmodel_gamma.x = (m_refmodel_gamma.I + (ts.delta*m_refmodel_gamma.A))*m_refmodel_gamma.x + (ts.delta*m_refmodel_gamma.B) * glideslope_angle;
           glideslope_angle = m_refmodel_gamma.x(0,0);
@@ -405,7 +405,7 @@ namespace Control
           }
 
           los_angle = trimValue(los_angle,-Angles::radians(7.0),Angles::radians(7.0));
-          inf("Los_angle: %f",los_angle*(180/3.14159265));
+          debug("Los_angle: %f",los_angle*(180/3.14159265));
 
           double gamma_cmd = glideslope_angle + los_angle; //Commanded flight path angle
           double h_dot_desired = Vg*sin(gamma_cmd);        //Convert commanded flight path angle to demanded vertical-rate.
