@@ -77,14 +77,10 @@ namespace Plan
       double net_height;
       //! Net WGS84 height
       double net_WGS84_height;
-      //! Speed WP4
-      double speed_WP4;
-      //! Speed WP3
-      double speed_WP3;
-      //! Speed WP2
-      double speed_WP2;
-      //! Speed WP1
-      double speed_WP1;
+      //! Landing speed
+      double land_speed;
+      //! Approach speed
+      double approach_speed;
       //! Start turning circle radius
       double Rs;
       //! Finish turning circle radius
@@ -181,7 +177,6 @@ namespace Plan
 
         //! Bind IMC messages
         bind<IMC::EstimatedState>(this);
-        //bind<IMC::PlanGeneration>(this);
         bind<IMC::LandingPlanGeneration>(this);
       }
 
@@ -202,7 +197,7 @@ namespace Plan
       void
       consume(const IMC::LandingPlanGeneration *msg)
       {
-        if (msg->op != IMC::PlanGeneration::OP_REQUEST)
+        if (msg->op != IMC::LandingPlanGeneration::OP_REQUEST)
         {
           return;
         }
@@ -225,16 +220,13 @@ namespace Plan
 
       }
 
-      //! Extract information from a PlanGeneration message
+      //! Extract information from a LandingPlanGeneration message
       bool
       extractPlan(const IMC::LandingPlanGeneration *msg)
       {
         //! Check if landing path container should be filled. It's assumed that input data is in NED
         if (msg->plan_id=="land")
         {
-          //TupleList tList(msg->params,"=",";",true);
-
-          //readTupleList(tList);
 
           m_landArg.rightStartTurningDirection = msg->startcounterclockwise;
           m_landArg.rightFinishTurningCircle = msg->finishcounterclockwise;
@@ -249,10 +241,8 @@ namespace Plan
           m_landArg.infront_net = msg->finalapproach;
           m_landArg.length_glideslope = msg->glideslope;
           m_landArg.length_approach_glideslope = msg->approach;
-          m_landArg.speed_WP4 = msg->landingspeed;
-          m_landArg.speed_WP3 = msg->landingspeed;
-          m_landArg.speed_WP2 = msg->approachspeed;
-          m_landArg.speed_WP1 = msg->approachspeed;
+          m_landArg.land_speed = msg->landingspeed;
+          m_landArg.approach_speed = msg->approachspeed;
           m_landArg.Rs = msg->startturningradius;
           m_landArg.Rf = msg->finishturningradius;
           m_landArg.automatic = msg->automatic;
@@ -269,8 +259,8 @@ namespace Plan
           debug("In front of net %f",m_landArg.infront_net);
           debug("Length glideslope %f",m_landArg.length_glideslope);
           debug("Length approach glideslope %f",m_landArg.length_approach_glideslope);
-          debug("Speed 35 %f",m_landArg.speed_WP4);
-          debug("Speed 12 %f",m_landArg.speed_WP1);
+          debug("Speed 35 %f",m_landArg.land_speed);
+          debug("Speed 12 %f",m_landArg.approach_speed);
           debug("Rs %f",m_landArg.Rs);
           debug("Rf %f",m_landArg.Rf);
           debug("Automatic %d",m_landArg.automatic);
@@ -322,53 +312,7 @@ namespace Plan
         debug("WP1 x=%f y=%f z=%f",m_landParameteres.WP1(0,0),m_landParameteres.WP1(1,0),m_landParameteres.WP1(2,0));
 
       }
-      //! Read tuplelist from the incoming planGeneration message
-      void
-      readTupleList(TupleList tList)
-      {
-        m_landArg.rightStartTurningDirection = (tList.get("start_turning_circle_counter_clockwise") == "true") ? true : false;
-        m_landArg.rightFinishTurningCircle = (tList.get("final_turning_circle_counter_clockwise") == "true") ? true : false;
-        m_landArg.net_lat = Angles::radians(tList.get("land_lat",63.629409));
-        m_landArg.net_lon = Angles::radians(tList.get("land_lon",9.726401));
-        m_landArg.net_WGS84_height = tList.get("net_WGS84_height",0.0);
-        m_landArg.netHeading = Angles::radians(tList.get("land_heading",60));
-        m_landArg.net_height = tList.get("net_height",-3.0);
-        m_landArg.gamma_a = Angles::radians(tList.get("final_approach_angle",3.0));
-        m_landArg.gamma_d = Angles::radians(tList.get("glide_slope_angle", 3.0));
-        m_landArg.behind_net = tList.get("dist_behind",10.0);
-        m_landArg.infront_net = tList.get("final_approach",10.0);
-        m_landArg.length_glideslope = tList.get("glideslope",300.0);
-        m_landArg.length_approach_glideslope = tList.get("approach",100.0);
-        m_landArg.speed_WP4 = tList.get("speed345",12.0);
-        m_landArg.speed_WP3 = tList.get("speed345",12.0);
-        m_landArg.speed_WP2 = tList.get("speed12",12.0);
-        m_landArg.speed_WP1 = tList.get("speed12",12.0);
-        m_landArg.Rs = tList.get("start_turning_circle_radius", 150.0);
-        m_landArg.Rf = tList.get("final_turning_circle_radius",150.0);
-        m_landArg.automatic = (tList.get("automatic") == "true") ? true : false;
-        m_landArg.wait_at_loiter = (tList.get("wait_at_loiter") == "true") ? true : false;
-        debug("Content from tList:");
-        debug("Net Lat %f",m_landArg.net_lat);
-        debug("Net lon %f",m_landArg.net_lon);
-        debug("Net WGS %f",m_landArg.net_WGS84_height);
-        debug("Net Height %f",m_landArg.net_height);
-        debug("Net heading %f", m_landArg.netHeading);
-        debug("Attack angle %f",m_landArg.gamma_a);
-        debug("Descent %f",m_landArg.gamma_d);
-        debug("Behind net %f",m_landArg.behind_net);
-        debug("In front of net %f",m_landArg.infront_net);
-        debug("Length glideslope %f",m_landArg.length_glideslope);
-        debug("Length approach glideslope %f",m_landArg.length_approach_glideslope);
-        debug("Speed 35 %f",m_landArg.speed_WP4);
-        debug("Speed 12 %f",m_landArg.speed_WP1);
-        debug("Rs %f",m_landArg.Rs);
-        debug("Rf %f",m_landArg.Rf);
-        debug("Automatic %d",m_landArg.automatic);
-        debug("Right start dir %d",m_landArg.rightStartTurningDirection);
-        debug("Right finish %d",m_landArg.rightFinishTurningCircle);
-        debug("Wait at loiter %d",m_landArg.wait_at_loiter);
-        inf("Extracted arguments from neptus");
-      }
+
       //! Generates a landing path from the initial position of the plane towards the position of the net
       bool
       generateLandingPath()
@@ -403,7 +347,7 @@ namespace Plan
 
         debug("Current lat: %f current lon: %f current height: %f",fPath.lat,fPath.lon,fPath.z);
         fPath.z_units = IMC::Z_HEIGHT;
-        fPath.speed = m_landArg.speed_WP1;
+        fPath.speed = m_landArg.approach_speed;
         fPath.speed_units = IMC::SUNITS_METERS_PS;
 
         addPathPoint(path,&fPath);
@@ -454,6 +398,7 @@ namespace Plan
         bool CounterClockwiseF;
         //! Center of final turning circle
         Matrix OCF = Matrix(2,1,0.0);
+
         //! End pose in dubins path which is the first waypoint in the net approach
         Matrix Xf = Matrix(4,1,0.0);
         Xf(0,0) = m_landParameteres.WP1(0,0);
@@ -468,23 +413,36 @@ namespace Plan
         double state_lat = m_estate.lat;
         double state_lon = m_estate.lon;
         double state_height = m_estate.height;
+
         //! Find WP1 lat lon from the net position
-        Coordinates::WGS84_Accurate::displace(m_landParameteres.WP1(0,0),m_landParameteres.WP1(1,0),&wp1_lat,&wp1_lon);
-        Coordinates::WGS84_Accurate::displace(m_estate.x,m_estate.y,m_estate.z,&state_lat,&state_lon,&state_height);
+        Coordinates::WGS84_Accurate::displace(m_landParameteres.WP1(0,0),m_landParameteres.WP1(1,0),
+                                              &wp1_lat,&wp1_lon);
+        Coordinates::WGS84_Accurate::displace(m_estate.x,m_estate.y,m_estate.z,
+                                              &state_lat,&state_lon,&state_height);
+
         //! Find m_estate coordinates relative to net lat lon
-        Coordinates::WGS84::displacement(m_landArg.net_lat,m_landArg.net_lon,m_landArg.net_height,state_lat,state_lon,state_height,&Xs(0,0),&Xs(1,0),&Xs(2,0));
-        Coordinates::WGS84::displacement(state_lat,state_lon,state_height,wp1_lat,wp1_lon,wp1_h,&Xf(0,0),&Xf(1,0),&Xf(2,0));
+        Coordinates::WGS84::displacement(m_landArg.net_lat,m_landArg.net_lon,m_landArg.net_height,
+                                          state_lat,state_lon,state_height,
+                                          &Xs(0,0),&Xs(1,0),&Xs(2,0));
+        Coordinates::WGS84::displacement(state_lat,state_lon,state_height,
+                                          wp1_lat,wp1_lon,wp1_h,
+                                          &Xf(0,0),&Xf(1,0),&Xf(2,0));
+
         debug("Xf x=%f y=%f z=%f psi=%f",Xf(0,0),Xf(1,0),Xf(2,0),Xf(3,0));
         debug("Xs x=%f y=%f z=%f psi=%f",Xs(0,0),Xs(1,0),Xs(2,0),Xs(3,0));
         debug("m_estate height: %f net height: %f",m_estate.height,m_landArg.net_WGS84_height);
         debug("State: lat %f lon %f height %f",state_lat,state_lon,state_height);
+
         m_landParameteres.Xs = Xs;
         m_landParameteres.state_lat = state_lat;
         m_landParameteres.state_lon = state_lon;
         m_landParameteres.state_height = state_height;
+
+        // Set the start position to zero
         Xs(0,0) = 0.0;
         Xs(1,0) = 0.0;
         Xs(2,0) = 0.0;
+
         //! Calculated path
         bool createdPath = dubinsPath(Xs,Xf,path,CounterClockwiseF,OCF);
 
@@ -494,13 +452,16 @@ namespace Plan
           return false;
         }
         inf("Dubins path has been created");
-        //! Create a lateral path
+
+        //! Create a longitudinal path
         longitudinalPath(Xs,Xf,OCF,CounterClockwiseF,path);
         inf("Created longitudinal path");
+
         //! Store parameter that has been used in the construction of the path
         m_landParameteres.OCF = OCF;
         m_landParameteres.clockwise = !CounterClockwiseF;
         m_landParameteres.OCFz = Xf(2,0);
+
         debug("Reach correct height %f from the height %f",path[path.size()-1](2,0),Xs(2,0));
         debug("WP1 = h-z %f",m_landArg.net_WGS84_height-m_landParameteres.WP1(2,0));
         debug("Lat %f lon %f ref height %f",m_landArg.net_lat,m_landArg.net_lon,m_landArg.net_WGS84_height);
@@ -591,7 +552,7 @@ namespace Plan
         loiter.lon = loiter_lon;
         loiter.z = loiter_h;
         loiter.z_units = IMC::Z_HEIGHT;
-        loiter.speed = m_landArg.speed_WP2;
+        loiter.speed = m_landArg.approach_speed;
         loiter.speed_units = IMC::SUNITS_METERS_PS;
         loiter.type = IMC::Loiter::LT_CIRCULAR;
         if (m_landParameteres.clockwise)
@@ -612,13 +573,13 @@ namespace Plan
       addNetApproach(IMC::MessageList<IMC::Maneuver>& maneuverList)
       {
         //2
-        addGotoPoint(m_landParameteres.WP2,m_landArg.speed_WP2,maneuverList);
+        addGotoPoint(m_landParameteres.WP2,m_landArg.approach_speed,maneuverList);
 
         //3
-        addGotoPoint(m_landParameteres.WP3,m_landArg.speed_WP3,maneuverList);
+        addGotoPoint(m_landParameteres.WP3,m_landArg.land_speed,maneuverList);
 
         //4
-        addGotoPoint(m_landParameteres.WP4,m_landArg.speed_WP4,maneuverList);
+        addGotoPoint(m_landParameteres.WP4,m_landArg.land_speed,maneuverList);
 
       }
       //!
@@ -638,6 +599,7 @@ namespace Plan
         gotoWP.speed_units = IMC::SUNITS_METERS_PS;
         maneuverList.push_back(gotoWP);
       }
+
       //! Add path point to follow path
       void
       addPathPoint(std::vector<Matrix> path,IMC::FollowPath* fPath)
@@ -653,6 +615,7 @@ namespace Plan
           fPath->points.push_back(pPoint);
         }
       }
+
       //! Construct Dubins Path between two waypoints with given heading
       bool
       dubinsPath(const Matrix Xs,const Matrix Xf, std::vector<Matrix>& Path,bool &CounterClockwiseF,Matrix &OCF)
@@ -664,6 +627,7 @@ namespace Plan
         double Xcs;
         double Ycs;
         Matrix OCS = Matrix(2,1,0.0);
+
         //! Finish circle center
         double Xcf;
         double Ycf;
@@ -697,22 +661,21 @@ namespace Plan
           //! Define start turning circle center (Ocs)
           if (m_landArg.rightStartTurningDirection)
           {
-
             Xcs = Xs(0,0)-m_landArg.Rs*std::cos(Xs(3,0)+Math::c_pi/2);
             Ycs = Xs(1,0)-m_landArg.Rs*std::sin(Xs(3,0)+Math::c_pi/2);
           }
           else
           {
-
             Xcs = Xs(0,0)-m_landArg.Rs*std::cos(Xs(3,0)-Math::c_pi/2);
             Ycs = Xs(1,0)-m_landArg.Rs*std::sin(Xs(3,0)-Math::c_pi/2);
           }
+
           CounterClockwiseS = m_landArg.rightStartTurningDirection;
           OCS(0,0) = Xcs;
           OCS(1,0) = Ycs;
           inf("Created start turn circle");
-          //! Define end turning circle center (Ofs)
 
+          //! Define end turning circle center (Ofs)
           if (m_landArg.rightFinishTurningCircle)
           {
             Xcf = Xf(0,0)-m_landArg.Rf*std::cos(Xf(3,0)+Math::c_pi/2);
@@ -724,10 +687,10 @@ namespace Plan
             Ycf = Xf(1,0)-m_landArg.Rf*std::sin(Xf(3,0)-Math::c_pi/2);
           }
           CounterClockwiseF = m_landArg.rightFinishTurningCircle;
-
           OCF(0,0) = Xcf;
           OCF(1,0) = Ycf;
           inf("Created finish turn circle");
+
           if (!dubinsParameteres(OCS,OCF,m_landArg.Rs,m_landArg.Rf,CounterClockwiseS,CounterClockwiseF,Pchi,PN))
           {
             war("Dubins Path does not exist from start position to end position");
@@ -740,6 +703,7 @@ namespace Plan
         std::vector<Matrix> arc;
         //! Declare angle array
         Matrix thetaTS =Matrix(1,1,0.0);
+
         //! First arc
         inf("Starting to construct first arc");
         double theta0 = std::atan2(Xs(1,0)-Ycs,Xs(0,0)-Xcs);
@@ -769,6 +733,7 @@ namespace Plan
         ConstructArc(thetaTS,theta0,m_landArg.Rs,OCS,arc);
         AddToPath(arc,Path);
         inf("Constructed first arc");
+
         //! Second arc
         inf("Starting to construct second arc");
         theta0 = std::atan2(PN(1,0)-Ycf,PN(0,0)-Xcf);
@@ -811,16 +776,21 @@ namespace Plan
         DubinsParametersContainer CounterClockwiseCounterClocwise;
         CounterClockwiseCounterClocwise.CounterClockwiseF = true;
         CounterClockwiseCounterClocwise.CounterClockwiseS = true;
+
         DubinsParametersContainer CounterClockwiseClockwise;
         CounterClockwiseClockwise.CounterClockwiseS = true;
         CounterClockwiseClockwise.CounterClockwiseF = false;
+
         DubinsParametersContainer ClockwiseCounterClockwise;
         ClockwiseCounterClockwise.CounterClockwiseS = false;
         ClockwiseCounterClockwise.CounterClockwiseF = true;
+
         DubinsParametersContainer ClockwiseClockwise;
         ClockwiseClockwise.CounterClockwiseS = false;
         ClockwiseClockwise.CounterClockwiseF = false;
+
         bool filledParameters = fillDubinsParametersContainger(Xs,Xf,CounterClockwiseCounterClocwise);
+
         if (!filledParameters)
         {
           return false;
@@ -840,6 +810,7 @@ namespace Plan
         {
           return false;
         }
+
         //! Clearing the vector to remove old data
         m_dubinsPaths.clear();
         //! Insert new paths
@@ -901,20 +872,24 @@ namespace Plan
         dubins.OCF(1,0) = dubins.Ycf;
         dubins.Pchi = Matrix(2,1,0.0);
         dubins.PN = Matrix(2,1,0.0);
+
         if (!dubinsParameteres(dubins.OCS,dubins.OCF,m_landArg.Rs,m_landArg.Rf,dubins.CounterClockwiseS,dubins.CounterClockwiseF,dubins.Pchi,dubins.PN))
         {
           war("Dubins Path does not exist from start position to end position");
           return false;
         }
+
         double theta0 = std::atan2(Xs(1,0)-dubins.Ycs,Xs(0,0)-dubins.Xcs);
         double theta1 = std::atan2(dubins.Pchi(1,0)-dubins.Ycs,dubins.Pchi(0,0)-dubins.Xcs);
         double sLtheta1 = 0;
+
         arcAngle(theta0,theta1,dubins.CounterClockwiseS,sLtheta1);
         debug("Arc angle start1 %f",sLtheta1);
 
         double theta01 = std::atan2(dubins.PN(1,0)-dubins.Ycf,dubins.PN(0,0)-dubins.Xcf);
         double theta11 = std::atan2(Xf(1,0)-dubins.Ycf,Xf(0,0)-dubins.Xcf);
         double fLtheta1 = 0;
+
         arcAngle(theta01,theta11,dubins.CounterClockwiseF,fLtheta1);
         debug("Arc angle finish1%f",fLtheta1);
         dubins.LengthPath = m_landArg.Rs*sLtheta1 + std::sqrt(std::pow(dubins.Pchi(0,0)-dubins.PN(0,0),2)+std::pow(dubins.Pchi(1,0)-dubins.PN(1,0),2)) + m_landArg.Rf*fLtheta1;
@@ -929,6 +904,7 @@ namespace Plan
         // Start circle center
         double Xcs = Ocs(0,0);
         double Ycs = Ocs(1,0);
+
         // Finish circle center
         double Xcf = Ocf(0,0);
         double Ycf = Ocf(1,0);
@@ -956,16 +932,20 @@ namespace Plan
         //! Define tangent points
         //! Angle to the tangent point at the start circle
         double thetaS = turn(TurnS,alpha,beta);
+
         //! Angle to the tangent point at the final circle
         double thetaF = turn(TurnF,alpha,beta);
+
         //! Exit tangent point for first circle
         Pchi(0,0) = Xcs+m_landArg.Rs*cos(thetaS);
         Pchi(1,0) = Ycs+m_landArg.Rs*sin(thetaS);
         inf("Created exit tangent");
+
         //! Entry tangent point
         PN(0,0) = Xcf+m_landArg.Rf*cos(thetaF);
         PN(1,0) = Ycf+m_landArg.Rf*sin(thetaF);
         inf("Created entry tangent");
+
         return true;
       }
 
@@ -1016,6 +996,7 @@ namespace Plan
       {
         unsigned N;
         double step;
+
         //! Calculate the angle between two arc segments
         if (startCircle)
         {
@@ -1025,11 +1006,14 @@ namespace Plan
         {
           step = m_args.arc_segment_distance/m_landArg.Rf;
         }
+
         debug("Step size %f",step);
+
         //! Find the number of segments that are required to construct the arc
         N = std::ceil((sign(theta_limit)*theta_limit)/step)+1;
         //! Correct the sign of the step to match theta_limit
         step = sign(theta_limit)*step;
+
         //! Resizing the matrix
         theta.resize(1,N);
 
@@ -1044,10 +1028,12 @@ namespace Plan
             theta(0,i)=i*step;
           }
         }
+
         debug("Step limit %f",theta_limit);
         debug("Step %f",step);
         debug("Last theta %f and size theta %d N= %d",theta(0,N-1),theta.columns(),N);
       }
+
       //! Return the sign of a number. 0 is considered positive
       int
       sign(double x)
@@ -1057,20 +1043,21 @@ namespace Plan
         else
           return 1;
       }
+
       //! Constructs an arc from theta[0] to theta[m_N] with R radius
       void
       ConstructArc(const Matrix theta,const double theta0,const double R,const Matrix center,std::vector<Matrix>& arc)
       {
         Matrix tempP = Matrix(3,1,0.0);
+
         for (int i=0;i<theta.columns();i++)
         {
-
           tempP(0,0) = center(0,0) + R*std::cos(theta0+theta(0,i));
           tempP(1,0) = center(1,0) + R*std::sin(theta0+theta(0,i));
           arc.push_back(tempP);
         }
-
       }
+
       //! Add an arc to the path.
       void
       AddToPath(std::vector<Matrix> &arc,std::vector<Matrix> &path)
@@ -1082,6 +1069,7 @@ namespace Plan
         //! Empty arc
         arc.erase(arc.begin(),arc.end());
       }
+
       //! Constructs a glideslope from x0 towards height of loiter point along dubins path
       bool
       createGlideSlope(const Matrix x0,const Matrix WP,std::vector<Matrix> &Path)
@@ -1091,13 +1079,16 @@ namespace Plan
         bool correctHeight = false;
         Path[0](2,0) = x0(2,0);
         double distance;
-        inf("Start height %f desired height %f",x0(2,0),WP(2,0));
+        debug("Start height %f desired height %f",x0(2,0),WP(2,0));
+
         for (unsigned i=0;i<Path.size()-1;i++)
         {
           // Calculate the distance to the next point
           distance = sqrt(std::pow(Path[i+1](0,0)-Path[i](0,0),2)+std::pow(Path[i+1](1,0)-Path[i](1,0),2));
           debug("The distance D = %f",distance);
-          debug("New angle %f descent angel %f",std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),distance),2)),std::sqrt(std::pow(descentAngle,2)));
+          debug("New angle %f descent angel %f",std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),distance),2)),
+                                                std::sqrt(std::pow(descentAngle,2)));
+
           // Check if the correct can be reach at next point with an angle equal or less then max descentAngle
           if (!correctHeight && std::sqrt(std::pow(std::atan2(WP(2,0)-Path[i](2,0),distance),2))<std::sqrt(std::pow(descentAngle,2)))
           {
@@ -1115,9 +1106,11 @@ namespace Plan
             Path[i+1](2,0) = Path[i](2,0);
           }
         }
-        inf("Desired height %f path height %f",WP(2,0),Path[Path.size()-1](2,0));
+
+        debug("Desired height %f path height %f",WP(2,0),Path[Path.size()-1](2,0));
         return correctHeight;
       }
+
       //! Create a spiral path towards the desired height dHeight
       void
       createSpiral(const Matrix OF,const bool CounterClockwiseF,const double dHeight,std::vector<Matrix> &Path)
@@ -1127,6 +1120,7 @@ namespace Plan
         double theta0 = std::atan2(Path[Path.size()-1](1,0)-OF(1,0),Path[Path.size()-1](0,0)-OF(0,0));
         Matrix WP1 = Path.back();
         Matrix theta = Matrix(1,1,0.0);
+
         if (CounterClockwiseF)
         {
           calculateTurningArcAngle(-2*Math::c_pi,false,theta);
@@ -1135,23 +1129,28 @@ namespace Plan
         {
           calculateTurningArcAngle(2*Math::c_pi,false,theta);
         }
+
         Matrix WPS0 = Path.back();
         double xnn = OF(0,0) + m_landArg.Rf*cos(theta0+theta(0,1));
         double ynn = OF(1,0) + m_landArg.Rf*sin(theta0+theta(0,1));
         double distance = std::sqrt(std::pow(xnn-WPS0(0,0),2)+std::pow(ynn-WPS0(1,0),2));
         double znn = WPS0(2,0)+distance*std::tan(descentAngle);
+
         Matrix WPS1 = Matrix(3,1,0.0);
         WPS1(0,0) = xnn;
         WPS1(1,0) = ynn;
         WPS1(2,0) = znn;
+
         debug("Next height %f",m_estate.height-znn);
         debug("Desired height %f",m_landArg.netHeading-dHeight);
+
         int n = 2;
         Path.push_back(WPS1);
         debug("theta has %d elements",theta.size());
         debug("Glide angle is %f",descentAngle);
         int max_iter = 1000;
         int cur_iter = 0;
+
         while(!correctHeight && cur_iter < max_iter)
         {
           ++cur_iter;
@@ -1160,16 +1159,19 @@ namespace Plan
             descentAngle = std::atan2(dHeight-WPS1(2,0),distance);
             correctHeight = true;
           }
+
           WPS0 = WPS1;
           xnn = OF(0,0) + m_landArg.Rf*cos(theta0+theta(0,n));
           ynn = OF(1,0) + m_landArg.Rf*sin(theta0+theta(0,n));
           distance = std::sqrt(std::pow(xnn-WPS0(0,0),2)+std::pow(ynn-WPS0(1,0),2));
           znn = WPS0(2,0)+distance*std::tan(descentAngle);
           debug("Next height %f",znn);
+
           WPS1(0,0) = xnn;
           WPS1(1,0) = ynn;
           WPS1(2,0) = znn;
           Path.push_back(WPS1);
+
           n = n+1;
           //! Check if n has reached the max number of segments in circle. Then set to 1, such that the 0 value is only used once
           if (n>=std::ceil((2*m_landArg.Rf*Math::c_pi)/m_args.arc_segment_distance))
@@ -1181,7 +1183,8 @@ namespace Plan
 
         double thetaH0 = std::atan2(WPS1(1,0)-OF(1,0),WPS1(0,0)-OF(0,0));
         double thetaH1 = std::atan2(WP1(1,0)-OF(1,0),WP1(0,0)-OF(0,0));
-        inf("Start angle %f Finish angle %f",thetaH0,thetaH1);
+
+        debug("Start angle %f Finish angle %f",thetaH0,thetaH1);
         std::vector<Matrix> arc;
         if (CounterClockwiseF)
         {
@@ -1205,11 +1208,13 @@ namespace Plan
             calculateTurningArcAngle((2*Math::c_pi-std::abs(Angles::normalizeRadian(thetaH1-thetaH0))),false,theta);
           }
         }
+
         ConstructArc(theta,thetaH0,m_landArg.Rf,OF,arc);
         for (unsigned i=0;i<arc.size();i++)
         {
           arc[i](2,0) = Path[Path.size()-1](2,0);
         }
+
         AddToPath(arc,Path);
       }
       //! Reserve entity identifiers.
@@ -1264,6 +1269,7 @@ namespace Plan
           waitForMessages(1.0);
         }
       }
+
       //! @return  Rotation matrix.
       Matrix
       Rzyx(double phi, double theta, double psi) const
