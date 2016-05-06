@@ -225,11 +225,11 @@ namespace Sensors
       {
         trace("New handler data: (%d) %f", index, val);
 
-	//calculate load: y=ax+b
-	double load = m_slope*val + m_offset;
+        //calculate load: y=ax+b
+        double load = m_slope*val + m_offset;
 
-	//send via IMC
-	IMC::Pressure msg;
+	      //send via IMC
+	      IMC::Weight msg;
         msg.value = load;
         dispatch(msg);
       }
