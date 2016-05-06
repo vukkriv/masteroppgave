@@ -171,7 +171,7 @@ struct Task: public DUNE::Tasks::Periodic
 				sscanf(rocket_ch0_rssi_data.c_str(), "%f", &shf_rssi_value);
 
 				shf_rssi_IMC_message.value = shf_rssi_value;
-				dispatch(shf_rssi_IMC_message);
+				//dispatch(shf_rssi_IMC_message);
 
 
 				//// CHANNEL 1
@@ -180,7 +180,7 @@ struct Task: public DUNE::Tasks::Periodic
 				sscanf(rocket_ch1_rssi_data.c_str(), "%f", &shf_rssi_value);
 
 				shf_rssi_IMC_message.value = shf_rssi_value;
-				dispatch(shf_rssi_IMC_message);
+				//dispatch(shf_rssi_IMC_message);
 
 
 				//// BOTH CHANNELS
