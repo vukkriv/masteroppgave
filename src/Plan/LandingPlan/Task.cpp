@@ -181,7 +181,8 @@ namespace Plan
 
         //! Bind IMC messages
         bind<IMC::EstimatedState>(this);
-        bind<IMC::PlanGeneration>(this);
+        //bind<IMC::PlanGeneration>(this);
+        bind<IMC::LandingPlanGeneration>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -199,7 +200,7 @@ namespace Plan
       }
       //! Receive net pose and landing spesifications
       void
-      consume(const IMC::PlanGeneration *msg)
+      consume(const IMC::LandingPlanGeneration *msg)
       {
         if (msg->op != IMC::PlanGeneration::OP_REQUEST)
         {
@@ -226,50 +227,100 @@ namespace Plan
 
       //! Extract information from a PlanGeneration message
       bool
-      extractPlan(const IMC::PlanGeneration *msg)
+      extractPlan(const IMC::LandingPlanGeneration *msg)
       {
         //! Check if landing path container should be filled. It's assumed that input data is in NED
         if (msg->plan_id=="land")
         {
-          TupleList tList(msg->params,"=",";",true);
+          //TupleList tList(msg->params,"=",";",true);
 
-          readTupleList(tList);
+          //readTupleList(tList);
 
-          //! Construct waypoint for the final landing path
-          //! WP4 is set behind the net
-          m_landParameteres.WP4 = Matrix(3,1,0.0);
-          m_landParameteres.WP4(0,0) = -m_landArg.behind_net;
-          m_landParameteres.WP4(2,0) = m_landArg.net_height+m_landArg.behind_net*std::tan(m_landArg.gamma_a);
+          m_landArg.rightStartTurningDirection = msg->startcounterclockwise;
+          m_landArg.rightFinishTurningCircle = msg->finishcounterclockwise;
+          m_landArg.net_lat = msg->lat;
+          m_landArg.net_lon = msg->lon;
+          m_landArg.net_WGS84_height = msg->height;
+          m_landArg.netHeading = msg->heading;
+          m_landArg.net_height = msg->ground;
+          m_landArg.gamma_a = msg->finalapproachangle;
+          m_landArg.gamma_d = msg->glideslopeangle;
+          m_landArg.behind_net = msg->distancebehind;
+          m_landArg.infront_net = msg->finalapproach;
+          m_landArg.length_glideslope = msg->glideslope;
+          m_landArg.length_approach_glideslope = msg->approach;
+          m_landArg.speed_WP4 = msg->landingspeed;
+          m_landArg.speed_WP3 = msg->landingspeed;
+          m_landArg.speed_WP2 = msg->approachspeed;
+          m_landArg.speed_WP1 = msg->approachspeed;
+          m_landArg.Rs = msg->startturningradius;
+          m_landArg.Rf = msg->finishturningradius;
+          m_landArg.automatic = msg->automatic;
+          m_landArg.wait_at_loiter = msg->waitloiter;
+          debug("Content from tList:");
+          debug("Net Lat %f",m_landArg.net_lat);
+          debug("Net lon %f",m_landArg.net_lon);
+          debug("Net WGS %f",m_landArg.net_WGS84_height);
+          debug("Net Height %f",m_landArg.net_height);
+          debug("Net heading %f", m_landArg.netHeading);
+          debug("Attack angle %f",m_landArg.gamma_a);
+          debug("Descent %f",m_landArg.gamma_d);
+          debug("Behind net %f",m_landArg.behind_net);
+          debug("In front of net %f",m_landArg.infront_net);
+          debug("Length glideslope %f",m_landArg.length_glideslope);
+          debug("Length approach glideslope %f",m_landArg.length_approach_glideslope);
+          debug("Speed 35 %f",m_landArg.speed_WP4);
+          debug("Speed 12 %f",m_landArg.speed_WP1);
+          debug("Rs %f",m_landArg.Rs);
+          debug("Rf %f",m_landArg.Rf);
+          debug("Automatic %d",m_landArg.automatic);
+          debug("Right start dir %d",m_landArg.rightStartTurningDirection);
+          debug("Right finish %d",m_landArg.rightFinishTurningCircle);
+          debug("Wait at loiter %d",m_landArg.wait_at_loiter);
+          inf("Extracted arguments from neptus");
 
-          //! WP3 is set in front of the net, and is the final phase before the net
-          m_landParameteres.WP3 = Matrix(3,1,0.0);
-          m_landParameteres.WP3(0,0) = m_landArg.infront_net;
-          m_landParameteres.WP3(2,0) = m_landArg.net_height-m_landArg.infront_net*std::tan(m_landArg.gamma_a);
-
-          //! WP2 is the start of the glide slope towards the net
-          m_landParameteres.WP2 = Matrix(3,1,0.0);
-          m_landParameteres.WP2(0,0) = m_landParameteres.WP3(0,0)+m_landArg.length_glideslope;
-          m_landParameteres.WP2(2,0) = m_landParameteres.WP3(2,0)-m_landArg.length_glideslope*std::tan(m_landArg.gamma_d);
-
-          //! WP1 is the approach to the glide slope
-          m_landParameteres.WP1 = Matrix(3,1,0.0);
-          m_landParameteres.WP1(0,0) = m_landParameteres.WP2(0,0)+m_landArg.length_approach_glideslope;
-          m_landParameteres.WP1(2,0) = m_landParameteres.WP2(2,0);
-
-          //! Rotate all WP into NED
-          m_landParameteres.WP4 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP4;
-          m_landParameteres.WP3 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP3;
-          m_landParameteres.WP2 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP2;
-          m_landParameteres.WP1 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP1;
-
-          debug("WP4 x=%f y=%f z=%f",m_landParameteres.WP4(0,0),m_landParameteres.WP4(1,0),m_landParameteres.WP4(2,0));
-          debug("WP3 x=%f y=%f z=%f",m_landParameteres.WP3(0,0),m_landParameteres.WP3(1,0),m_landParameteres.WP3(2,0));
-          debug("WP2 x=%f y=%f z=%f",m_landParameteres.WP2(0,0),m_landParameteres.WP2(1,0),m_landParameteres.WP2(2,0));
-          debug("WP1 x=%f y=%f z=%f",m_landParameteres.WP1(0,0),m_landParameteres.WP1(1,0),m_landParameteres.WP1(2,0));
+          constructWP();
 
           return true;
         }
         return false;
+      }
+
+      void
+      constructWP()
+      {
+        //! Construct waypoint for the final landing path
+        //! WP4 is set behind the net
+        m_landParameteres.WP4 = Matrix(3,1,0.0);
+        m_landParameteres.WP4(0,0) = -m_landArg.behind_net;
+        m_landParameteres.WP4(2,0) = m_landArg.net_height+m_landArg.behind_net*std::tan(m_landArg.gamma_a);
+
+        //! WP3 is set in front of the net, and is the final phase before the net
+        m_landParameteres.WP3 = Matrix(3,1,0.0);
+        m_landParameteres.WP3(0,0) = m_landArg.infront_net;
+        m_landParameteres.WP3(2,0) = m_landArg.net_height-m_landArg.infront_net*std::tan(m_landArg.gamma_a);
+
+        //! WP2 is the start of the glide slope towards the net
+        m_landParameteres.WP2 = Matrix(3,1,0.0);
+        m_landParameteres.WP2(0,0) = m_landParameteres.WP3(0,0)+m_landArg.length_glideslope;
+        m_landParameteres.WP2(2,0) = m_landParameteres.WP3(2,0)-m_landArg.length_glideslope*std::tan(m_landArg.gamma_d);
+
+        //! WP1 is the approach to the glide slope
+        m_landParameteres.WP1 = Matrix(3,1,0.0);
+        m_landParameteres.WP1(0,0) = m_landParameteres.WP2(0,0)+m_landArg.length_approach_glideslope;
+        m_landParameteres.WP1(2,0) = m_landParameteres.WP2(2,0);
+
+        //! Rotate all WP into NED
+        m_landParameteres.WP4 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP4;
+        m_landParameteres.WP3 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP3;
+        m_landParameteres.WP2 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP2;
+        m_landParameteres.WP1 = Rzyx(0,0,m_landArg.netHeading)*m_landParameteres.WP1;
+
+        debug("WP4 x=%f y=%f z=%f",m_landParameteres.WP4(0,0),m_landParameteres.WP4(1,0),m_landParameteres.WP4(2,0));
+        debug("WP3 x=%f y=%f z=%f",m_landParameteres.WP3(0,0),m_landParameteres.WP3(1,0),m_landParameteres.WP3(2,0));
+        debug("WP2 x=%f y=%f z=%f",m_landParameteres.WP2(0,0),m_landParameteres.WP2(1,0),m_landParameteres.WP2(2,0));
+        debug("WP1 x=%f y=%f z=%f",m_landParameteres.WP1(0,0),m_landParameteres.WP1(1,0),m_landParameteres.WP1(2,0));
+
       }
       //! Read tuplelist from the incoming planGeneration message
       void
