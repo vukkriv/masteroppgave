@@ -234,12 +234,14 @@ namespace Plan
       }
 
       void
-      consume(IMC::CoordinatedNetRecovery coordinated_nr)
+      consume(const IMC::CoordinatedNetRecovery* coordinated_nr)
       {
-        if( coordinated_nr.getDestination() == getSystemId()
-            && coordinated_nr.getSource()   != getSystemId())
+        debug("Received coordinated netrecovery imc");
+        if( coordinated_nr->getDestination() == getSystemId()
+            && coordinated_nr->getSource()   != getSystemId())
         {
-          IMC::NetRecovery* net_recovery = coordinated_nr.netrecovery.get();
+          const IMC::NetRecovery* net_recovery = (coordinated_nr->netrecovery.get());
+
           extractVirtualRunway(net_recovery);
           requestDubins(); //Request dubins-path from uav position to loiter.
           dubins_requested = true;
@@ -334,7 +336,7 @@ namespace Plan
                   fixedwing_cnr.setDestination(resolveSystemName(nr->aircraft));
                   fixedwing_cnr.setSourceEntity(getEntityId());
                   fixedwing_cnr.setSource(getSystemId());
-                  trace("Send CoordinatedNetRecovery:\n from '%s'",resolveEntity(fixedwing_cnr.getSourceEntity()).c_str());
+                  debug("Send CoordinatedNetRecovery:\n from '%s'",resolveEntity(fixedwing_cnr.getSourceEntity()).c_str());
                   dispatch(fixedwing_cnr); // Send CoordinatedNetRecovery to fixedwing from copter.
                 }
                 break;
@@ -432,7 +434,7 @@ namespace Plan
         }
       }
 
-      void extractVirtualRunway(IMC::NetRecovery* maneuver)
+      void extractVirtualRunway(const IMC::NetRecovery* maneuver)
       {
         double bearing;
         double range;
