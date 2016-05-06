@@ -83,9 +83,9 @@ namespace Plan
       double desired_speed;
       double netWGS84Height;
       bool ignoreEvasive;
-      std::string automatic_generation;
-      bool rightStartTurningDirection;
-      bool rightFinishTurningCircle;
+      bool automatic_generation;
+      bool startcounterclockwise;
+      bool finishcounterclockwise;
 
     };
 
@@ -171,11 +171,11 @@ namespace Plan
         .units(Units::Meter)
         .defaultValue("0.0");
 
-        param("Dubins path right start direction", m_args.rightStartTurningDirection)
+        param("Dubins path right start direction", m_args.startcounterclockwise)
         .visibility(Parameter::VISIBILITY_USER)
         .defaultValue("true");
 
-        param("Dubins path right finish direction", m_args.rightFinishTurningCircle)
+        param("Dubins path right finish direction", m_args.finishcounterclockwise)
         .visibility(Parameter::VISIBILITY_USER)
         .defaultValue("true");
 
@@ -184,6 +184,7 @@ namespace Plan
         bind<IMC::PlanControlState>(this);
         bind<IMC::PlanSpecification>(this);
         bind<IMC::PathControlState>(this);
+        bind<IMC::CoordinatedNetRecovery>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -241,6 +242,7 @@ namespace Plan
             && coordinated_nr->getSource()   != getSystemId())
         {
           const IMC::NetRecovery* net_recovery = (coordinated_nr->netrecovery.get());
+          virtual_runway.nr = *net_recovery;
 
           extractVirtualRunway(net_recovery);
           requestDubins(); //Request dubins-path from uav position to loiter.
@@ -464,46 +466,40 @@ namespace Plan
       void
       requestDubins()
       {
-        IMC::PlanGeneration msg;
-
-        msg.params.append("land_lat=").append(DoubleToString(Angles::degrees(virtual_runway.VR_center_lat))).append(";");
-        msg.params.append("land_lon=").append(DoubleToString(Angles::degrees(virtual_runway.VR_center_lon))).append(";");
-
-        msg.params.append("land_heading=").append(DoubleToString(Angles::degrees(Angles::normalizeRadian(virtual_runway.VR_heading+Math::c_pi)))).append(";");
-
-        msg.params.append("net_height=").append(DoubleToString(-virtual_runway.VR_altitude)).append(";");
+        IMC::LandingPlanGeneration dubinsPath;
 
 
-        msg.params.append("start_turning_circle_radius=").append(DoubleToString(m_args.fw_loiter.radius_first)).append(";");
-        msg.params.append("final_turning_circle_radius=").append(DoubleToString(m_args.fw_loiter.radius_second)).append(";");
+        dubinsPath.lon = virtual_runway.VR_center_lon;
+        dubinsPath.lat = virtual_runway.VR_center_lat;
 
+        dubinsPath.startturningradius = m_args.fw_loiter.radius_first;
+        dubinsPath.finishturningradius =  m_args.fw_loiter.radius_second;
 
-        msg.params.append("final_approach_angle=").append(DoubleToString(0.0)).append(";");
-        msg.params.append("glide_slope_angle=").append(DoubleToString(m_args.glideslope_angle)).append(";");
+        dubinsPath.heading = Angles::normalizeRadian(virtual_runway.VR_heading+Math::c_pi);
+        dubinsPath.glideslopeangle =  Angles::radians(m_args.glideslope_angle);
+        dubinsPath.glideslope = m_args.glideslope_distance;
+        dubinsPath.finalapproachangle = Angles::radians(0.0);
 
-        msg.params.append("dist_behind=").append(DoubleToString(m_args.virtualrunway_behind_distance+(virtual_runway.VR_length/2.0))).append(";");
-        msg.params.append("final_approach=").append(DoubleToString(m_args.virtualrunway_approach_distance+(virtual_runway.VR_length/2.0))).append(";");
+        dubinsPath.distancebehind = m_args.virtualrunway_behind_distance+(virtual_runway.VR_length/2.0);
+        dubinsPath.finalapproach  = m_args.virtualrunway_approach_distance+(virtual_runway.VR_length/2.0);
 
-        msg.params.append("glideslope=").append(DoubleToString(m_args.glideslope_distance)).append(";");
+        dubinsPath.height = m_args.netWGS84Height;
+        dubinsPath.ground =-virtual_runway.VR_altitude;
+        dubinsPath.approach = m_args.glideslope_approach_distance;
 
-        msg.params.append("approach=").append(DoubleToString(m_args.glideslope_approach_distance)).append(";");
-        msg.params.append("speed12=").append(DoubleToString(m_args.desired_speed)).append(";");
-        msg.params.append("speed345=").append(DoubleToString(m_args.desired_speed)).append(";");
+        dubinsPath.waitloiter = true;
+        dubinsPath.automatic = m_args.automatic_generation;
 
-        msg.params.append("z_unit=height;");// "height" or "altitude"
-        msg.params.append("net_WGS84_height=").append(DoubleToString(m_args.netWGS84Height)).append(";");
-        msg.params.append("wait_at_loiter=true").append(";");
+        dubinsPath.startcounterclockwise = m_args.startcounterclockwise;
+        dubinsPath.finishcounterclockwise = m_args.finishcounterclockwise;
+        dubinsPath.approachspeed = m_args.desired_speed;
+        dubinsPath.landingspeed = m_args.desired_speed;
 
-        msg.params.append("automatic=").append(m_args.automatic_generation).append(";");
+        dubinsPath.cmd = IMC::LandingPlanGeneration::CMD_GENERATE;
+        dubinsPath.op = IMC::LandingPlanGeneration::OP_REQUEST;
+        dubinsPath.plan_id = "land";
 
-        msg.params.append("start_turning_circle_counter_clockwise=").append(DoubleToString(m_args.rightStartTurningDirection)).append(";");
-        msg.params.append("final_turning_circle_counter_clockwise=").append(DoubleToString(m_args.rightFinishTurningCircle)).append(";");
-
-        msg.op = IMC::PlanGeneration::OP_REQUEST;
-        msg.cmd = IMC::PlanGeneration::CMD_GENERATE;
-        msg.plan_id = "land";
-
-        dispatch(msg);
+        dispatch(dubinsPath);
         debug("Dubins path to loiter-point requested from LandingPath");
       }
 
