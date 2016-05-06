@@ -51,8 +51,8 @@ namespace Simulators
       double m_lon_base;
       double m_rssi;
 
-      IMC::GpsFix gpsdata;
-      IMC::EstimatedState estate;
+      IMC::GpsFix m_gpsdata;
+      IMC::EstimatedState m_estate;
       IMC::RSSI m_sim_rssi;
 
       Task(const std::string& name, Tasks::Context& ctx):
@@ -118,7 +118,7 @@ namespace Simulators
       consume(const IMC::GpsFix* gps)
       {
           if(resolveEntity(gps->getSourceEntity()) == "Autopilot"){
-            gpsdata = *gps;
+            m_gpsdata = *gps;
           }
       }
 
@@ -126,7 +126,7 @@ namespace Simulators
       void
       consume(const IMC::EstimatedState* msg)
       {
-          estate = *msg;
+          m_estate = *msg;
 
       }
 
@@ -144,8 +144,8 @@ namespace Simulators
       {
         if (m_args.sim_flag)
         {
-          double dist_x = estate.x;
-          double dist_y = estate.y;
+          double dist_x = m_estate.x;
+          double dist_y = m_estate.y;
 
           // Distance from base station to uav (in rad):
           double dist = sqrt(pow(dist_x,2) + pow(dist_y,2));
@@ -156,8 +156,8 @@ namespace Simulators
         }
         else
         {
-          double lat_uav = gpsdata.lat;
-          double lon_uav = gpsdata.lon;
+          double lat_uav = m_gpsdata.lat;
+          double lon_uav = m_gpsdata.lon;
 
           double dlat = m_lat_base - lat_uav;
           double dlon = m_lon_base - lon_uav;
