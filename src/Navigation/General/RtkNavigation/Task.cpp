@@ -73,6 +73,7 @@ namespace Navigation
           m_rtk = *rtkfix;
 
           fillEstimatedState();
+          dispatch(m_estate);
         }
 
         void
