@@ -51,6 +51,8 @@ namespace Control
         double k_thr_ph;
         double trim_pitch;
         double trim_throttle;
+        // Input filtering
+        std::string dz_src;
 
       };
 
@@ -65,6 +67,8 @@ namespace Control
         double m_dvrate;
         double m_thr_i;
         double m_dz;
+        double H_error;
+        bool H_error_feedforward;
 
         Delta m_last_step;
 
@@ -74,7 +78,9 @@ namespace Control
           m_dspeed(18.0),
           m_dvrate(0.0),
           m_thr_i(0.0),
-          m_dz(0.0)
+          m_dz(0.0),
+          H_error(0.0),
+          H_error_feedforward(false)
 
         {
           param("Use controller", m_args.use_controller)
@@ -106,6 +112,10 @@ namespace Control
           param("Trim throttle", m_args.trim_throttle)
           .defaultValue("44.0")
           .description("Trim throttle for level flight");
+
+          param("DesiredZ Filter", m_args.dz_src)
+          .defaultValue("Tracking Altitude Controller")
+          .description("Entity allowed to set DesiredZ.");
 
           bind<IMC::IndicatedSpeed>(this);
           bind<IMC::DesiredVerticalRate>(this);
@@ -170,9 +180,16 @@ namespace Control
         {
           m_dspeed = d_speed->value;
         }
+
         void
         consume(const IMC::DesiredZ* d_z)
         {
+          if(!(d_z->getSourceEntity() == resolveEntity(m_args.dz_src))){
+            return;
+          }
+
+          H_error_feedforward = true;
+
           m_dz = d_z->value;
         }
 
@@ -192,17 +209,25 @@ namespace Control
           double h_dot = state.u*sin(state.theta) - state.v*sin(state.phi)*cos(state.theta) - state.w*cos(state.phi)*cos(state.theta);
           double gamma_now = asin(h_dot/Vg);
 
+          double glideslope_angle = atan2((std::abs(ts.end.z) -std::abs(ts.start.z)),ts.track_length); //Negative for decent
+
           double alpha_now = gamma_now - state.theta;
 
           double gamma_desired = asin(m_dvrate/Vg);
           double gamma_error = gamma_now - gamma_desired;
           double V_error =  m_dspeed - m_airspeed;
-          double H_error = (m_dz - (state.height - state.z));
+
+          if(H_error_feedforward){
+            H_error = (m_dz - (state.height - state.z))*std::cos(glideslope_angle);
+          }
+          else
+            H_error = 0.0;
+
 
           //Throttle integrator
           double timestep = m_last_step.getDelta();
           m_thr_i = m_thr_i + timestep*V_error;
-          m_thr_i = trimValue(m_thr_i,-20,20); //Anti wind-up at 20 % throttle
+          m_thr_i = trimValue(m_thr_i,-30,30); //Anti wind-up at 30 % throttle
 
           //Calculate desired throttle and pitch
           double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i *m_thr_i+ H_error*m_args.k_thr_ph + m_args.trim_throttle;
