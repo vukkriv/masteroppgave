@@ -566,9 +566,6 @@ namespace Control
         {
           PathFormationController::onUpdateParameters();
 
-          // update desired speed to max speed
-          m_reference_speed = m_args.refsim.max_speed;
-
           debug("Setting new surge tuning parameters");
           double Kp_s = m_args.refsim.c_surge.Kp;
           double Ki_s = m_args.refsim.c_surge.Ki;
