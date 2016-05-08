@@ -1380,18 +1380,6 @@ namespace Control
                 cos(theta) * sin(phi), cos(theta) * cos(phi) };
           return Matrix(R_en_elements, 3, 3);
         }
-
-        void
-        parseCSVstring(std::string CSVstring, std::vector<std::string>& result)
-        {
-          std::stringstream ss(CSVstring);
-          while( ss.good() )
-          {
-              std::string substr;
-              getline( ss, substr, ',' );
-              result.push_back( substr );
-          }
-        }
       };
     }
   }
