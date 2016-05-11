@@ -219,6 +219,7 @@ namespace Control
 
           if(H_error_feedforward){
             H_error = (m_dz - (state.height - state.z))*std::cos(glideslope_angle);
+            H_error = trimValue(H_error,-2,2);
           }
           else
             H_error = 0.0;
