@@ -429,7 +429,8 @@ namespace Control
         onResourceInitialization(void)
         {
           PeriodicUAVAutopilot::onResourceInitialization();
-
+          IMC::EstimatedState es;
+          m_local_state.state.set(es);
         }
 
         //! Release resources.
