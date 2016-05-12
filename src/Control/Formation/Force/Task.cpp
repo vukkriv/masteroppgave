@@ -223,8 +223,12 @@ namespace Control
 
         //! Last received desired heading from master agent
         IMC::DesiredHeading m_desired_heading;
+
         //! Last received desired linear setpoint from master agent
         IMC::DesiredLinearState m_linear_setpoint;
+
+        //! Current coordinator state
+        IMC::CoordinatorState m_coord_state;
 
         double m_curr_desired_heading;
         //current centroid heading
@@ -1111,6 +1115,10 @@ namespace Control
           calcDiffVariable(&m_z, m_D, m_x);
           Matrix z_tilde = m_z - m_z_d;
 
+          m_coord_state.link_distance       = m_z.norm_2();
+          m_coord_state.link_distance_error = z_tilde.norm_2();
+          m_coord_state.link_vel = 0; //currently not available
+          dispatch(m_coord_state);
           // Calculate formation velocity component
           static double last_print;
 
