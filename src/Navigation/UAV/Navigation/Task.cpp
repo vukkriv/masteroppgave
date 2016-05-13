@@ -634,7 +634,7 @@ namespace Navigation
                   {
                     setState(UsingExternal);
                   }
-                  if (m_shortRtkLoss_wdog_message_frequency_timer.overflow())
+                  else if (m_shortRtkLoss_wdog_message_frequency_timer.overflow())
                   {
                     m_shortRtkLoss_wdog_message_frequency_timer.reset();
                     m_estate = *m_extnav.state.get();
