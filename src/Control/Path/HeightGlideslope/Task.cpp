@@ -267,8 +267,8 @@ namespace Control
           }
           else{
             // Activate controller
-           // enableControlLoops(IMC::CL_ALTITUDE);
-           // enableControlLoops(IMC::CL_VERTICAL_RATE);
+            enableControlLoops(IMC::CL_ALTITUDE);
+            enableControlLoops(IMC::CL_VERTICAL_RATE);
           }
 
           //Check if tracking to first waypoint
