@@ -279,6 +279,7 @@ namespace Transports
           delete ep;
         static_dest->params = entityParameters;
         dispatch(static_dest);
+        delete static_dest;
       }
 
       bool
