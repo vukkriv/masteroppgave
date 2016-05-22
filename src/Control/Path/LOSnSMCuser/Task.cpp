@@ -73,6 +73,7 @@ namespace Control
         double m_bank_lim;
         double m_lookahead, m_lookahead_sq;
         double m_W_x, m_W_y;
+        std::string m_mode;
 
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
@@ -122,6 +123,7 @@ namespace Control
 
           bind<IMC::IndicatedSpeed>(this);
           bind<IMC::EstimatedStreamVelocity>(this);
+          bind<IMC::AutopilotMode>(this);
        }
 
         void
@@ -173,6 +175,12 @@ namespace Control
         }
 
         void
+        consume(const IMC::AutopilotMode* ap_mode)
+        {
+          m_mode =ap_mode->mode;
+        }
+
+        void
         consume(const IMC::EstimatedStreamVelocity* wind)
         {
           m_W_x = wind->x;
@@ -182,7 +190,10 @@ namespace Control
         bool
         hasSpecificZControl(void) const
         {
-          return true;
+          if(m_mode == "FBWA")
+            return true;
+          else
+            return false;
         }
 
 
