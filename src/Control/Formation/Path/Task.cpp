@@ -587,7 +587,7 @@ namespace Control
           double Kd_h = m_args.refsim.c_heading.Kd;
           if (!m_args.refsim.c_heading.tunedirect)
           {
-            Kp_h = (m_args.refsim.heading_T/m_args.refsim.heading_T)*sqrt(m_args.refsim.c_heading.omega);
+            Kp_h = (m_args.refsim.heading_T/m_args.refsim.heading_K)*pow(m_args.refsim.c_heading.omega,2);
             Ki_h = m_args.refsim.c_heading.omega/10;
             Kd_h = (1-2*m_args.refsim.c_heading.xi*m_args.refsim.c_heading.omega*m_args.refsim.heading_T)/m_args.refsim.heading_K;
           }
@@ -1065,7 +1065,7 @@ namespace Control
             */
           m_refsim.B = Matrix(3,2,0.0);
         	m_refsim.B(0,0) = (double)1/m_args.refsim.surge_m;
-        	m_refsim.B(2,1) = m_args.refsim.heading_K;
+        	m_refsim.B(2,1) = m_args.refsim.heading_K/m_args.refsim.heading_T;
         }
 
         void
