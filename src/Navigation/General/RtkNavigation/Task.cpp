@@ -28,6 +28,9 @@
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 
+// USER headers
+#include <USER/DUNE.hpp>
+
 namespace Navigation
 {
   namespace General
@@ -40,6 +43,8 @@ namespace Navigation
       {
         //! Accumulated EstimatedState message
         IMC::EstimatedState m_estate;
+        //! Accumulated GpsFix message
+        IMC::GpsFix m_gps;
         //! Last received RTK Fix message
         IMC::GpsFixRtk m_rtk;
 
@@ -73,9 +78,23 @@ namespace Navigation
           m_rtk = *rtkfix;
 
           fillEstimatedState();
+          fillGpsFix();
           dispatch(m_estate);
+          dispatch(m_gps);
         }
 
+        void
+        fillGpsFix()
+        {
+          double lat = m_estate.lat;
+          double lon = m_estate.lon;
+          double height = m_estate.height;
+          Coordinates::WGS84_Accurate::displace(m_estate.x,m_estate.y,m_estate.z,&lat,&lon,&height);
+          m_gps.lat = lat;
+          m_gps.lon = lon;
+          m_gps.height = height;
+          m_gps.validity |= IMC::GpsFix::GFV_VALID_POS;
+        }
         void
         fillEstimatedState()
         {
