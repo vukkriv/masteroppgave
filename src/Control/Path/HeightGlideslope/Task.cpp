@@ -64,6 +64,9 @@ namespace Control
         double h_dot_i;
         double h_dot_p;
 
+        double Tref_z;
+        double Tref_gamma;
+
       };
 
       class ReferenceModel
@@ -225,6 +228,14 @@ namespace Control
           .defaultValue("25.0")
           .description("Approach distance gain up");
 
+          param("Time constant refmodelZ", m_args.Tref_z)
+          .defaultValue("1.0")
+          .description("Time constant for reference model for desired Z");
+
+          param("Time constant refmodelGamma", m_args.Tref_gamma)
+          .defaultValue("1.0")
+          .description("Time constant for reference model for gamma");
+
           param("Use controller", m_args.use_controller)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
@@ -345,6 +356,8 @@ namespace Control
           if (m_first_run){
             m_refmodel_z.x(0,0)     = (state.height - state.z);
             m_refmodel_gamma.x(0,0) = glideslope_angle;
+            m_refmodel_z.setTimeconstant(m_args.Tref_z);
+            m_refmodel_gamma.setTimeconstant(m_args.Tref_gamma);
             m_first_run = false;
           }
 
