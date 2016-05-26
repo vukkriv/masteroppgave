@@ -63,10 +63,12 @@ namespace Plan
       double length_glideslope;
       //! Length of approach
       double length_approach_glideslope;
-      //! Angle of attack
+      //! Angle of impact towards net
       double gamma_a;
-      //! Angle of descent
+      //! Angle of descent: landing path
       double gamma_d;
+      //! Decent angle in approach path
+      double approachDecent;
       //! Net orientation
       double netHeading;
       //! Net lat
@@ -237,6 +239,7 @@ namespace Plan
           m_landArg.net_height = msg->ground;
           m_landArg.gamma_a = msg->finalapproachangle;
           m_landArg.gamma_d = msg->glideslopeangle;
+          m_landArg.approachDecent = msg->approachdecentangle;
           m_landArg.behind_net = msg->distancebehind;
           m_landArg.infront_net = msg->finalapproach;
           m_landArg.length_glideslope = msg->glideslope;
@@ -255,6 +258,7 @@ namespace Plan
           debug("Net heading %f", m_landArg.netHeading);
           debug("Attack angle %f",m_landArg.gamma_a);
           debug("Descent %f",m_landArg.gamma_d);
+          debug("Approach decent angle %f,m_landArg.approachDecent");
           debug("Behind net %f",m_landArg.behind_net);
           debug("In front of net %f",m_landArg.infront_net);
           debug("Length glideslope %f",m_landArg.length_glideslope);
@@ -474,7 +478,7 @@ namespace Plan
       {
         if (Xf(2,0)<Xs(2,0))
         {
-          m_landArg.gamma_d = -m_landArg.gamma_d;
+          m_landArg.approachDecent = -m_landArg.approachDecent;
         }
         bool reachedCorrectHeight = createGlideSlope(Xs,Xf,path);
         if (!reachedCorrectHeight)
@@ -1075,7 +1079,7 @@ namespace Plan
       createGlideSlope(const Matrix x0,const Matrix WP,std::vector<Matrix> &Path)
       {
         //! The path starts at the same height as x0
-        double descentAngle = m_landArg.gamma_d;
+        double descentAngle = m_landArg.approachDecent;
         bool correctHeight = false;
         Path[0](2,0) = x0(2,0);
         double distance;
@@ -1116,7 +1120,7 @@ namespace Plan
       createSpiral(const Matrix OF,const bool CounterClockwiseF,const double dHeight,std::vector<Matrix> &Path)
       {
         bool correctHeight = false;
-        double descentAngle = m_landArg.gamma_d;
+        double descentAngle = m_landArg.approachDecent;
         double theta0 = std::atan2(Path[Path.size()-1](1,0)-OF(1,0),Path[Path.size()-1](0,0)-OF(0,0));
         Matrix WP1 = Path.back();
         Matrix theta = Matrix(1,1,0.0);
