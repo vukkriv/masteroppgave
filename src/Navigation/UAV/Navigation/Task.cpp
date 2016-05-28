@@ -94,7 +94,7 @@ namespace Navigation
           }
           if (nRows <=0)
           {
-            nRows = 3;
+            nRows = 1;
           }
 
           data.resize(nRows,nSamples);
@@ -122,9 +122,10 @@ namespace Navigation
           {
             for (int j = 0; j<data.columns(); ++j)
             {
-              sum(0,0) += data(0,j);
-              sum(1,0) += data(1,j);
-              sum(2,0) += data(2,j);
+              for (int i = 0;i<data.rows();i++)
+              {
+                sum(i,0) += data(i,j);
+              }
             }
             return sum/data.columns();
           }
@@ -132,9 +133,10 @@ namespace Navigation
           {
             for (int j = 0; j<curColumn+1; ++j)
             {
-              sum(0,0) += data(0,j);
-              sum(1,0) += data(1,j);
-              sum(2,0) += data(2,j);
+              for (int i = 0;i<data.rows();i++)
+                {
+                  sum(i,0) += data(i,j);
+                }
             }
             return sum/(curColumn+1);
           }
@@ -143,10 +145,10 @@ namespace Navigation
         void newSample(Matrix sample)
         {
           // Insert new data at curColumn,
-          data(0,curColumn) = sample(0,0);
-          data(1,curColumn) = sample(1,0);
-          data(2,curColumn) = sample(2,0);
-
+          for (int i=0;i<data.rows();i++)
+          {
+            data(i,curColumn) = sample(i,0);
+          }
           // Update curColumn
           ++curColumn;
           if (curColumn%data.columns()==0 && !filledData)
@@ -175,6 +177,7 @@ namespace Navigation
         float shortRtkLoss_activate_timeout;
         float shortRtkLoss_max_time;
         int shortRtkLoss_n_samples;
+        int rtkMessageFrequency_n_samples;
         float shortRtkLoss_message_frequency_timer;
 
       };
@@ -203,6 +206,10 @@ namespace Navigation
         IMC::NavSources m_navsources;
         //! Moving average class that contain N samples of the average difference between rtk and external
         MovingAverage m_compensator;
+        //! Class that contain the average frequency of rtk messages
+        MovingAverage m_rtkFrequency;
+        //! Previous rtk timestamp
+        double m_prevRtkTimestamp;
         //! Current State
         NavState m_current_state;
 
@@ -214,6 +221,7 @@ namespace Navigation
           DUNE::Tasks::Task(name, ctx),
           m_rtk_fix_level_activate(IMC::GpsFixRtk::RTK_FIXED),
           m_rtk_fix_level_deactivate(IMC::GpsFixRtk::RTK_FIXED),
+          m_prevRtkTimestamp(0.0),
           m_current_state(Init)
         {
 
@@ -239,6 +247,10 @@ namespace Navigation
           .values("Fix,Float")
           .visibility(Parameter::VISIBILITY_USER)
           .defaultValue("Float");
+
+          param("RTK - N samples to average frequency", m_args.rtkMessageFrequency_n_samples)
+          .minimumValue("0")
+          .defaultValue("10");
 
           param("Base Altitude", m_args.base_alt)
           .minimumValue("0.0")
@@ -328,6 +340,8 @@ namespace Navigation
           setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
           m_rtk_wdog_comm_timeout.setTop(m_args.rtk_timeout_connection);
           m_compensator.setDataMatrix(m_args.shortRtkLoss_n_samples,3);
+          m_rtkFrequency.setDataMatrix(m_args.rtkMessageFrequency_n_samples,1);
+          inf("Colum rtk: %d row %d",m_rtkFrequency.getCol(),m_rtkFrequency.getRow());
         }
 
         //! Release resources.
@@ -344,12 +358,13 @@ namespace Navigation
         }
 
         void
-        addOffset()
+        addShortLossCompensator()
         {
           Matrix compensator = m_compensator.getAverage();
           m_estate.x = m_estate.x + compensator(0,0);
           m_estate.y = m_estate.y + compensator(1,0);
           m_estate.z = m_estate.z + compensator(2,0);
+          debug("Compensator: x= %f, y= %f, z= %f",compensator(0,0),compensator(1,0),compensator(2,0));
         }
 
         void
@@ -373,6 +388,20 @@ namespace Navigation
           m_rtk = *rtkfix;
           m_rtk_wdog_comm_timeout.reset();
           updateCompensator();
+
+          //! Add new frequency sample
+          Matrix timeDiff = Matrix(1,1,0.0);
+          timeDiff(0,0) = m_rtk.getTimeStamp()-m_prevRtkTimestamp;
+
+          if (timeDiff(0,0)!=0 && m_prevRtkTimestamp!=0)
+          {
+            m_rtkFrequency.newSample(timeDiff);
+          }
+          m_prevRtkTimestamp = m_rtk.getTimeStamp();
+
+
+          Matrix rtkfrequency = m_rtkFrequency.getAverage();
+          debug("The frequency of rtk is %f", rtkfrequency(0,0));
 
           if( getDebugLevel() == DEBUG_LEVEL_SPEW)
             rtkfix->toText(std::cerr);
@@ -469,9 +498,6 @@ namespace Navigation
           }
           // Add new sample to the short loss compensator
           m_compensator.newSample(newSample);
-          // For debuging purpose
-          Matrix average = m_compensator.getAverage();
-          spew("Difference: n = %f e = %f d = %f",newSample(0,0),newSample(1,0),newSample(2,0));
         }
 
         void
@@ -638,7 +664,7 @@ namespace Navigation
                   {
                     m_shortRtkLoss_wdog_message_frequency_timer.reset();
                     m_estate = *m_extnav.state.get();
-                    addOffset();
+                    addShortLossCompensator();
                     sendStateAndSource();
                   }
                   break;
@@ -689,7 +715,7 @@ namespace Navigation
               break;
             case UsingShortLossComp:
               m_estate = *m_extnav.state.get();
-              addOffset();
+              addShortLossCompensator();
               sendStateAndSource();
               m_shortRtkLoss_wdog_message_frequency_timer.setTop(m_args.shortRtkLoss_message_frequency_timer);
               m_state_time.setTop(m_args.shortRtkLoss_max_time);
