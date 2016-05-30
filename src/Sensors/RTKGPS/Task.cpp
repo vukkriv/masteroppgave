@@ -221,7 +221,7 @@ namespace Sensors
       void
       onResourceInitialization(void)
       {
-    	  std::cout << "SOLUTION FORMAT: " << m_args.sol_format;
+    	  debug("Soulution format: %s", m_args.sol_format.c_str());
     	  if(m_args.sol_format == "llh"){
     		  m_llh_output = true;
     	  }
