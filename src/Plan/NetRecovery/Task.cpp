@@ -493,8 +493,8 @@ namespace Plan
 
         dubinsPath.startcounterclockwise = m_args.startcounterclockwise;
         dubinsPath.finishcounterclockwise = m_args.finishcounterclockwise;
-        dubinsPath.approachspeed = m_args.desired_speed;
-        dubinsPath.landingspeed = m_args.desired_speed;
+        dubinsPath.approachspeed = m_args.fw_loiter.speed;
+        dubinsPath.landingspeed = m_args.fw_loiter.speed;
 
 
         dubinsPath.cmd = IMC::LandingPlanGeneration::CMD_GENERATE;
