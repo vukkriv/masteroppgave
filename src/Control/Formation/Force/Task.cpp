@@ -150,6 +150,9 @@ namespace Control
         //! Time constant for low-pass heading smoothing
         double heading_smoothing_T;
 
+        bool link_filter_enable;
+        double link_filter_beta;
+
         std::string centroid_els_entity_label;
 
         std::vector<std::string> desired_heading_entity_labels;
@@ -184,6 +187,9 @@ namespace Control
 
         //! Difference variables
         Matrix m_z;
+
+        //! Difference variables filtered
+        Matrix m_z_filtered;        
 
         //! Desired formation positions
         Matrix m_x_c;
@@ -377,6 +383,18 @@ namespace Control
           .defaultValue("Desired Linear")
           .description("Entity labels for the DesiredLinearState message");
 
+          param("Enable Link Filter", m_args.link_filter_enable)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("False")
+          .description("Increase to make the response slower. ");
+
+          param("Link Filter Beta", m_args.link_filter_beta)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .minimumValue("0.0")
+          .defaultValue("0.8")
+          .maximumValue("1.0")
+          .description("Increase to make the response slower. ");
+
           // Bind incoming IMC messages
           bind<IMC::DesiredLinearState>(this);
           bind<IMC::EstimatedLocalState>(this);
@@ -508,6 +526,7 @@ namespace Control
           {
             // Resize and reset difference variables matrices to fit number of links
             m_z.resizeAndFill(3, m_L, 0);
+            m_z_filtered.resizeAndFill(3, m_L, 0);
             m_z_d.resizeAndFill(3, m_L, 0);
             // Update desired difference variables matrix
             calcDiffVariable(&m_z_d, m_D, m_x_c);
@@ -1114,7 +1133,14 @@ namespace Control
 
           // Calculate z_tilde
           calcDiffVariable(&m_z, m_D, m_x);
+
           Matrix z_tilde = m_z - m_z_d;
+          if (m_args.link_filter_enable)
+          {
+            double beta = m_args.link_filter_beta;
+            m_z_filtered = m_z*beta + (1-beta)*m_z_filtered;
+            z_tilde = m_z_filtered - m_z_d;
+          } 
 
           m_coord_state.link_distance       = m_z.norm_2();
           m_coord_state.link_distance_error = z_tilde.norm_2();
