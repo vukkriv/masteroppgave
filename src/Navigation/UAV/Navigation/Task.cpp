@@ -174,11 +174,10 @@ namespace Navigation
         double base_alt;
         double antenna_height;
         bool shortRtkLoss_enable;
-        float shortRtkLoss_activate_timeout;
-        float shortRtkLoss_max_time;
+        int shortRtkLoss_activate_frequency_multiplier;
+        int shortRtkLoss_max_time_frequency_multiplier;
         int shortRtkLoss_n_samples;
         int rtkMessageFrequency_n_samples;
-        float shortRtkLoss_message_frequency_timer;
 
       };
 
@@ -210,6 +209,8 @@ namespace Navigation
         MovingAverage m_rtkFrequency;
         //! Previous rtk timestamp
         double m_prevRtkTimestamp;
+        //! Short rtk loss compensator frequency reference
+        double m_shortRtkLossFrequencyRef;
         //! Current State
         NavState m_current_state;
 
@@ -222,6 +223,7 @@ namespace Navigation
           m_rtk_fix_level_activate(IMC::GpsFixRtk::RTK_FIXED),
           m_rtk_fix_level_deactivate(IMC::GpsFixRtk::RTK_FIXED),
           m_prevRtkTimestamp(0.0),
+          m_shortRtkLossFrequencyRef(0.0),
           m_current_state(Init)
         {
 
@@ -272,23 +274,17 @@ namespace Navigation
           .visibility(Parameter::VISIBILITY_USER)
           .description("Use a position offset to minimize the position difference between the external and internal nav data");
 
-          param("Short RtkFix Loss Compensator - Time activation",m_args.shortRtkLoss_activate_timeout)
-          .defaultValue("0.2")
-          .minimumValue("0.0");
+          param("Short RtkFix Loss Compensator - Activation rtk frequency multiplier",m_args.shortRtkLoss_activate_frequency_multiplier)
+          .defaultValue("2")
+          .minimumValue("1");
 
-          param("Short RtkFix Loss Compensator - Time deactivation",m_args.shortRtkLoss_max_time)
-          .defaultValue("2.0")
-          .minimumValue("0.0");
+          param("Short RtkFix Loss Compensator - Deactivation rtk frequency multiplier",m_args.shortRtkLoss_max_time_frequency_multiplier)
+          .defaultValue("20")
+          .minimumValue("1");
 
           param("Short RtkFix Loss Compensator - N samples to average",m_args.shortRtkLoss_n_samples)
           .defaultValue("10")
           .minimumValue("1");
-
-          param("Short RtkFix Loss Compensator - Message frequency",m_args.shortRtkLoss_message_frequency_timer)
-          .defaultValue("0.1")
-          .minimumValue("0.0")
-          .description("The message output frequency when in short rtk loss compensator state")
-          .visibility(Parameter::VISIBILITY_USER);
 
           // Default, we use full external state
           m_navsources.mask = (NS_EXTERNAL_FULLSTATE | NS_EXTERNAL_AHRS | NS_EXTERNAL_POSREF);
@@ -705,7 +701,9 @@ namespace Navigation
               sendStateAndSource();
               if (m_args.shortRtkLoss_enable)
               {
-                m_state_time.setTop(m_args.shortRtkLoss_activate_timeout);
+                m_shortRtkLossFrequencyRef = m_rtkFrequency.getAverage()(0,0);
+                debug("Short loss frequency ref %f",m_shortRtkLossFrequencyRef);
+                m_state_time.setTop(m_args.shortRtkLoss_activate_frequency_multiplier*m_shortRtkLossFrequencyRef);
               }
               else
               {
@@ -717,8 +715,8 @@ namespace Navigation
               m_estate = *m_extnav.state.get();
               addShortLossCompensator();
               sendStateAndSource();
-              m_shortRtkLoss_wdog_message_frequency_timer.setTop(m_args.shortRtkLoss_message_frequency_timer);
-              m_state_time.setTop(m_args.shortRtkLoss_max_time);
+              m_shortRtkLoss_wdog_message_frequency_timer.setTop(m_shortRtkLossFrequencyRef);
+              m_state_time.setTop(m_args.shortRtkLoss_max_time_frequency_multiplier*m_shortRtkLossFrequencyRef);
               break;
           }
           m_current_state = nextState;
