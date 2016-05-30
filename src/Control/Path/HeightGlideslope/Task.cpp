@@ -66,6 +66,7 @@ namespace Control
 
         double Tref_z;
         double Tref_gamma;
+        double Tref_los;
 
       };
 
@@ -163,6 +164,7 @@ namespace Control
         double last_loiter_z;
         ReferenceModel m_refmodel_z;
         ReferenceModel m_refmodel_gamma;
+        ReferenceModel m_refmodel_los;
 
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
@@ -235,6 +237,10 @@ namespace Control
           param("Time constant refmodelGamma", m_args.Tref_gamma)
           .defaultValue("1.0")
           .description("Time constant for reference model for gamma");
+
+          param("Time constant refmodelLos", m_args.Tref_los)
+          .defaultValue("0.5")
+          .description("Time constant for reference model for LOS.");
 
           param("Use controller", m_args.use_controller)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -356,8 +362,10 @@ namespace Control
           if (m_first_run){
             m_refmodel_z.x(0,0)     = (state.height - state.z);
             m_refmodel_gamma.x(0,0) = glideslope_angle;
+            m_refmodel_los.x(0,0) = 0.0;
             m_refmodel_z.setTimeconstant(m_args.Tref_z);
             m_refmodel_gamma.setTimeconstant(m_args.Tref_gamma);
+            m_refmodel_los.setTimeconstant(m_args.Tref_los);
             m_first_run = false;
           }
 
@@ -419,6 +427,9 @@ namespace Control
 
           los_angle = trimValue(los_angle,-Angles::radians(7.0),Angles::radians(7.0));
           debug("Los_angle: %f",los_angle*(180/3.14159265));
+
+          m_refmodel_los.x = (m_refmodel_los.I + (ts.delta*m_refmodel_los.A))*m_refmodel_los.x + (ts.delta*m_refmodel_los.B) * los_angle;
+          los_angle = m_refmodel_los.x(0,0);
 
           double gamma_cmd = glideslope_angle + los_angle; //Commanded flight path angle
           double h_dot_desired = Vg*sin(gamma_cmd);        //Convert commanded flight path angle to demanded vertical-rate.
