@@ -182,7 +182,6 @@ namespace Plan
         bind<IMC::PlanControl>(this);
         bind<IMC::PlanControlState>(this);
         bind<IMC::PlanSpecification>(this);
-        bind<IMC::PathControlState>(this);
         bind<IMC::CoordinatedNetRecovery>(this);
       }
 
@@ -220,17 +219,6 @@ namespace Plan
       void
       onResourceRelease(void)
       {
-      }
-
-      void
-      consume(const IMC::PathControlState* pcs){
-
-//        if (pcs->flags & IMC::PathControlState::FL_LOITERING){
-//          m_args.fw_loiter.lat = pcs->end_lat;
-//          m_args.fw_loiter.lon = pcs->end_lon;
-//          m_args.fw_loiter.altitude = pcs->end_z;
-//          m_args.fw_loiter.radius_second = pcs->lradius;
-//        }
       }
 
       void
