@@ -80,7 +80,6 @@ namespace Plan
       double glideslope_approach_distance;
       double glideslope_distance;
       double glideslope_angle;
-      double desired_speed;
       double netWGS84Height;
       bool ignoreEvasive;
       bool automatic_generation;
@@ -111,7 +110,7 @@ namespace Plan
         .visibility(Parameter::VISIBILITY_USER)
         .defaultValue("50");
 
-        param("Desired Speed", m_args.desired_speed)
+        param("Desired Speed", m_args.fw_loiter.speed)
         .visibility(Parameter::VISIBILITY_USER)
         .defaultValue("18");
 
@@ -477,6 +476,8 @@ namespace Plan
 
         dubinsPath.heading = Angles::normalizeRadian(virtual_runway.VR_heading+Math::c_pi);
         dubinsPath.glideslopeangle =  Angles::radians(m_args.glideslope_angle);
+        dubinsPath.approachdecentangle = Angles::radians(m_args.glideslope_angle);
+
         dubinsPath.glideslope = m_args.glideslope_distance;
         dubinsPath.finalapproachangle = Angles::radians(0.0);
 
@@ -494,6 +495,7 @@ namespace Plan
         dubinsPath.finishcounterclockwise = m_args.finishcounterclockwise;
         dubinsPath.approachspeed = m_args.desired_speed;
         dubinsPath.landingspeed = m_args.desired_speed;
+
 
         dubinsPath.cmd = IMC::LandingPlanGeneration::CMD_GENERATE;
         dubinsPath.op = IMC::LandingPlanGeneration::OP_REQUEST;
@@ -606,6 +608,9 @@ namespace Plan
         man_goto_behind_vr.z             = virtual_runway.VR_altitude;
         man_goto_behind_vr.z_units       = IMC::Z_HEIGHT;
 
+        //Test: VR extended to same location as goto_behind_vr
+        maneuver.end_lat = lat_offset;
+        maneuver.end_lon = lon_offset;
 
         IMC::PlanManeuver* pman1 = new IMC::PlanManeuver();
         IMC::InlineMessage<IMC::Maneuver> pman1_inline;
