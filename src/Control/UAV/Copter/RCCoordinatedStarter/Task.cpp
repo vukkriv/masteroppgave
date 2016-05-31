@@ -236,6 +236,7 @@ namespace Control
             plan_ctrl.plan_id = plan_spec.plan_id;
             plan_ctrl.request_id = 0;
             plan_ctrl.arg.set(plan_spec);
+            plan_ctrl.setDestination(this->getSystemId());
             dispatch(plan_ctrl);
           }
 
