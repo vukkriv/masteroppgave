@@ -56,8 +56,6 @@ namespace Control
           double max_yaw_rate;
           //! Entity to send centroid EstimatedLocalState
           std::vector<std::string> ent_centroid_elocalstate;
-          //! Yaw controller gain
-          double yaw_kp;
         };
 
         enum PwmChannel {
@@ -105,16 +103,13 @@ namespace Control
             .visibility(Parameter::VISIBILITY_USER)
             .units(Units::MeterPerSecond);
 
-            param("Max Speed - Yaw", m_args.max_speed_z)
+            param("Max Speed - Yaw", m_args.max_yaw_rate)
             .defaultValue("20")
             .visibility(Parameter::VISIBILITY_USER)
             .units(Units::DegreePerSecond);
 
             param("Filter - Centroid EstimatedLocalState Entity", m_args.ent_centroid_elocalstate)
             .defaultValue("Formation Centroid");
-
-            param("Yaw Controller - Kp", m_args.yaw_kp)
-            .defaultValue("1");
 
 
             bind<IMC::PWM>(this);
@@ -228,7 +223,7 @@ namespace Control
           virtual void
           onEstimatedState(const double timestep, const IMC::EstimatedState* msg)
           {
-            (void) timestep;
+            //(void) timestep;
             (void) msg;
 
             // Send out new desired on each estate.
