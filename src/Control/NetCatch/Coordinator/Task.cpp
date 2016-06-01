@@ -956,10 +956,9 @@ namespace Control
         bool
         endAtRunway()
         {
-          Matrix p_n = getNetPosition(m_p);
-          Matrix p_to_end = p_n - m_runway.end_NED;
-          double dist_left = p_to_end.norm_2();
-          if (dist_left <= m_args.m_endCatch_radius || p_to_end(0) > 0)
+          Matrix p_to_end = m_runway.end_NED - m_runway.start_NED;
+          double length_runway = p_to_end.norm_2();
+          if (m_p_path[CENTROID](0) > length_runway)
             return true;
           return false;
         }
