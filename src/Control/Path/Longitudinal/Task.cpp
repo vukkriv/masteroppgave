@@ -61,6 +61,7 @@ namespace Control
         Arguments m_args;
         IMC::DesiredThrottle m_throttle;
         IMC::DesiredPitch m_pitch;
+        IMC::ControlParcel m_parcel_throttle;
 
         double m_airspeed;
         double m_dspeed;
@@ -238,10 +239,19 @@ namespace Control
           m_throttle.value = throttle_desired;
           m_pitch.value = pitch_desired;
 
+          m_parcel_throttle.p = m_args.k_thr_p*V_error;
+          m_parcel_throttle.i = m_args.k_thr_i *m_thr_i;
+          m_parcel_throttle.d = H_error*m_args.k_thr_ph ;
+          m_parcel_throttle.a = gamma_error*m_args.k_gamma_p; // pitch
+
+
+
+
           spew("pitch desired er %f, og alpha_0 er: %f",m_pitch.value,Angles::degrees(alpha_now));
 
           dispatch(m_throttle);
           dispatch(m_pitch);
+          dispatch(m_parcel_throttle);
         }
       };
     }
