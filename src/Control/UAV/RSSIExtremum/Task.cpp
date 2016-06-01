@@ -141,6 +141,8 @@ namespace Control
         onEstimatedState(const double timestep, const IMC::EstimatedState* msg)
         {
            //! Do nothing here, since EstimatedState is not needed in this task.
+          (void) timestep;
+          (void) msg;
         }
 
         void
