@@ -24,10 +24,6 @@
 //***************************************************************************
 // Author: Sigurd Olav Nevstad                                              *
 //***************************************************************************
-// Based on Paper: A Guidance and Control Law Design for Precision          *
-// Automatic Take-off and Landing of Fixed-Wing UAVs                        *
-// http://arc.aiaa.org/doi/abs/10.2514/6.2012-4674                          *
-//***************************************************************************
 
 // ISO C++ 98 headers.
 #include <cmath>
@@ -46,6 +42,7 @@ namespace Control
       struct Arguments
       {
         bool use_controller; //Flag to enable controller
+        bool use_refmodel;
         double k_vr;
         double phi_h;
         double k_ph_down;
@@ -138,6 +135,7 @@ namespace Control
         Arguments m_args;
         IMC::DesiredVerticalRate m_vrate;
         IMC::DesiredZ  zref;
+        IMC::ControlParcel m_parcel_los;
         waypoint last_end_wp;
         Delta m_last_step;
 
@@ -235,6 +233,10 @@ namespace Control
           param("Time constant refmodelGamma", m_args.Tref_gamma)
           .defaultValue("1.0")
           .description("Time constant for reference model for gamma");
+
+          param("Use reference model", m_args.use_refmodel)
+          .defaultValue("true")
+          .description("Flag to use reference model");
 
           param("Use controller", m_args.use_controller)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -377,14 +379,17 @@ namespace Control
           //****************************************************
           // Reference model for desired Z and flight-path angle
           //****************************************************
-          debug("Z-ref before filter: %f",zref.value);
-          m_refmodel_z.x = (m_refmodel_z.I + (ts.delta*m_refmodel_z.A))*m_refmodel_z.x + (ts.delta*m_refmodel_z.B) * zref.value;
-          zref.value = m_refmodel_z.x(0,0);
+          if(m_args.use_refmodel)
+          {
+            debug("Z-ref before filter: %f",zref.value);
+            m_refmodel_z.x = (m_refmodel_z.I + (ts.delta*m_refmodel_z.A))*m_refmodel_z.x + (ts.delta*m_refmodel_z.B) * zref.value;
+            zref.value = m_refmodel_z.x(0,0);
 
-          debug("glideslope before filter: %f",glideslope_angle);
+            debug("glideslope before filter: %f",glideslope_angle);
 
-          m_refmodel_gamma.x = (m_refmodel_gamma.I + (ts.delta*m_refmodel_gamma.A))*m_refmodel_gamma.x + (ts.delta*m_refmodel_gamma.B) * glideslope_angle;
-          glideslope_angle = m_refmodel_gamma.x(0,0);
+            m_refmodel_gamma.x = (m_refmodel_gamma.I + (ts.delta*m_refmodel_gamma.A))*m_refmodel_gamma.x + (ts.delta*m_refmodel_gamma.B) * glideslope_angle;
+            glideslope_angle = m_refmodel_gamma.x(0,0);
+          }
 
 
           //Calculate height error along glideslope
@@ -401,21 +406,32 @@ namespace Control
           if(glideslope_angle_nofilter > 0){ //Glideslope up
             double h_error_trimmed = trimValue(std::abs(h_error),0.0,m_args.k_r_up-0.5); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             double h_app = sqrt(m_args.k_r_up*m_args.k_r_up - h_error_trimmed*h_error_trimmed);
+            m_parcel_los.a = h_app;
             los_angle = atan2(m_args.k_ph_up*h_error + m_args.k_ih_up*m_integrator,h_app); //Calculate LOS-angle glideslope up
+            m_parcel_los.p  =m_args.k_ph_up*h_error;
+            m_parcel_los.i = m_args.k_ih_up*m_integrator;
             spew("Glideslope UP! %f",glideslope_angle);
           }
           else if(glideslope_angle_nofilter < 0){ //Glideslope down
             double h_error_trimmed = trimValue(std::abs(h_error),0.0,m_args.k_r_down-0.5); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             double h_app = sqrt(m_args.k_r_down*m_args.k_r_down - h_error_trimmed*h_error_trimmed);
+            m_parcel_los.a = h_app;
             los_angle = atan2(m_args.k_ph_down*h_error + m_args.k_ih_down*m_integrator,h_app); //Calculate LOS-angle glideslope down
+            m_parcel_los.p  =m_args.k_ph_down*h_error;
+            m_parcel_los.i = m_args.k_ih_down*m_integrator;
+
             spew("Glideslope DOWN! %f",glideslope_angle);
           }
           else{//Straight line
             double h_error_trimmed = trimValue(std::abs(h_error),0.0,m_args.k_r_line-0.5); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             double h_app = sqrt(m_args.k_r_line*m_args.k_r_line - h_error_trimmed*h_error_trimmed);
+            m_parcel_los.a = h_app;
             los_angle = atan2(m_args.k_ph_line*h_error + m_args.k_ih_line*m_integrator,h_app); //Calculate LOS-angle straight line
+            m_parcel_los.p  =m_args.k_ph_line*h_error;
+            m_parcel_los.i = m_args.k_ih_line*m_integrator;
             spew("Glideslope LINE ! %f",glideslope_angle);
           }
+
 
           los_angle = trimValue(los_angle,-Angles::radians(7.0),Angles::radians(7.0));
           debug("Los_angle: %f",los_angle*(180/3.14159265));
@@ -432,6 +448,7 @@ namespace Control
           dispatch(m_vrate);
           zref.z_units=Z_HEIGHT;
           dispatch(zref);
+          dispatch(m_parcel_los);
 
           last_end_wp.x = ts.end.x;
           last_end_wp.y = ts.end.y;
