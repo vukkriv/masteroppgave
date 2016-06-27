@@ -70,6 +70,8 @@ namespace Transports
         bind<IMC::EstimatedState>(this);
         bind<IMC::Acceleration>(this);
         bind<IMC::CoordConfig>(this);
+
+        setEntityState(IMC::EntityState::ESTA_BOOT, Status::CODE_ACTIVATING);
       }
 
       //! Update internal state with new parameter values.
@@ -148,6 +150,7 @@ namespace Transports
             war("Ignored EstimatedState, valid LLH reference is not set!");
             m_warning_given = true;
             m_configured = false;
+            setEntityState(IMC::EntityState::ESTA_ERROR, Status::CODE_MISSING_DATA);
           }
          return;
         }
@@ -158,29 +161,35 @@ namespace Transports
           war("Valid LLH reference is set, starting producing EstimatedLocalState");
         }
         spew("Got Estimated State from system '%s' and entity '%s'.",
-        resolveSystemId(msg->getSource()),
-        resolveEntity(msg->getSourceEntity()).c_str());
+                resolveSystemId(msg->getSource()),
+                resolveEntity(msg->getSourceEntity()).c_str());
+
+        if (getEntityState() != IMC::EntityState::ESTA_NORMAL)
+          setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
+
         if (m_use_fallback)
         {
-         m_estate.lat    = m_ref_lat;
-         m_estate.lon    = m_ref_lon;
-         m_estate.height = m_ref_hae;
-         WGS84::displacement(m_ref_lat, m_ref_lon, m_ref_hae,
-                             msg->lat, msg->lon, msg->height,
-                             &m_estate.x, &m_estate.y, &m_estate.z);
-         // Add displacement from agent reference
-         m_estate.x += msg->x;
-         m_estate.y += msg->y;
-         m_estate.z += msg->z;
+          m_estate.lat    = m_ref_lat;
+          m_estate.lon    = m_ref_lon;
+          m_estate.height = m_ref_hae;
+
+          WGS84::displacement(m_ref_lat, m_ref_lon, m_ref_hae,
+              msg->lat, msg->lon, msg->height,
+              &m_estate.x, &m_estate.y, &m_estate.z);
+
+          // Add displacement from agent reference
+          m_estate.x += msg->x;
+          m_estate.y += msg->y;
+          m_estate.z += msg->z;
         }
         else
         {
-         m_estate.lat    = msg->lat;
-         m_estate.lon    = msg->lon;
-         m_estate.height = msg->height;
-         m_estate.x = msg->x;
-         m_estate.y = msg->y;
-         m_estate.z = msg->z;
+          m_estate.lat    = msg->lat;
+          m_estate.lon    = msg->lon;
+          m_estate.height = msg->height;
+          m_estate.x = msg->x;
+          m_estate.y = msg->y;
+          m_estate.z = msg->z;
         }
 
         m_estate.vx = msg->vx;
