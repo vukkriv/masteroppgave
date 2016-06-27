@@ -1331,7 +1331,13 @@ namespace Control
         task(void)
         {
           if (!m_configured)
+          {
             spew("Not configured!");
+            setEntityState(IMC::EntityState::ESTA_ERROR, Status::CODE_MISSING_DATA);
+          }
+          if (!m_args.use_controller || !isActive())
+            setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_IDLE);
+
           if (!m_args.use_controller || !isActive() || !m_configured)
             return;
 
