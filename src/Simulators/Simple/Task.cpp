@@ -395,6 +395,10 @@ namespace Simulators
         m_estate.v = m_sstate.v;
         m_estate.w = m_sstate.w;
 
+        m_estate.vx = m_sstate.u;
+        m_estate.vy = m_sstate.v;
+        m_estate.vz = m_sstate.w;
+
         dispatch(m_estate);
         spew("Estimated State [N,E,D] [vN,vE,vD]: [%f,%f,%f] [%f,%f,%f]", m_estate.x, m_estate.y, m_estate.z, m_estate.u, m_estate.v, m_estate.w);
       }
