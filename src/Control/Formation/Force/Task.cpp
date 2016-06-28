@@ -458,12 +458,12 @@ namespace Control
         }
 
         void
-        onActivation(void)
+        onAutopilotActivation(void)
         {
         }
 
         void
-        onDeactivation(void)
+        onAutopilotDeactivation(void)
         {
           Matrix zero_vel(3, 1, 0);
           sendDesiredForce(zero_vel);
