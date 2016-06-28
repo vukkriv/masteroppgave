@@ -504,6 +504,7 @@ namespace Control
             debug("Current desired formation:");
             printMatrix(m_x_c);
             debug("Current desired heading: %f [rad]", m_curr_desired_heading);
+            debug("Current Centroid Heading: %f [rad]", m_curr_heading);
             debug("Current Mission Velocity: [%1.1f, %1.1f, %1.1f]", m_v_mission_centroid(0),
                 m_v_mission_centroid(1), m_v_mission_centroid(2));
 
@@ -1350,6 +1351,7 @@ namespace Control
 
           // Calculate internal feedback, alpha in AGENT body
           // missionVelocity in CENTROID body
+          // Alpha is now in Agent frame.
           Matrix alpha = RAgentCentroid()*missionVelocity();
 
           // update formation based on current desired heading
@@ -1372,6 +1374,8 @@ namespace Control
           m_time_diff = Clock::getMsec() - m_time_end;
           m_time_end = Clock::getMsec();
 
+
+          // Tau is in NED-frame.
           Matrix tau = velocityControl(alpha,RAgentCentroid()*m_a_mission_centroid);
           //if (m_args.disable_force_output)
           //  return;
