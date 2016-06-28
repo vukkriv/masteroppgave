@@ -129,6 +129,7 @@ namespace Simulators
       void
       onResourceAcquisition(void)
       {
+        setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
       }
 
       //! Initialize resources.
