@@ -71,6 +71,9 @@ namespace Control
 
             bind<IMC::PlanControlState>(this);
             bind<IMC::AutopilotMode>(this);
+            bind<IMC::RemoteActions>(this);
+
+            setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_IDLE);
           }
 
 
@@ -120,6 +123,19 @@ namespace Control
               m_fr_is_running = true;
             else
               m_fr_is_running = false;
+          }
+
+          void
+          consume(const IMC::RemoteActions* ra)
+          {
+            inf("GOt remote actin. ");
+            inf("%s", ra->actions.c_str());
+
+            if(strcmp("piksiResetIARs=1", ra->actions.c_str()) == 0)
+            {
+              inf("Starting follow reference based on piksiResetIARs.  ");
+              generatePlan();
+            }
           }
 
           void
