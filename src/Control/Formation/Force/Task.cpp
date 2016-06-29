@@ -249,6 +249,11 @@ namespace Control
         uint64_t m_time_diff;
 
         bool m_configured;
+
+        //! Container for logging errors
+        IMC::RelativeState m_error_log;
+
+
         //! Constructor.
         //! @param[in] name task name.
         //! @param[in] ctx context.
@@ -1160,6 +1165,8 @@ namespace Control
           // Calculate formation velocity component
           static double last_print;
 
+          Matrix link_errors_agent = Matrix(3,1, 0.0);
+
           if (m_gain_scheduler.enable)
           {
             double gain = sigmoidGain(z_tilde);
@@ -1176,6 +1183,8 @@ namespace Control
             for (unsigned int link = 0; link < m_L; link++)
             {
               u_form -= m_D(m_i, link) * gain * z_tilde.column(link);
+
+              link_errors_agent += m_D(m_i, link) * z_tilde.column(link);
             }
           }
           else
@@ -1183,9 +1192,18 @@ namespace Control
             for (unsigned int link = 0; link < m_L; link++)
             {
               u_form -= m_D(m_i, link) * m_delta(link) * z_tilde.column(link);
+
+              link_errors_agent += m_D(m_i, link) * z_tilde.column(link);
             }
           }
           //spew("u_form: [%1.1f, %1.1f, %1.1f]", u_form(0), u_form(1), u_form(2));
+          // Store the logs
+
+          m_error_log.err_x = link_errors_agent(0);
+          m_error_log.err_y = link_errors_agent(1);
+          m_error_log.err_z = link_errors_agent(2);
+          m_error_log.err   = link_errors_agent.norm_2();
+
           return u_form;
         }
 
@@ -1280,29 +1298,52 @@ namespace Control
         }
 
         //! Control velocity in AGENT frame, return desired force in NED
+        //! u in AGENT body
         //! v_des in AGENT body
-        //! a_des in AGENT body
+        //! dv_des in AGENT body
         Matrix
-        velocityControl(Matrix v_des, Matrix a_des)
+        velocityControl(Matrix u, Matrix v_des, Matrix dv_des)
         {
           //m_v and m_a in AGENT body
 
           //F_i in AGENT i body
           Matrix F_i = Matrix(3, 1, 0.0);
-          Matrix Rni = Matrix(3, 1, 0.0);
-          Rni = RNedAgent();
+          Matrix Rni = RNedAgent();
 
           Matrix e_v_est = v_des - m_v;
-          Matrix e_a_est = (a_des - m_a);
+          Matrix e_a_est = (dv_des - m_a);
 
+          Matrix v_error_body = v_des - m_v;
+
+          // F_i is transformed to NED before dispatch.
           F_i(0) = m_args.Kp(0) * e_v_est(0) + m_args.Kd(0) * e_a_est(0);
           F_i(1) = m_args.Kp(1) * e_v_est(1) + m_args.Kd(1) * e_a_est(1);
           F_i(2) = m_args.Kp(2) * e_v_est(2); //m_a(2)=g, a_des(2)=0
+
+
+          F_i(0) = m_args.Kp(0) * v_error_body(0);
+          F_i(1) = m_args.Kp(1) * v_error_body(1);
+          F_i(2) = m_args.Kp(2) * v_error_body(2);
+
+          // Add acceleration feed-forward and
+          F_i += m_args.mass * dv_des + u;
 
           if (F_i.norm_2() > m_args.max_norm_F)
           {
             F_i = sqrt(pow(m_args.max_norm_F, 2)) * F_i / F_i.norm_2();
           }
+
+
+          // Do some logging.
+          m_error_log.rf_err_vx = v_error_body(0);
+          m_error_log.rf_err_vy = v_error_body(1);
+          m_error_log.rf_err_vz = v_error_body(2);
+
+
+
+          dispatch(m_error_log);
+
+
           return Rni*F_i;
         }
 
@@ -1329,6 +1370,7 @@ namespace Control
                 | IMC::DesiredControl::FL_Y | IMC::DesiredControl::FL_Z;
           }
 
+
           //m_desired_force.setSourceEntity(getEntityId());
           dispatch(m_desired_force);
   /*
@@ -1352,6 +1394,8 @@ namespace Control
           if (!m_args.use_controller || !isActive() || !m_configured)
             return;
 
+
+
           if (m_N > 1)
           {
             updateFormation();
@@ -1361,8 +1405,14 @@ namespace Control
 
           // Calculate internal feedback, alpha in AGENT body
           // missionVelocity in CENTROID body
-          // Alpha is now in Agent frame.
-          Matrix alpha = RAgentCentroid()*missionVelocity();
+
+
+          // Get mission information in agent frame.
+          Matrix v_mission_agent  = RAgentCentroid()*missionVelocity();
+          Matrix dv_mission_agent = RAgentCentroid()*m_a_mission_centroid;
+
+          // Saturate
+          v_mission_agent = saturate(v_mission_agent, m_args.max_speed);
 
           // update formation based on current desired heading
           // NB: only master should change according to his desired heading?
@@ -1374,22 +1424,27 @@ namespace Control
             // Set heave to zero if not controlling altitude
             if (!m_args.use_altitude)
               u(2) = 0;
-            alpha += transpose(RNedAgent())*u;
+
+            // alpha += transpose(RNedAgent())*u;
           }
 
-          // Saturate and dispatch control output
-          alpha = saturate(alpha, m_args.max_speed);
+
+
 
           // calculate velocity control force, tau
           m_time_diff = Clock::getMsec() - m_time_end;
           m_time_end = Clock::getMsec();
 
+          if (m_time_diff > 1*1E3)
+            err("Overflow in task execution!");
 
           // Tau is in NED-frame.
-          Matrix tau = velocityControl(alpha,RAgentCentroid()*m_a_mission_centroid);
+          Matrix tau = velocityControl(u, v_mission_agent, dv_mission_agent);
           //if (m_args.disable_force_output)
           //  return;
           sendDesiredForce(tau);
+
+
         }
 
         //! R^(agent)_(centroid)
