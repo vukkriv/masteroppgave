@@ -898,6 +898,12 @@ namespace Control
                   war("Received old EstimatedLocalState! Diff = %f seconds", diff);
               }
 
+              // Do some logging
+              if (uav == 1)
+                m_error_log.virt_err_x = m_pos_update_rate(uav);
+              if (uav == 2)
+                m_error_log.virt_err_y = m_pos_update_rate(uav);
+
               // Calculate update delay
               double delay_ms = (now - stamp) * 1E3;
               // Unless first data: Apply smoothing
