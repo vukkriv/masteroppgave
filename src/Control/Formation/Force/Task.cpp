@@ -157,6 +157,9 @@ namespace Control
 
         std::vector<std::string> desired_heading_entity_labels;
         std::vector<std::string> desired_linear_entity_labels;
+
+        //! Vehicle mass
+        double mass;
       };
 
       struct Task : public DUNE::Control::PeriodicUAVAutopilot
@@ -394,6 +397,13 @@ namespace Control
           .defaultValue("0.8")
           .maximumValue("1.0")
           .description("Increase to make the response slower. ");
+
+          param("Vehicle Mass", m_args.mass)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .minimumValue("0.0")
+          .defaultValue("2.0")
+          .maximumValue("20")
+          .description("Mass of the current vehicle. ");
 
           // Bind incoming IMC messages
           bind<IMC::DesiredLinearState>(this);
