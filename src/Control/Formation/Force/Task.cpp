@@ -1518,6 +1518,9 @@ namespace Control
               u(2) = 0;
 
             // alpha += transpose(RNedAgent())*u;
+
+            // Not ideal with all this conversion, but rotate to agent frame
+            u = transpose(RNedAgent())*u;
           }
 
 
