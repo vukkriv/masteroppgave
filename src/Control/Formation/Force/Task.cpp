@@ -1402,9 +1402,9 @@ namespace Control
           F_i(2) += m_args.Kd(2) * dv_error_body(2);
 
           // Do integration of the mission velocity error
-          m_bias_estimate(0) += (m_time_diff*1E3) * m_args.Ki(0) * v_error_body(0);
-          m_bias_estimate(1) += (m_time_diff*1E3) * m_args.Ki(1) * v_error_body(1);
-          m_bias_estimate(2) += (m_time_diff*1E3) * m_args.Ki(2) * v_error_body(2);
+          m_bias_estimate(0) += ((double)m_time_diff/1.0E3) * m_args.Ki(0) * v_error_body(0);
+          m_bias_estimate(1) += ((double)m_time_diff/1.0E3) * m_args.Ki(1) * v_error_body(1);
+          m_bias_estimate(2) += ((double)m_time_diff/1.0E3) * m_args.Ki(2) * v_error_body(2);
 
           // Add acceleration feed-forward and coordination input u
           F_i += m_args.mass * dv_des + u;
