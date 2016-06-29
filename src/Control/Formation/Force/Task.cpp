@@ -465,31 +465,38 @@ namespace Control
 
 
           if (paramChanged(m_args.Kp))
-          {
-            // Check length, if not 3 just use the first one.
-            if (m_args.Kp.size() != 3)
-              if (m_args.Kp.size() >= 1)
-                m_args.Kp = Matrix(3,1, m_args.Kp(0));
-              else
-              {
-                war("Invalid KP parameters. Setting to 1. ");
-                m_args.Kp = Matrix(3,1, 1.0);
-              }
-          }
-
-
+            m_args.Kp = checkGainMatrix(m_args.Kp);
           if (paramChanged(m_args.Kd))
+            m_args.Kd = checkGainMatrix(m_args.Kd);
+          if (paramChanged(m_args.Ki))
+            m_args.Ki = checkGainMatrix(m_args.Ki);
+
+        }
+
+        Matrix
+        checkGainMatrix(Matrix K)
+        {
+          Matrix out = K;
+
+          if (K.size() == 0)
           {
-            // Check length, if not 3 just use the first one.
-            if (m_args.Kd.size() != 3)
-              if (m_args.Kd.size() >= 1)
-                m_args.Kd = Matrix(3,1, m_args.Kd(0));
-              else
-              {
-                war("Invalid KD parameters. Setting to 1. ");
-                m_args.Kd = Matrix(3,1, 1.0);
-              }
+            err("Invalid K parameters. Setting to 0");
+            out = Matrix(3, 1, 0);
+            return out;
           }
+
+          // Check length, if not 3 just use the first one.
+          if (K.size() != 3)
+          {
+            // Use first element
+            out = Matrix(3,1, K(0));
+
+            // Special case for two element, use the second as z-gain.
+            if (m_args.Kp.size() == 2)
+              out(2) = K(1);
+          }
+
+          return out;
         }
 
         //! Reserve entity identifiers.
