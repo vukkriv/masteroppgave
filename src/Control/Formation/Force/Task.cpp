@@ -169,6 +169,9 @@ namespace Control
 
         //! Wind drag coefficient
         double wind_drag_coefficient;
+
+        //! Enable bias estimation on control output
+        bool enable_bias_compensation;
       };
 
       struct Task : public DUNE::Control::PeriodicUAVAutopilot
@@ -262,6 +265,9 @@ namespace Control
         //! Container for logging errors
         IMC::RelativeState m_error_log;
 
+        //! Wind bias estimator
+        Matrix m_bias_estimate;
+
 
         //! Constructor.
         //! @param[in] name task name.
@@ -280,7 +286,8 @@ namespace Control
           m_v_int_value(3, 1, 0.0),
           m_time_end(0.0), 
           m_time_diff(0.0),
-          m_configured(false)
+          m_configured(false),
+          m_bias_estimate(Matrix(3,1, 0.0))
         {
           param("Formation Controller", m_args.use_controller)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -435,6 +442,10 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Coefficient to use in wind ff");
 
+          param("Enable Bias Compensation", m_args.enable_bias_compensation)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER);
+
           // Bind incoming IMC messages
           bind<IMC::DesiredLinearState>(this);
           bind<IMC::EstimatedLocalState>(this);
@@ -540,7 +551,7 @@ namespace Control
         void
         onAutopilotDeactivation(void)
         {
-          Matrix zero_vel(3, 1, 0);
+          Matrix zero_vel(3, 1, 0.0);
           sendDesiredForce(zero_vel);
         }
 
@@ -549,6 +560,7 @@ namespace Control
         {
           m_time_end = Clock::getMsec();
           m_time_diff = 0.0;
+          m_bias_estimate = Matrix(3,1, 0.0);
         }
 
         void
@@ -1383,9 +1395,17 @@ namespace Control
           F_i(1) += m_args.Kd(1) * dv_error_body(1);
           F_i(2) += m_args.Kd(2) * dv_error_body(2);
 
+          // Do integration of the mission velocity error
+          m_bias_estimate(0) += (m_time_diff*1E3) * m_args.Ki(0) * v_error_body(0);
+          m_bias_estimate(1) += (m_time_diff*1E3) * m_args.Ki(1) * v_error_body(1);
+          m_bias_estimate(2) += (m_time_diff*1E3) * m_args.Ki(2) * v_error_body(2);
+
           // Add acceleration feed-forward and coordination input u
           F_i += m_args.mass * dv_des + u;
 
+          // Add optional bias compensation
+          if (m_args.enable_bias_compensation)
+            F_i += m_bias_estimate;
 
           // Add optional wind feed forward
           if (m_args.enable_wind_ff)
@@ -1396,6 +1416,9 @@ namespace Control
           m_error_log.rf_err_vy = v_error_body(1);
           m_error_log.rf_err_vz = v_error_body(2);
 
+          m_error_log.ss_x = m_bias_estimate(0);
+          m_error_log.ss_y = m_bias_estimate(1);
+          m_error_log.ss_z = m_bias_estimate(2);
 
 
           dispatch(m_error_log);
