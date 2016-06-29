@@ -160,6 +160,15 @@ namespace Control
 
         //! Vehicle mass
         double mass;
+
+        //! True to divide output force by mass, effectively turning it to an acceleration output.
+        bool enable_mass_division;
+
+        //! True to enable wind feed-forward
+        bool enable_wind_ff;
+
+        //! Wind drag coefficient
+        double wind_drag_coefficient;
       };
 
       struct Task : public DUNE::Control::PeriodicUAVAutopilot
@@ -410,6 +419,22 @@ namespace Control
           .maximumValue("20")
           .description("Mass of the current vehicle. ");
 
+          param("CtrlMisc - Enable Output Division By Mass", m_args.enable_mass_division)
+          .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Enable or disable division by vehicle mass in final output");
+
+          param("CtrlMisc - Enable Wind Feed Forward", m_args.enable_wind_ff)
+          .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_PLAN)
+          .description("Enable to feed-forward wind effects");
+
+          param("Model - Wind Drag Coefficient", m_args.wind_drag_coefficient)
+          .defaultValue("0.05")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Coefficient to use in wind ff");
+
           // Bind incoming IMC messages
           bind<IMC::DesiredLinearState>(this);
           bind<IMC::EstimatedLocalState>(this);
@@ -436,6 +461,34 @@ namespace Control
             m_v_mission_centroid = m_args.const_mission_velocity;
             debug("Mission Velocity: [%1.1f, %1.1f, %1.1f]", m_v_mission_centroid(0),
                 m_v_mission_centroid(1), m_v_mission_centroid(2));
+          }
+
+
+          if (paramChanged(m_args.Kp))
+          {
+            // Check length, if not 3 just use the first one.
+            if (m_args.Kp.size() != 3)
+              if (m_args.Kp.size() >= 1)
+                m_args.Kp = Matrix(3,1, m_args.Kp(0));
+              else
+              {
+                war("Invalid KP parameters. Setting to 1. ");
+                m_args.Kp = Matrix(3,1, 1.0);
+              }
+          }
+
+
+          if (paramChanged(m_args.Kd))
+          {
+            // Check length, if not 3 just use the first one.
+            if (m_args.Kd.size() != 3)
+              if (m_args.Kd.size() >= 1)
+                m_args.Kd = Matrix(3,1, m_args.Kd(0));
+              else
+              {
+                war("Invalid KD parameters. Setting to 1. ");
+                m_args.Kd = Matrix(3,1, 1.0);
+              }
           }
         }
 
@@ -1310,29 +1363,26 @@ namespace Control
           Matrix F_i = Matrix(3, 1, 0.0);
           Matrix Rni = RNedAgent();
 
-          Matrix e_v_est = v_des - m_v;
-          Matrix e_a_est = (dv_des - m_a);
-
-          Matrix v_error_body = v_des - m_v;
+          Matrix v_error_body  = v_des - m_v;
+          Matrix dv_error_body = dv_des - m_a;
 
           // F_i is transformed to NED before dispatch.
-          F_i(0) = m_args.Kp(0) * e_v_est(0) + m_args.Kd(0) * e_a_est(0);
-          F_i(1) = m_args.Kp(1) * e_v_est(1) + m_args.Kd(1) * e_a_est(1);
-          F_i(2) = m_args.Kp(2) * e_v_est(2); //m_a(2)=g, a_des(2)=0
-
-
           F_i(0) = m_args.Kp(0) * v_error_body(0);
           F_i(1) = m_args.Kp(1) * v_error_body(1);
           F_i(2) = m_args.Kp(2) * v_error_body(2);
 
-          // Add acceleration feed-forward and
+          // Add damping on acceleration. (Basically acceleration feed-forward. Will act as a mass-increaser, might make more robust to wind)
+          F_i(0) += m_args.Kd(0) * dv_error_body(0);
+          F_i(1) += m_args.Kd(1) * dv_error_body(1);
+          F_i(2) += m_args.Kd(2) * dv_error_body(2);
+
+          // Add acceleration feed-forward and coordination input u
           F_i += m_args.mass * dv_des + u;
 
-          if (F_i.norm_2() > m_args.max_norm_F)
-          {
-            F_i = sqrt(pow(m_args.max_norm_F, 2)) * F_i / F_i.norm_2();
-          }
 
+          // Add optional wind feed forward
+          if (m_args.enable_wind_ff)
+            F_i += m_args.wind_drag_coefficient * m_v;
 
           // Do some logging.
           m_error_log.rf_err_vx = v_error_body(0);
@@ -1351,32 +1401,38 @@ namespace Control
         void
         sendDesiredForce(Matrix F_des)
         {
+
+          // Option to turn force into desired acceleration.
+          if (m_args.enable_mass_division)
+            F_des = F_des / m_args.mass;
+
+
+          if (F_des.norm_2() > m_args.max_norm_F)
+          {
+            F_des = sqrt(pow(m_args.max_norm_F, 2)) * F_des / F_des.norm_2();
+          }
+
           m_desired_force.x = F_des(0);
           m_desired_force.y = F_des(1);
           m_desired_force.z = F_des(2);
 
+
+          // Enable desired force in all directions
+          m_desired_force.flags =   IMC::DesiredControl::FL_X
+                                  | IMC::DesiredControl::FL_Y
+                                  | IMC::DesiredControl::FL_Z;
+
+
+          // Optional disables.
           if (m_args.disable_force_output)
-          {
-              m_desired_force.flags = 0x00;
-          }
+            m_desired_force.flags = 0x00;
           else if (m_args.disable_heave)
-          {
-            m_desired_force.flags = IMC::DesiredControl::FL_X
-                | IMC::DesiredControl::FL_Y;
-          }
-          else
-          {
-            m_desired_force.flags = IMC::DesiredControl::FL_X
-                | IMC::DesiredControl::FL_Y | IMC::DesiredControl::FL_Z;
-          }
+            m_desired_force.flags =   IMC::DesiredControl::FL_X
+                                    | IMC::DesiredControl::FL_Y;
 
 
-          //m_desired_force.setSourceEntity(getEntityId());
           dispatch(m_desired_force);
-  /*
-          spew("f_d: [%1.1f, %1.1f, %1.1f]", m_desired_force.x, m_desired_force.y,
-               m_desired_force.z);
-  */
+
         }
 
         //! Main loop.
