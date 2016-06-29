@@ -63,6 +63,15 @@ namespace Simulators
 
       //! Use DesiredLinearState instead of DesiredVelocity
       bool trans_setpoint;
+
+      //! Input is acceleration
+      bool force_input_is_accel;
+
+      //! Wind drag
+      double wind_drag;
+
+      //! Wind force
+      Matrix wind_speed;
     };
 
     struct Task : public Tasks::Periodic
@@ -160,6 +169,15 @@ namespace Simulators
         param("Use Translational Setpoint", m_args.trans_setpoint)
         .defaultValue("false")
         .description("Use DesiredLinearState instead of DesiredVelocity for velocity control.");
+
+        param("Input Force Is Acceleration", m_args.force_input_is_accel)
+        .defaultValue("true");
+
+        param("Wind Speed", m_args.wind_speed)
+        .defaultValue("0,0,0");
+
+        param("Wind Drag", m_args.wind_drag)
+        .defaultValue("0.05");
 
 
         bind<IMC::DesiredControl>(this);
@@ -265,7 +283,12 @@ namespace Simulators
           m_desired_force(0) = msg->x;
           m_desired_force(1) = msg->y;
           m_desired_force(2) = msg->z;
+
+          if (m_args.force_input_is_accel)
+            m_desired_force = m_desired_force * m_args.mass;
         }
+
+
       }
 
       void
@@ -303,9 +326,9 @@ namespace Simulators
           case DOUBLE:
             // Integrate desired acceleration to get new velocity
             Matrix dvelocity(3, 1, 0.0);
-            dvelocity = m_desired_force/m_mass;
+            dvelocity = m_desired_force/m_mass - m_args.wind_drag * (m_velocity - m_args.wind_speed) / m_mass;
             // Integrate using Euler method
-            m_velocity = timestep * dvelocity;
+            m_velocity += timestep * dvelocity;
             break;
         }
 
@@ -394,6 +417,31 @@ namespace Simulators
         m_estate.u = m_sstate.u;
         m_estate.v = m_sstate.v;
         m_estate.w = m_sstate.w;
+
+        m_estate.vx = m_sstate.u;
+        m_estate.vy = m_sstate.v;
+        m_estate.vz = m_sstate.w;
+
+        Matrix groundSpeed = Matrix(3,1, 0.0);
+        groundSpeed(0) = m_estate.vx;
+        groundSpeed(1) = m_estate.vy;
+        groundSpeed(2) = m_estate.vz;
+
+        Matrix windSpeed = Matrix(3,1, 0.0);
+        windSpeed(0) = 0;
+        windSpeed(1) = 0;
+        windSpeed(2) = 0;
+
+        Matrix airSpeed = groundSpeed - windSpeed;
+
+        IMC::IndicatedSpeed ias;
+        IMC::TrueSpeed gs;
+
+        ias.value = airSpeed.norm_2();
+        gs.value  = groundSpeed.norm_2();
+
+        dispatch(ias);
+        dispatch(gs);
 
         dispatch(m_estate);
         spew("Estimated State [N,E,D] [vN,vE,vD]: [%f,%f,%f] [%f,%f,%f]", m_estate.x, m_estate.y, m_estate.z, m_estate.u, m_estate.v, m_estate.w);

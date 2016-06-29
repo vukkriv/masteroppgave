@@ -242,6 +242,8 @@ namespace Transports
           .defaultValue("true")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Static reference LLH is set from config file");
+
+          setEntityState(IMC::EntityState::ESTA_BOOT, Status::CODE_ACTIVATING);
         }
 
         //! Update internal state with new parameter values.
@@ -262,6 +264,9 @@ namespace Transports
           {
             debug("m_config.update = true");
             m_config.update = true;
+
+            setEntityState(IMC::EntityState::ESTA_BOOT, Status::CODE_SYNCING);
+
 
             // Extract vehicle IDs
             m_uav_ID.clear();
@@ -434,12 +439,18 @@ namespace Transports
 
             dispatch(m_config);
             debug("CoordConfig dispatched from update");
+            setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
+
           }
 
-          if (paramChanged(m_args.ref_lat) || paramChanged(m_args.ref_lon) || paramChanged(m_args.ref_hae) || paramChanged(m_args.use_static_ref))
+          if (paramChanged(m_args.ref_lat)
+              || paramChanged(m_args.ref_lon)
+              || paramChanged(m_args.ref_hae)
+              || paramChanged(m_args.use_static_ref))
           {
            m_config.update = false;
            m_config.use_fallback = m_args.use_static_ref;
+           setEntityState(IMC::EntityState::ESTA_BOOT, Status::CODE_SYNCING);
 
            if (m_args.ref_lat == -999) // Reference not set; return
              return;
@@ -465,8 +476,10 @@ namespace Transports
            m_config.height= m_ref_hae;
 
            dispatch(m_config);
-	   debug("CoordConfig dispatched from new llh");
+           debug("CoordConfig dispatched from new llh");
+           setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
           }          
+
           if (paramChanged(m_args.disable_collision_velocity) ||
               paramChanged(m_args.disable_formation_velocity) ||
               paramChanged(m_args.disable_mission_velocity)   ||
@@ -475,12 +488,16 @@ namespace Transports
           {
             debug("m_config.update = false");
             m_config.update = false;
+            setEntityState(IMC::EntityState::ESTA_BOOT, Status::CODE_SYNCING);
+
             m_config.disable_collision_vel = m_args.disable_collision_velocity;
             m_config.disable_formation_vel = m_args.disable_formation_velocity;
             m_config.disable_mission_vel   = m_args.disable_mission_velocity;
             m_config.formation  = m_args.hold_current_formation;
+
             dispatch(m_config);
             debug("CoordConfig dispatched from new flags");
+            setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
           }
         }
 

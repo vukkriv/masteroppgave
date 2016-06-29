@@ -472,9 +472,12 @@ namespace Transports
               //the virtual centroid heading
               m_centroid.els.state->psi = m_curr_desired_heading;
             }
-            spew(
-                "Dispatching centroid EstimatedLocalState, heading: %f [deg], noAgents=[%d]",
-                Angles::degrees(m_centroid.els.state->psi), m_centroid.m_N);
+
+            spew("Dispatching centroid EstimatedLocalState, heading: %f [deg], noAgents=[%d]",
+                  Angles::degrees(m_centroid.els.state->psi),
+                  m_centroid.m_N);
+
+
             //set sourceEntity here, make sure NOT to send the centroid message inbetween vehicles
             m_centroid.els.ots = msg->getTimeStamp();
             dispatch(m_centroid.els);
@@ -510,6 +513,16 @@ namespace Transports
           while (!stopping())
           {
             waitForMessages(1.0);
+
+            if (!m_configured)
+              setEntityState(IMC::EntityState::ESTA_ERROR, Status::CODE_MISSING_DATA);
+
+            if (m_configured && !m_vehicles.allConnected())
+              setEntityState(IMC::EntityState::ESTA_ERROR, Status::CODE_CONNECTING);
+
+            if (getEntityState() != IMC::EntityState::ESTA_NORMAL)
+              setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_IDLE);
+
           }
         }
 

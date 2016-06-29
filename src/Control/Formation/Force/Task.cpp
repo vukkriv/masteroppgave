@@ -157,6 +157,21 @@ namespace Control
 
         std::vector<std::string> desired_heading_entity_labels;
         std::vector<std::string> desired_linear_entity_labels;
+
+        //! Vehicle mass
+        double mass;
+
+        //! True to divide output force by mass, effectively turning it to an acceleration output.
+        bool enable_mass_division;
+
+        //! True to enable wind feed-forward
+        bool enable_wind_ff;
+
+        //! Wind drag coefficient
+        double wind_drag_coefficient;
+
+        //! Enable bias estimation on control output
+        bool enable_bias_compensation;
       };
 
       struct Task : public DUNE::Control::PeriodicUAVAutopilot
@@ -246,6 +261,14 @@ namespace Control
         uint64_t m_time_diff;
 
         bool m_configured;
+
+        //! Container for logging errors
+        IMC::RelativeState m_error_log;
+
+        //! Wind bias estimator
+        Matrix m_bias_estimate;
+
+
         //! Constructor.
         //! @param[in] name task name.
         //! @param[in] ctx context.
@@ -263,7 +286,8 @@ namespace Control
           m_v_int_value(3, 1, 0.0),
           m_time_end(0.0), 
           m_time_diff(0.0),
-          m_configured(false)
+          m_configured(false),
+          m_bias_estimate(Matrix(3,1, 0.0))
         {
           param("Formation Controller", m_args.use_controller)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -395,6 +419,33 @@ namespace Control
           .maximumValue("1.0")
           .description("Increase to make the response slower. ");
 
+          param("Vehicle Mass", m_args.mass)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .minimumValue("0.0")
+          .defaultValue("2.0")
+          .maximumValue("20")
+          .description("Mass of the current vehicle. ");
+
+          param("CtrlMisc - Enable Output Division By Mass", m_args.enable_mass_division)
+          .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Enable or disable division by vehicle mass in final output");
+
+          param("CtrlMisc - Enable Wind Feed Forward", m_args.enable_wind_ff)
+          .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_PLAN)
+          .description("Enable to feed-forward wind effects");
+
+          param("Model - Wind Drag Coefficient", m_args.wind_drag_coefficient)
+          .defaultValue("0.05")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Coefficient to use in wind ff");
+
+          param("Enable Bias Compensation", m_args.enable_bias_compensation)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER);
+
           // Bind incoming IMC messages
           bind<IMC::DesiredLinearState>(this);
           bind<IMC::EstimatedLocalState>(this);
@@ -422,6 +473,41 @@ namespace Control
             debug("Mission Velocity: [%1.1f, %1.1f, %1.1f]", m_v_mission_centroid(0),
                 m_v_mission_centroid(1), m_v_mission_centroid(2));
           }
+
+
+          if (paramChanged(m_args.Kp))
+            m_args.Kp = checkGainMatrix(m_args.Kp);
+          if (paramChanged(m_args.Kd))
+            m_args.Kd = checkGainMatrix(m_args.Kd);
+          if (paramChanged(m_args.Ki))
+            m_args.Ki = checkGainMatrix(m_args.Ki);
+
+        }
+
+        Matrix
+        checkGainMatrix(Matrix K)
+        {
+          Matrix out = K;
+
+          if (K.size() == 0)
+          {
+            err("Invalid K parameters. Setting to 0");
+            out = Matrix(3, 1, 0);
+            return out;
+          }
+
+          // Check length, if not 3 just use the first one.
+          if (K.size() != 3)
+          {
+            // Use first element
+            out = Matrix(3,1, K(0));
+
+            // Special case for two element, use the second as z-gain.
+            if (K.size() == 2)
+              out(2) = K(1);
+          }
+
+          return out;
         }
 
         //! Reserve entity identifiers.
@@ -458,14 +544,14 @@ namespace Control
         }
 
         void
-        onActivation(void)
+        onAutopilotActivation(void)
         {
         }
 
         void
-        onDeactivation(void)
+        onAutopilotDeactivation(void)
         {
-          Matrix zero_vel(3, 1, 0);
+          Matrix zero_vel(3, 1, 0.0);
           sendDesiredForce(zero_vel);
         }
 
@@ -474,6 +560,7 @@ namespace Control
         {
           m_time_end = Clock::getMsec();
           m_time_diff = 0.0;
+          m_bias_estimate = Matrix(3,1, 0.0);
         }
 
         void
@@ -504,6 +591,7 @@ namespace Control
             debug("Current desired formation:");
             printMatrix(m_x_c);
             debug("Current desired heading: %f [rad]", m_curr_desired_heading);
+            debug("Current Centroid Heading: %f [rad]", m_curr_heading);
             debug("Current Mission Velocity: [%1.1f, %1.1f, %1.1f]", m_v_mission_centroid(0),
                 m_v_mission_centroid(1), m_v_mission_centroid(2));
 
@@ -809,6 +897,12 @@ namespace Control
                 if (m_args.print_EstimatedLocalState_warning)
                   war("Received old EstimatedLocalState! Diff = %f seconds", diff);
               }
+
+              // Do some logging
+              if (uav == 1)
+                m_error_log.virt_err_x = m_pos_update_rate(uav);
+              if (uav == 2)
+                m_error_log.virt_err_y = m_pos_update_rate(uav);
 
               // Calculate update delay
               double delay_ms = (now - stamp) * 1E3;
@@ -1149,6 +1243,8 @@ namespace Control
           // Calculate formation velocity component
           static double last_print;
 
+          Matrix link_errors_agent = Matrix(3,1, 0.0);
+
           if (m_gain_scheduler.enable)
           {
             double gain = sigmoidGain(z_tilde);
@@ -1165,6 +1261,8 @@ namespace Control
             for (unsigned int link = 0; link < m_L; link++)
             {
               u_form -= m_D(m_i, link) * gain * z_tilde.column(link);
+
+              link_errors_agent += m_D(m_i, link) * z_tilde.column(link);
             }
           }
           else
@@ -1172,9 +1270,18 @@ namespace Control
             for (unsigned int link = 0; link < m_L; link++)
             {
               u_form -= m_D(m_i, link) * m_delta(link) * z_tilde.column(link);
+
+              link_errors_agent += m_D(m_i, link) * z_tilde.column(link);
             }
           }
           //spew("u_form: [%1.1f, %1.1f, %1.1f]", u_form(0), u_form(1), u_form(2));
+          // Store the logs
+
+          m_error_log.err_x = link_errors_agent(0);
+          m_error_log.err_y = link_errors_agent(1);
+          m_error_log.err_z = link_errors_agent(2);
+          m_error_log.err   = link_errors_agent.norm_2();
+
           return u_form;
         }
 
@@ -1269,29 +1376,60 @@ namespace Control
         }
 
         //! Control velocity in AGENT frame, return desired force in NED
+        //! u in AGENT body
         //! v_des in AGENT body
-        //! a_des in AGENT body
+        //! dv_des in AGENT body
         Matrix
-        velocityControl(Matrix v_des, Matrix a_des)
+        velocityControl(Matrix u, Matrix v_des, Matrix dv_des)
         {
           //m_v and m_a in AGENT body
 
           //F_i in AGENT i body
           Matrix F_i = Matrix(3, 1, 0.0);
-          Matrix Rni = Matrix(3, 1, 0.0);
-          Rni = RNedAgent();
+          Matrix Rni = RNedAgent();
 
-          Matrix e_v_est = v_des - m_v;
-          Matrix e_a_est = (a_des - m_a);
+          Matrix v_error_body  = v_des - m_v;
+          Matrix dv_error_body = dv_des - m_a;
 
-          F_i(0) = m_args.Kp(0) * e_v_est(0) + m_args.Kd(0) * e_a_est(0);
-          F_i(1) = m_args.Kp(1) * e_v_est(1) + m_args.Kd(1) * e_a_est(1);
-          F_i(2) = m_args.Kp(2) * e_v_est(2); //m_a(2)=g, a_des(2)=0
+          // F_i is transformed to NED before dispatch.
+          F_i(0) = m_args.Kp(0) * v_error_body(0);
+          F_i(1) = m_args.Kp(1) * v_error_body(1);
+          F_i(2) = m_args.Kp(2) * v_error_body(2);
 
-          if (F_i.norm_2() > m_args.max_norm_F)
-          {
-            F_i = sqrt(pow(m_args.max_norm_F, 2)) * F_i / F_i.norm_2();
-          }
+          // Add damping on acceleration. (Basically acceleration feed-forward. Will act as a mass-increaser, might make more robust to wind)
+          F_i(0) += m_args.Kd(0) * dv_error_body(0);
+          F_i(1) += m_args.Kd(1) * dv_error_body(1);
+          F_i(2) += m_args.Kd(2) * dv_error_body(2);
+
+          // Do integration of the mission velocity error
+          m_bias_estimate(0) += ((double)m_time_diff/1.0E3) * m_args.Ki(0) * v_error_body(0);
+          m_bias_estimate(1) += ((double)m_time_diff/1.0E3) * m_args.Ki(1) * v_error_body(1);
+          m_bias_estimate(2) += ((double)m_time_diff/1.0E3) * m_args.Ki(2) * v_error_body(2);
+
+          // Add acceleration feed-forward and coordination input u
+          F_i += m_args.mass * dv_des + u;
+
+          // Add optional bias compensation
+          if (m_args.enable_bias_compensation)
+            F_i += m_bias_estimate;
+
+          // Add optional wind feed forward
+          if (m_args.enable_wind_ff)
+            F_i += m_args.wind_drag_coefficient * m_v;
+
+          // Do some logging.
+          m_error_log.rf_err_vx = v_error_body(0);
+          m_error_log.rf_err_vy = v_error_body(1);
+          m_error_log.rf_err_vz = v_error_body(2);
+
+          m_error_log.ss_x = m_bias_estimate(0);
+          m_error_log.ss_y = m_bias_estimate(1);
+          m_error_log.ss_z = m_bias_estimate(2);
+
+
+          dispatch(m_error_log);
+
+
           return Rni*F_i;
         }
 
@@ -1299,31 +1437,38 @@ namespace Control
         void
         sendDesiredForce(Matrix F_des)
         {
+
+          // Option to turn force into desired acceleration.
+          if (m_args.enable_mass_division)
+            F_des = F_des / m_args.mass;
+
+
+          if (F_des.norm_2() > m_args.max_norm_F)
+          {
+            F_des = sqrt(pow(m_args.max_norm_F, 2)) * F_des / F_des.norm_2();
+          }
+
           m_desired_force.x = F_des(0);
           m_desired_force.y = F_des(1);
           m_desired_force.z = F_des(2);
 
-          if (m_args.disable_force_output)
-          {
-              m_desired_force.flags = 0x00;
-          }
-          else if (m_args.disable_heave)
-          {
-            m_desired_force.flags = IMC::DesiredControl::FL_X
-                | IMC::DesiredControl::FL_Y;
-          }
-          else
-          {
-            m_desired_force.flags = IMC::DesiredControl::FL_X
-                | IMC::DesiredControl::FL_Y | IMC::DesiredControl::FL_Z;
-          }
 
-          //m_desired_force.setSourceEntity(getEntityId());
+          // Enable desired force in all directions
+          m_desired_force.flags =   IMC::DesiredControl::FL_X
+                                  | IMC::DesiredControl::FL_Y
+                                  | IMC::DesiredControl::FL_Z;
+
+
+          // Optional disables.
+          if (m_args.disable_force_output)
+            m_desired_force.flags = 0x00;
+          else if (m_args.disable_heave)
+            m_desired_force.flags =   IMC::DesiredControl::FL_X
+                                    | IMC::DesiredControl::FL_Y;
+
+
           dispatch(m_desired_force);
-  /*
-          spew("f_d: [%1.1f, %1.1f, %1.1f]", m_desired_force.x, m_desired_force.y,
-               m_desired_force.z);
-  */
+
         }
 
         //! Main loop.
@@ -1331,9 +1476,17 @@ namespace Control
         task(void)
         {
           if (!m_configured)
+          {
             spew("Not configured!");
+            setEntityState(IMC::EntityState::ESTA_ERROR, Status::CODE_MISSING_DATA);
+          }
+          if (!m_args.use_controller || !isActive())
+            setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_IDLE);
+
           if (!m_args.use_controller || !isActive() || !m_configured)
             return;
+
+
 
           if (m_N > 1)
           {
@@ -1344,7 +1497,14 @@ namespace Control
 
           // Calculate internal feedback, alpha in AGENT body
           // missionVelocity in CENTROID body
-          Matrix alpha = RAgentCentroid()*missionVelocity();
+
+
+          // Get mission information in agent frame.
+          Matrix v_mission_agent  = RAgentCentroid()*missionVelocity();
+          Matrix dv_mission_agent = RAgentCentroid()*m_a_mission_centroid;
+
+          // Saturate
+          v_mission_agent = saturate(v_mission_agent, m_args.max_speed);
 
           // update formation based on current desired heading
           // NB: only master should change according to his desired heading?
@@ -1356,20 +1516,30 @@ namespace Control
             // Set heave to zero if not controlling altitude
             if (!m_args.use_altitude)
               u(2) = 0;
-            alpha += transpose(RNedAgent())*u;
+
+            // alpha += transpose(RNedAgent())*u;
+
+            // Not ideal with all this conversion, but rotate to agent frame
+            u = transpose(RNedAgent())*u;
           }
 
-          // Saturate and dispatch control output
-          alpha = saturate(alpha, m_args.max_speed);
+
+
 
           // calculate velocity control force, tau
           m_time_diff = Clock::getMsec() - m_time_end;
           m_time_end = Clock::getMsec();
 
-          Matrix tau = velocityControl(alpha,RAgentCentroid()*m_a_mission_centroid);
+          if (m_time_diff > 1*1E3)
+            err("Overflow in task execution!");
+
+          // Tau is in NED-frame.
+          Matrix tau = velocityControl(u, v_mission_agent, dv_mission_agent);
           //if (m_args.disable_force_output)
           //  return;
           sendDesiredForce(tau);
+
+
         }
 
         //! R^(agent)_(centroid)
