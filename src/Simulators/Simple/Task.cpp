@@ -63,6 +63,15 @@ namespace Simulators
 
       //! Use DesiredLinearState instead of DesiredVelocity
       bool trans_setpoint;
+
+      //! Input is acceleration
+      bool force_input_is_accel;
+
+      //! Wind drag
+      double wind_drag;
+
+      //! Wind force
+      Matrix wind_speed;
     };
 
     struct Task : public Tasks::Periodic
@@ -160,6 +169,15 @@ namespace Simulators
         param("Use Translational Setpoint", m_args.trans_setpoint)
         .defaultValue("false")
         .description("Use DesiredLinearState instead of DesiredVelocity for velocity control.");
+
+        param("Input Force Is Acceleration", m_args.force_input_is_accel)
+        .defaultValue("true");
+
+        param("Wind Speed", m_args.wind_speed)
+        .defaultValue("0,0,0");
+
+        param("Wind Drag", m_args.wind_drag)
+        .defaultValue("0.05");
 
 
         bind<IMC::DesiredControl>(this);
@@ -265,7 +283,12 @@ namespace Simulators
           m_desired_force(0) = msg->x;
           m_desired_force(1) = msg->y;
           m_desired_force(2) = msg->z;
+
+          if (m_args.force_input_is_accel)
+            m_desired_force = m_desired_force * m_args.mass;
         }
+
+
       }
 
       void
@@ -303,7 +326,7 @@ namespace Simulators
           case DOUBLE:
             // Integrate desired acceleration to get new velocity
             Matrix dvelocity(3, 1, 0.0);
-            dvelocity = m_desired_force/m_mass;
+            dvelocity = m_desired_force/m_mass - m_args.wind_drag * (m_velocity - m_args.wind_speed) / m_mass;
             // Integrate using Euler method
             m_velocity += timestep * dvelocity;
             break;
