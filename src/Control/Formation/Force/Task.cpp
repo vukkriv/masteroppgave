@@ -503,7 +503,7 @@ namespace Control
             out = Matrix(3,1, K(0));
 
             // Special case for two element, use the second as z-gain.
-            if (m_args.Kp.size() == 2)
+            if (K.size() == 2)
               out(2) = K(1);
           }
 
