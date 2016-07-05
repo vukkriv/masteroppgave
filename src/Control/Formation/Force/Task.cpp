@@ -177,6 +177,32 @@ namespace Control
         double max_wind_speed_estimate;
       };
 
+      static const std::string c_parcel_names[] = { DTR_RT("PID-X"), DTR_RT("PID-Y"), DTR_RT("PID-Z"),
+                                                    DTR_RT("Mission-X"), DTR_RT("Mission-Y"), DTR_RT("Mission-Z"),
+                                                    DTR_RT("Collision-X"), DTR_RT("Collision-Y"), DTR_RT("Collision-Z"),
+                                                    DTR_RT("Formation-X"), DTR_RT("Formation-Y"), DTR_RT("Formation-Z"),
+                                                    DTR_RT("Wind_ff")
+                                                  };
+
+      enum Parcel {
+        PC_PID_X      = 0,
+        PC_PID_Y      = 1,
+        PC_PID_Z      = 2,
+        PC_MISSION_X  = 3,
+        PC_MISSION_Y  = 4,
+        PC_MISSION_Z  = 5,
+        PC_COLLISION_X = 6,
+        PC_COLLISION_Y = 7,
+        PC_COLLISION_Z = 8,
+        PC_FORMATION_X = 9,
+        PC_FORMATION_Y = 10,
+        PC_FORMATION_Z = 11,
+        PC_WIND_FF     = 12,
+        PC_NUM         = 13
+      };
+
+      static const int NUM_PARCELS = 13;
+
       struct Task : public DUNE::Control::PeriodicUAVAutopilot
       {
         //! Task arguments
@@ -273,6 +299,9 @@ namespace Control
 
         //! True if local state is updated from EstimatedLocalState
         bool m_self_local_updated;
+
+        //! Parcel array
+        IMC::ControlParcel m_parcels[NUM_PARCELS];
 
 
         //! Constructor.
@@ -525,6 +554,8 @@ namespace Control
         void
         onEntityReservation(void)
         {
+          for (unsigned i = 0; i < NUM_PARCELS; ++i)
+            m_parcels[i].setSourceEntity(reserveEntity(c_parcel_names[i] + " Parcel"));
         }
 
         //! Resolve entity names.
@@ -1295,6 +1326,9 @@ namespace Control
           m_error_log.err_z = link_errors_agent(2);
           m_error_log.err   = link_errors_agent.norm_2();
 
+          // Log mission velocities
+          logAndDispatchParcel(PC_FORMATION_X, u_form);
+
           return u_form;
         }
 
@@ -1355,13 +1389,19 @@ namespace Control
           }
           // Multiply total repelling velocity with gain
           u_coll *= m_args.collision_gain;
-          // Save maximum repelling speed
+          // Save (static) maximum repelling speed
           u_coll_max = std::max(u_coll_max, u_coll.norm_2());
-  /*
+
+          /*
           spew("u_coll: [%1.1f, %1.1f, %1.1f]", u_coll(0), u_coll(1), u_coll(2));
           spew("Max u_coll: %1.1f", u_coll_max);
           spew("Min dist: %1.1f", d_ij_min);
-  */
+          */
+
+
+          // Log mission velocities
+          logAndDispatchParcel(PC_COLLISION_X, u_coll);
+
           return u_coll;
         }
 
@@ -1381,11 +1421,34 @@ namespace Control
 
           if (!m_args.use_altitude)
             u_mission(2) = 0;
-  /*
-          spew("u_mission: [%1.1f, %1.1f, %1.1f]", u_mission(0), u_mission(1),
-               u_mission(2));
-  */
+
+
+          // Log mission velocities
+          logAndDispatchParcel(PC_MISSION_X, u_mission);
+
+
           return u_mission;
+        }
+
+        void
+        logAndDispatchParcel(uint8_t parcelIndexStart, Matrix& data, bool doDispatch = true)
+        {
+          if (parcelIndexStart + data.size() > NUM_PARCELS)
+          {
+            war("Invalid parcel index + data size given");
+            return;
+          }
+
+          for (int i = 0; i < data.size(); ++i)
+          {
+            m_parcels[parcelIndexStart + i].p = data(i);
+            if (doDispatch)
+            {
+              dispatch(m_parcels[parcelIndexStart + i]);
+            }
+          }
+
+
         }
 
         //! Control velocity in AGENT frame, return desired force in NED
