@@ -140,7 +140,7 @@ struct Task: public DUNE::Tasks::Periodic
 		std::string vhf_rssi_text;
 
 
-		std::size_t oldDBM;
+		std::size_t oldDBM = 0;
 		std::size_t foundRX = vhf_data_string.find("RX ", oldDBM);
 		std::size_t foundDBM = vhf_data_string.find("dBm", foundRX);
 		oldDBM = foundDBM;
