@@ -105,8 +105,10 @@ namespace Monitors
       double m_oldM, m_newM, m_oldS, m_newS;
     };
 
-    struct PingRequest
+    class PingRequest
     {
+    public:
+      PingRequest(): id(0), got_response(false), time_of_dispatch(0.0), time_of_response(0.0), ping(0.0) {};
       unsigned int id;
       bool got_response;
       double time_of_dispatch;
@@ -115,8 +117,10 @@ namespace Monitors
     };
     typedef std::vector<PingRequest> Requests;
 
-    struct AddressBookEntry
+    class AddressBookEntry
     {
+    public:
+      AddressBookEntry(): id(0), nextRequestId(0), name(""),ping_avg(0.0),ping_stddev(0.0),timeOfNextRequest(0.0),num_timeouts(0) {};
       unsigned int id;
       unsigned int nextRequestId;
       std::string name;
@@ -214,12 +218,12 @@ namespace Monitors
           {
             IMC::Ping response = generateResponse(msg);
             dispatch(response, DF_LOOP_BACK);
-            spew("Got requests. ");
+            spew("Got requests, id: %d ", msg->id);
             break;
           }
           case IMC::Ping::PT_RESPONSE:
             handleResponseAndDispatchAck(msg);
-            spew("Got response");
+            spew("Got response, id: %d", msg->id);
             break;
           case IMC::Ping::PT_ACK:
             // NOP. Consider storing time as another measurement.
@@ -357,18 +361,17 @@ namespace Monitors
               {
                 inf("Deleted entry for %s due to to many timeouts. ", entry->second.name.c_str());
 
-                // Special handling
+                // Special handling for in-loop erase with C11 maps.
+                AddressBook::iterator entry_next = entry;
+
                 if (entry == m_addressBook.end())
-                {
-                  m_addressBook.erase(entry);
-                  deletedEntry = true;
-                  entry = m_addressBook.end();
-                }
+                  entry_next = m_addressBook.end();
                 else
-                {
-                  m_addressBook.erase(entry);
-                  deletedEntry = true;
-                }
+                  entry_next++;
+
+                m_addressBook.erase(entry);
+                entry = entry_next;
+                deletedEntry = true;
 
 
                 // Need to break the inner loop.
@@ -381,7 +384,7 @@ namespace Monitors
               ++request;
           }
 
-          if (!deletedEntry || deletedEntry) // Due to the way C11 handles maps, iterate anyway.
+          if (!deletedEntry) // Due to the way C11 handles maps, iterate anyway.
             ++entry;
         }
       }
@@ -408,7 +411,11 @@ namespace Monitors
             req.id = request.id;
             req.time_of_dispatch = now;
 
-            entry->second.requests.push_back(req);
+            //entry->second.requests.push_back(req);
+
+            // test;
+            AddressBookEntry *tmp = &m_addressBook.at(entry->first);
+            tmp->requests.push_back(req);
 
             // Dispatch request
             dispatch(request, DF_LOOP_BACK);
@@ -420,6 +427,21 @@ namespace Monitors
             entry->second.timeOfNextRequest = now + m_prndgen->uniform(0.1, 5.0);
 
           }
+        }
+      }
+
+      void
+      printBook(void)
+      {
+        // Loop entries, create requests
+        for (AddressBook::iterator entry = m_addressBook.begin(); entry != m_addressBook.end(); ++entry)
+        {
+          inf("%s, timeouts: %d:", entry->second.name.c_str(), entry->second.num_timeouts);
+          for (unsigned int i = 0; i < entry->second.requests.size(); i++)
+          {
+            std::cout << entry->second.requests[i].id;
+          }
+          std::cout << std::endl;
         }
       }
 
@@ -441,6 +463,8 @@ namespace Monitors
           waitForMessages(1.0);
           cleanRequestsUpdateStatistics();
           sendNewRequests();
+          spew("Entries: %lu", m_addressBook.size());
+
         }
       }
     };
