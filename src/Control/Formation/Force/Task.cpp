@@ -906,9 +906,9 @@ namespace Control
 
               // Do some logging
               if (uav == 1)
-                m_error_log.virt_err_x = m_pos_update_rate(uav);
+                m_error_log.virt_err_x = diff;
               if (uav == 2)
-                m_error_log.virt_err_y = m_pos_update_rate(uav);
+                m_error_log.virt_err_y = diff;
 
               // Calculate update delay
               double delay_ms = (now - stamp) * 1E3;
