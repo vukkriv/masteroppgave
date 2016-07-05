@@ -174,7 +174,7 @@ namespace Simulators
         .defaultValue("true");
 
         param("Wind Speed", m_args.wind_speed)
-        .defaultValue("0,0,0");
+        .defaultValue("1,0,0");
 
         param("Wind Drag", m_args.wind_drag)
         .defaultValue("0.05");
@@ -329,6 +329,11 @@ namespace Simulators
             dvelocity = m_desired_force/m_mass - m_args.wind_drag * (m_velocity - m_args.wind_speed) / m_mass;
             // Integrate using Euler method
             m_velocity += timestep * dvelocity;
+
+            // Fill acceleration
+            m_acc.x = dvelocity(0);
+            m_acc.y = dvelocity(1);
+            m_acc.z = dvelocity(2) - 9.81;
             break;
         }
 
@@ -390,15 +395,6 @@ namespace Simulators
         m_sstate.v = m_velocity(1);
         m_sstate.w = m_velocity(2);
 
-        /*
-        // Fill acceleration
-        m_acc.x = ddp_b(0);
-        m_acc.y = ddp_b(1);
-        m_acc.z = ddp_b(2);
-
-        dispatch(m_acc);
-        */
-
         dispatch(m_sstate);
         dispatchEstimatedState();
       }
@@ -444,6 +440,10 @@ namespace Simulators
         dispatch(gs);
 
         dispatch(m_estate);
+
+        if (m_type == DOUBLE)
+          dispatch(m_acc);
+
         spew("Estimated State [N,E,D] [vN,vE,vD]: [%f,%f,%f] [%f,%f,%f]", m_estate.x, m_estate.y, m_estate.z, m_estate.u, m_estate.v, m_estate.w);
       }
 
