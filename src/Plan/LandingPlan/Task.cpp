@@ -258,7 +258,7 @@ namespace Plan
           debug("Net heading %f", m_landArg.netHeading);
           debug("Attack angle %f",m_landArg.gamma_a);
           debug("Descent %f",m_landArg.gamma_d);
-          debug("Approach decent angle %f,m_landArg.approachDecent");
+          debug("Approach decent angle %f", m_landArg.approachDecent);
           debug("Behind net %f",m_landArg.behind_net);
           debug("In front of net %f",m_landArg.infront_net);
           debug("Length glideslope %f",m_landArg.length_glideslope);
