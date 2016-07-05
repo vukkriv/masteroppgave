@@ -247,6 +247,9 @@ namespace Control
         //! Vehicle positions
         Matrix m_x;
 
+        //! Vehicles Stream Estimates
+        Matrix m_esvs;
+
         //! Vehicle NED velocities
         Matrix m_v_ned;
 
@@ -490,7 +493,7 @@ namespace Control
           .description("Max wind speed estimate, used for integral windup. ");
 
           param("Enable formation integration", m_args.enable_formation_integration)
-          .defaultValue("true");
+          .defaultValue("false");
 
           // Bind incoming IMC messages
           bind<IMC::DesiredLinearState>(this);
@@ -498,6 +501,7 @@ namespace Control
           bind<IMC::DesiredHeading>(this);
           bind<IMC::FormCoord>(this);
           bind<IMC::CoordConfig>(this);
+          bind<IMC::EstimatedStreamVelocity>(this);
         }
 
         //! Update internal state with new parameter values.
@@ -725,6 +729,7 @@ namespace Control
             }
             // Resize and reset position and velocity matrices to fit number of vehicles
             m_x.resizeAndFill(3, m_N, 0);
+            m_esvs.resizeAndFill(3, m_N, 0.0);
             m_v_ned.resizeAndFill(3, 1, 0);
             m_a_ned.resizeAndFill(3, 1, 0);
 
@@ -1002,6 +1007,42 @@ namespace Control
           }
         }
 
+        //! Consume Others stream velocities
+        void
+        consume(const IMC::EstimatedStreamVelocity* msg)
+        {
+          if (!m_configured)
+          {
+            spew("Not configured!");
+            return;
+          }
+          double now = Clock::get();
+          static double last_print;
+          if (!m_args.print_frequency || !last_print
+              || (now - last_print) > 1.0 / m_args.print_frequency)
+          {
+            spew("Got EstimatedStreamVelocity from '%s'", resolveSystemId(msg->getSource()));
+            last_print = now;
+          }
+
+
+
+          for (unsigned int uav = 0; uav < m_N; uav++)
+          {
+            if (m_uav_ID[uav] == msg->getSource())
+            {
+              // Todo: Add some delay checking.
+
+              // Update estimates
+              m_esvs(0, uav) = msg->x;
+              m_esvs(1, uav) = msg->y;
+              m_esvs(2, uav) = msg->z;
+
+              break;
+            }
+          }
+        }
+
         void
         consume(const IMC::FormCoord* msg)
         {
@@ -1267,6 +1308,30 @@ namespace Control
           }
         }
 
+        //! Calculate stram sync bias
+        Matrix
+        streamSyncBias(void)
+        {
+          Matrix u_bias(3, 1, 0);
+          if (!m_args.enable_formation_integration)
+            return u_bias;
+
+          Matrix bias_z = Matrix();
+          bias_z.resizeAndFill(3, m_L, 0);
+
+          // Calculate z_tilde
+          calcDiffVariable(&bias_z, m_D, m_esvs);
+
+          Matrix z_tilde = bias_z;
+
+          for (unsigned int link = 0; link < m_L; link++)
+          {
+            u_bias -= m_D(m_i, link) * 0.01 *  z_tilde.column(link);
+          }
+
+          return u_bias;
+        }
+
         //! Calculate formation velocity
         Matrix
         formationVelocity(void)
@@ -1487,9 +1552,21 @@ namespace Control
           // Do integration of the mission velocity error
           int formation_int_enable = m_args.enable_formation_integration ? 1.0 : 0.0;
 
-          m_bias_estimate(0) += ((double)m_time_diff/1.0E3) * m_args.Ki(0) * (v_error_ned(0) + formation_int_enable * u(0));
-          m_bias_estimate(1) += ((double)m_time_diff/1.0E3) * m_args.Ki(1) * (v_error_ned(1) + formation_int_enable * u(1));
-          m_bias_estimate(2) += ((double)m_time_diff/1.0E3) * m_args.Ki(2) * (v_error_ned(2) + formation_int_enable * u(2));
+          Matrix u_bias_est = 0.1*u;
+          double max_contr = 0.5;
+          if (u_bias_est.norm_2() > max_contr)
+            u_bias_est = max_contr * u_bias_est / u_bias_est.norm_2();
+
+          Matrix u_sync = Matrix(3,1, 0.0);
+          if (m_args.enable_formation_integration)
+          {
+            u_sync = 100*streamSyncBias();
+          }
+
+          m_bias_estimate(0) += ((double)m_time_diff/1.0E3) * m_args.Ki(0) * ((v_error_ned(0) + formation_int_enable * u_bias_est(0)) + u_sync(0));
+          m_bias_estimate(1) += ((double)m_time_diff/1.0E3) * m_args.Ki(1) * ((v_error_ned(1) + formation_int_enable * u_bias_est(1)) + u_sync(1));
+          m_bias_estimate(2) += ((double)m_time_diff/1.0E3) * m_args.Ki(2) * ((v_error_ned(2) + formation_int_enable * u_bias_est(2)) + u_sync(2));
+
 
           // Integral anti-windup
           // Relationship is b = d * wind
@@ -1524,7 +1601,7 @@ namespace Control
           esv.y = m_bias_estimate(1)/m_args.wind_drag_coefficient;
           esv.z = m_bias_estimate(2)/m_args.wind_drag_coefficient;
 
-          dispatch(esv);
+          dispatch(esv, DF_LOOP_BACK);
 
 
           return F_i;
