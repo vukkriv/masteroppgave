@@ -268,6 +268,9 @@ namespace Control
         //! Wind bias estimator
         Matrix m_bias_estimate;
 
+        //! True if local state is updated from EstimatedLocalState
+        bool m_self_local_updated;
+
 
         //! Constructor.
         //! @param[in] name task name.
@@ -287,7 +290,8 @@ namespace Control
           m_time_end(0.0), 
           m_time_diff(0.0),
           m_configured(false),
-          m_bias_estimate(Matrix(3,1, 0.0))
+          m_bias_estimate(Matrix(3,1, 0.0)),
+          m_self_local_updated(false)
         {
           param("Formation Controller", m_args.use_controller)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -861,6 +865,8 @@ namespace Control
               m_curr_heading = msg->state->psi;
               return;
             }
+            // Update local state. Flag used to check if to run controller or not.
+            m_self_local_updated = true;
             m_local_state = *msg;
             // Update BODY velocity (only really needed from local vehicle)
             m_v(0) = msg->state->u;
@@ -1485,6 +1491,12 @@ namespace Control
 
           if (!m_args.use_controller || !isActive() || !m_configured)
             return;
+
+          if (!m_self_local_updated)
+            return;
+
+          // Reset the flag
+          m_self_local_updated = false;
 
 
 
