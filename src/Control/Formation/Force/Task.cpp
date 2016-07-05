@@ -247,11 +247,11 @@ namespace Control
         //! Vehicle positions
         Matrix m_x;
 
-        //! Vehicle BODY velocities
-        Matrix m_v;
+        //! Vehicle NED velocities
+        Matrix m_v_ned;
 
-        //! Vehicle BODY accelerations
-        Matrix m_a;
+        //! Vehicle NED accelerations
+        Matrix m_a_ned;
 
         //! Desired mission velocity in CENTROID
         Matrix m_v_mission_centroid;
@@ -315,8 +315,8 @@ namespace Control
           m_i(0), 
           m_N(0), 
           m_L(0),
-          m_v(3,1,0.0),
-          m_a(3,1,0.0),
+          m_v_ned(3,1,0.0),
+          m_a_ned(3,1,0.0),
           m_v_mission_centroid(3,1,0.0),
           m_a_mission_centroid(3,1,0.0),
           m_curr_desired_heading(0.0),
@@ -725,8 +725,8 @@ namespace Control
             }
             // Resize and reset position and velocity matrices to fit number of vehicles
             m_x.resizeAndFill(3, m_N, 0);
-            m_v.resizeAndFill(3, 1, 0);
-            m_a.resizeAndFill(3, 1, 0);
+            m_v_ned.resizeAndFill(3, 1, 0);
+            m_a_ned.resizeAndFill(3, 1, 0);
 
             m_x_c = m_x_c_default;
           }
@@ -912,14 +912,14 @@ namespace Control
             // Update local state. Flag used to check if to run controller or not.
             m_self_local_updated = true;
             m_local_state = *msg;
-            // Update BODY velocity (only really needed from local vehicle)
-            m_v(0) = msg->state->u;
-            m_v(1) = msg->state->v;
-            m_v(2) = msg->state->w;
-            // Update BODY acceleration (only really needed from local vehicle)
-            m_a(0) = msg->acc->x;
-            m_a(1) = msg->acc->y;
-            m_a(2) = msg->acc->z;
+            // Update NED velocity (only really needed from local vehicle)
+            m_v_ned(0) = msg->state->vx;
+            m_v_ned(1) = msg->state->vy;
+            m_v_ned(2) = msg->state->vz;
+            // Update NED acceleration (only really needed from local vehicle)
+            m_a_ned(0) = msg->acc->x;
+            m_a_ned(1) = msg->acc->y;
+            m_a_ned(2) = msg->acc->z;
           }
 
           for (unsigned int uav = 0; uav < m_N; uav++)
@@ -1430,7 +1430,8 @@ namespace Control
 
 
           // Log mission velocities
-          logAndDispatchParcel(PC_MISSION_X, u_mission);
+          Matrix tmp = RNedCentroid()*u_mission;
+          logAndDispatchParcel(PC_MISSION_X, tmp);
 
 
           return u_mission;
@@ -1459,8 +1460,8 @@ namespace Control
 
         //! Control velocity in AGENT frame, return desired force in NED
         //! u in AGENT body
-        //! v_des in AGENT body
-        //! dv_des in AGENT body
+        //! v_des in NED
+        //! dv_des in NED
         Matrix
         velocityControl(Matrix u, Matrix v_des, Matrix dv_des)
         {
@@ -1470,25 +1471,25 @@ namespace Control
           Matrix F_i = Matrix(3, 1, 0.0);
           Matrix Rni = RNedAgent();
 
-          Matrix v_error_body  = v_des - m_v;
-          Matrix dv_error_body = dv_des - m_a;
+          Matrix v_error_ned  = v_des - m_v_ned;
+          Matrix dv_error_ned = dv_des - m_a_ned;
 
           // F_i is transformed to NED before dispatch.
-          F_i(0) = m_args.Kp(0) * v_error_body(0);
-          F_i(1) = m_args.Kp(1) * v_error_body(1);
-          F_i(2) = m_args.Kp(2) * v_error_body(2);
+          F_i(0) = m_args.Kp(0) * v_error_ned(0);
+          F_i(1) = m_args.Kp(1) * v_error_ned(1);
+          F_i(2) = m_args.Kp(2) * v_error_ned(2);
 
           // Add damping on acceleration. (Basically acceleration feed-forward. Will act as a mass-increaser, might make more robust to wind)
-          F_i(0) += m_args.Kd(0) * dv_error_body(0);
-          F_i(1) += m_args.Kd(1) * dv_error_body(1);
-          F_i(2) += m_args.Kd(2) * dv_error_body(2);
+          F_i(0) += m_args.Kd(0) * dv_error_ned(0);
+          F_i(1) += m_args.Kd(1) * dv_error_ned(1);
+          F_i(2) += m_args.Kd(2) * dv_error_ned(2);
 
           // Do integration of the mission velocity error
           int formation_int_enable = m_args.enable_formation_integration ? 1.0 : 0.0;
 
-          m_bias_estimate(0) += ((double)m_time_diff/1.0E3) * m_args.Ki(0) * (v_error_body(0) + formation_int_enable * u(0));
-          m_bias_estimate(1) += ((double)m_time_diff/1.0E3) * m_args.Ki(1) * (v_error_body(1) + formation_int_enable * u(1));
-          m_bias_estimate(2) += ((double)m_time_diff/1.0E3) * m_args.Ki(2) * (v_error_body(2) + formation_int_enable * u(2));
+          m_bias_estimate(0) += ((double)m_time_diff/1.0E3) * m_args.Ki(0) * (v_error_ned(0) + formation_int_enable * u(0));
+          m_bias_estimate(1) += ((double)m_time_diff/1.0E3) * m_args.Ki(1) * (v_error_ned(1) + formation_int_enable * u(1));
+          m_bias_estimate(2) += ((double)m_time_diff/1.0E3) * m_args.Ki(2) * (v_error_ned(2) + formation_int_enable * u(2));
 
           // Integral anti-windup
           // Relationship is b = d * wind
@@ -1504,12 +1505,12 @@ namespace Control
 
           // Add optional wind feed forward
           if (m_args.enable_wind_ff)
-            F_i += m_args.wind_drag_coefficient * m_v;
+            F_i += m_args.wind_drag_coefficient * m_v_ned;
 
           // Do some logging.
-          m_error_log.rf_err_vx = v_error_body(0);
-          m_error_log.rf_err_vy = v_error_body(1);
-          m_error_log.rf_err_vz = v_error_body(2);
+          m_error_log.rf_err_vx = v_error_ned(0);
+          m_error_log.rf_err_vy = v_error_ned(1);
+          m_error_log.rf_err_vz = v_error_ned(2);
 
           m_error_log.ss_x = m_bias_estimate(0);
           m_error_log.ss_y = m_bias_estimate(1);
@@ -1519,7 +1520,7 @@ namespace Control
           dispatch(m_error_log);
 
 
-          return Rni*F_i;
+          return F_i;
         }
 
         //! Dispatch desired force
@@ -1590,16 +1591,16 @@ namespace Control
           // Check if we should abort
           checkFormation();
 
-          // Calculate internal feedback, alpha in AGENT body
-          // missionVelocity in CENTROID body
+          // Calculate internal feedback, tau in NED
+          // Mission vel in NED.
 
 
-          // Get mission information in agent frame.
-          Matrix v_mission_agent  = RAgentCentroid()*missionVelocity();
-          Matrix dv_mission_agent = RAgentCentroid()*m_a_mission_centroid;
+          // Get mission information in NED frame.
+          Matrix v_mission_ned  = RNedCentroid()*missionVelocity();
+          Matrix dv_mission_ned = RNedCentroid()*m_a_mission_centroid;
 
           // Saturate
-          v_mission_agent = saturate(v_mission_agent, m_args.max_speed);
+          v_mission_ned = saturate(v_mission_ned, m_args.max_speed);
 
           // update formation based on current desired heading
           // NB: only master should change according to his desired heading?
@@ -1611,11 +1612,6 @@ namespace Control
             // Set heave to zero if not controlling altitude
             if (!m_args.use_altitude)
               u(2) = 0;
-
-            // alpha += transpose(RNedAgent())*u;
-
-            // Not ideal with all this conversion, but rotate to agent frame
-            u = transpose(RNedAgent())*u;
           }
 
 
@@ -1629,7 +1625,7 @@ namespace Control
             err("Overflow in task execution!");
 
           // Tau is in NED-frame.
-          Matrix tau = velocityControl(u, v_mission_agent, dv_mission_agent);
+          Matrix tau = velocityControl(u, v_mission_ned, dv_mission_ned);
           //if (m_args.disable_force_output)
           //  return;
           sendDesiredForce(tau);
