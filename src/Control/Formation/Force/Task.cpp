@@ -172,6 +172,9 @@ namespace Control
 
         //! Enable bias estimation on control output
         bool enable_bias_compensation;
+
+        //! Max wind speed estiate, used for integral anti windup
+        double max_wind_speed_estimate;
       };
 
       struct Task : public DUNE::Control::PeriodicUAVAutopilot
@@ -449,6 +452,10 @@ namespace Control
           param("Enable Bias Compensation", m_args.enable_bias_compensation)
           .defaultValue("false")
           .visibility(Tasks::Parameter::VISIBILITY_USER);
+
+          param("Max wind speed estimate", m_args.max_wind_speed_estimate)
+          .defaultValue("10.0")
+          .description("Max wind speed estimate, used for integral windup. ");
 
           // Bind incoming IMC messages
           bind<IMC::DesiredLinearState>(this);
@@ -1411,6 +1418,11 @@ namespace Control
           m_bias_estimate(0) += ((double)m_time_diff/1.0E3) * m_args.Ki(0) * v_error_body(0);
           m_bias_estimate(1) += ((double)m_time_diff/1.0E3) * m_args.Ki(1) * v_error_body(1);
           m_bias_estimate(2) += ((double)m_time_diff/1.0E3) * m_args.Ki(2) * v_error_body(2);
+
+          // Integral anti-windup
+          // Relationship is b = d * wind
+          if (m_bias_estimate.norm_2() / m_args.wind_drag_coefficient > m_args.max_wind_speed_estimate)
+            m_bias_estimate = (m_args.max_wind_speed_estimate * m_args.wind_drag_coefficient) * m_bias_estimate / m_bias_estimate.norm_2();
 
           // Add acceleration feed-forward and coordination input u
           F_i += m_args.mass * dv_des + u;
