@@ -175,6 +175,9 @@ namespace Control
 
         //! Max wind speed estiate, used for integral anti windup
         double max_wind_speed_estimate;
+
+        //! Enable integration of u-signal as well.
+        bool enable_formation_integration;
       };
 
       static const std::string c_parcel_names[] = { DTR_RT("PID-X"), DTR_RT("PID-Y"), DTR_RT("PID-Z"),
@@ -485,6 +488,9 @@ namespace Control
           param("Max wind speed estimate", m_args.max_wind_speed_estimate)
           .defaultValue("10.0")
           .description("Max wind speed estimate, used for integral windup. ");
+
+          param("Enable formation integration", m_args.enable_formation_integration)
+          .defaultValue("true");
 
           // Bind incoming IMC messages
           bind<IMC::DesiredLinearState>(this);
@@ -1478,9 +1484,11 @@ namespace Control
           F_i(2) += m_args.Kd(2) * dv_error_body(2);
 
           // Do integration of the mission velocity error
-          m_bias_estimate(0) += ((double)m_time_diff/1.0E3) * m_args.Ki(0) * v_error_body(0);
-          m_bias_estimate(1) += ((double)m_time_diff/1.0E3) * m_args.Ki(1) * v_error_body(1);
-          m_bias_estimate(2) += ((double)m_time_diff/1.0E3) * m_args.Ki(2) * v_error_body(2);
+          int formation_int_enable = m_args.enable_formation_integration ? 1.0 : 0.0;
+
+          m_bias_estimate(0) += ((double)m_time_diff/1.0E3) * m_args.Ki(0) * (v_error_body(0) + formation_int_enable * u(0));
+          m_bias_estimate(1) += ((double)m_time_diff/1.0E3) * m_args.Ki(1) * (v_error_body(1) + formation_int_enable * u(1));
+          m_bias_estimate(2) += ((double)m_time_diff/1.0E3) * m_args.Ki(2) * (v_error_body(2) + formation_int_enable * u(2));
 
           // Integral anti-windup
           // Relationship is b = d * wind
