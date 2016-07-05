@@ -1519,6 +1519,13 @@ namespace Control
 
           dispatch(m_error_log);
 
+          IMC::EstimatedStreamVelocity esv;
+          esv.x = m_bias_estimate(0)/m_args.wind_drag_coefficient;
+          esv.y = m_bias_estimate(1)/m_args.wind_drag_coefficient;
+          esv.z = m_bias_estimate(2)/m_args.wind_drag_coefficient;
+
+          dispatch(esv);
+
 
           return F_i;
         }
