@@ -54,8 +54,14 @@ namespace Control
           double max_speed_xy;
           double max_speed_z;
           double max_yaw_rate;
+          double max_acc;
           //! Entity to send centroid EstimatedLocalState
           std::vector<std::string> ent_centroid_elocalstate;
+
+          // Refmodel parameters
+          double refmodel_max_acc;
+          double refmodel_omega_n;
+          double refmodel_xi;
         };
 
         enum PwmChannel {
@@ -65,6 +71,54 @@ namespace Control
            CH_YAW = 3,
            CH_TUNE = 5
          };
+
+        class ReferenceModel
+        {
+        public:
+
+          ReferenceModel():
+            A(9,9, 0.0),
+            B(9,3, 0.0),
+            x(9,1, 0.0),
+            a_out(3,1, 0.0),
+            prefilterState(3,1, 0.0),
+            k1(0.0),k2(0.0),k3(0.0)
+        {
+            /* Intentionally Empty */
+        }
+          Matrix
+          getPos(void) { return x.get(0,2, 0,0); }
+
+          Matrix
+          getVel(void) { return x.get(3,5, 0,0); }
+
+          Matrix
+          getAcc(void) { return x.get(6,8, 0,0); }
+
+          Matrix
+          getAOut(void) { return a_out; };
+
+          void
+          setPos(Matrix& pos) { x.put(0,0, pos); }
+
+          void
+          setVel(Matrix& vel) { x.put(3,0, vel); }
+
+          void
+          setAcc(Matrix& acc) { x.put(6,0, acc); }
+
+          void
+          setAOut(Matrix& a) { a_out.put(0, 0, a); }
+
+
+        public:
+          Matrix A;
+          Matrix B;
+          Matrix x;
+          Matrix a_out;
+          Matrix prefilterState;
+          double k1,k2,k3;
+        };
 
         struct Task: public BasicUAVAutopilot
         {
@@ -78,6 +132,8 @@ namespace Control
           IMC::EstimatedLocalState m_centroid_elstate;
           //! Current setpoint for centroid yaw
           double m_desired_yaw;
+          //! Reference Model
+          ReferenceModel m_refmodel;
 
           //! Constructor.
           //! @param[in] name task name.
@@ -108,8 +164,33 @@ namespace Control
             .visibility(Parameter::VISIBILITY_USER)
             .units(Units::DegreePerSecond);
 
+            param("Max Acc", m_args.max_acc)
+            .defaultValue("5")
+            .visibility(Parameter::VISIBILITY_USER)
+            .units(Units::MeterPerSquareSecond);
+
             param("Filter - Centroid EstimatedLocalState Entity", m_args.ent_centroid_elocalstate)
             .defaultValue("Formation Centroid");
+
+            param("Ref - Max Acceleration", m_args.refmodel_max_acc)
+            .defaultValue("3")
+            .visibility(Tasks::Parameter::VISIBILITY_USER)
+            .scope(Tasks::Parameter::SCOPE_MANEUVER)
+            .description("Max acceleration of the reference model.");
+
+            param("Ref - Natural Frequency",m_args.refmodel_omega_n)
+            .units(Units::RadianPerSecond)
+            .defaultValue("1")
+            .visibility(Tasks::Parameter::VISIBILITY_USER)
+            .scope(Tasks::Parameter::SCOPE_MANEUVER)
+            .description("Natural frequency for the speed reference model");
+
+            param("Ref - Relative Damping", m_args.refmodel_xi)
+            .units(Units::None)
+            .defaultValue("0.9")
+            .visibility(Tasks::Parameter::VISIBILITY_USER)
+            .scope(Tasks::Parameter::SCOPE_MANEUVER)
+            .description("Relative Damping Factor of the speed reference model");
 
             // Initialize
             m_centroid_elstate.clear();
@@ -131,6 +212,54 @@ namespace Control
 
             // Process the systems allowed to define EstimatedLocalState
             m_elocalstate_filter = new Tasks::SourceFilter(*this, false, m_args.ent_centroid_elocalstate, "EstimatedLocalState");
+          }
+
+          void
+          initRefmodel()
+          {
+            // Convencience matrix
+            double ones[] = {1.0, 1.0, 1.0};
+
+            Matrix eye = Matrix(ones, 3);
+            Matrix zero = Matrix(3,3, 0.0);
+
+            m_refmodel.x = Matrix(9, 1, 0.0);
+            m_refmodel.a_out = Matrix(3,1, 0.0);
+            m_refmodel.prefilterState = Matrix(3,1, 0.0);
+
+
+
+
+
+
+            m_refmodel.k3 =  (2*m_args.refmodel_xi + 1) *     m_args.refmodel_omega_n;
+            m_refmodel.k2 = ((2*m_args.refmodel_xi + 1) * pow(m_args.refmodel_omega_n, 2)) /  m_refmodel.k3;
+            m_refmodel.k1 =                               pow(m_args.refmodel_omega_n, 3)  / (m_refmodel.k3 * m_refmodel.k2);
+
+
+            // Set model
+
+            Matrix A_11 = zero;
+            Matrix A_12 = eye;
+            Matrix A_13 = zero;
+
+            Matrix A_21 = zero;
+            Matrix A_22 = zero;
+            Matrix A_23 = eye;
+
+            Matrix A_31 = -pow(m_args.refmodel_omega_n, 3)*eye;
+            Matrix A_32 = -(2*m_args.refmodel_xi + 1) * pow(m_args.refmodel_omega_n, 2) * eye;
+            Matrix A_33 = -(2*m_args.refmodel_xi + 1) *     m_args.refmodel_omega_n     * eye;
+
+
+            Matrix A_1 = A_11.horzCat(A_12.horzCat(A_13));
+            Matrix A_2 = A_21.horzCat(A_22.horzCat(A_23));
+            Matrix A_3 = A_31.horzCat(A_32.horzCat(A_33));
+
+            m_refmodel.A = A_1.vertCat(A_2.vertCat(A_3));
+
+            m_refmodel.B = Matrix(6,3, 0.0).vertCat(eye) * pow(m_args.refmodel_omega_n,3);
+
           }
 
 
@@ -214,6 +343,7 @@ namespace Control
           reset(void)
           {
             m_desired_yaw = m_centroid_elstate.state->psi;
+            initRefmodel();
           }
 
           //! On autopilot deactivation
@@ -221,6 +351,60 @@ namespace Control
           virtual void
           onAutopilotDeactivation(void)
           { }
+
+          void
+          stepNewRefModel(const IMC::EstimatedState& state, Matrix& desiredVel, const double timestep)
+          {
+            (void) state;
+
+
+            Matrix x_d = desiredVel;
+
+            //double T = m_args.prefilter_time_constant;
+            //m_refmodel.prefilterState += ts.delta * (-(1/T)*m_refmodel.prefilterState + (1/T)*x_d);
+
+
+
+            // Step 1: V-part
+            Matrix tau1 = m_refmodel.k1 * (x_d - m_refmodel.getPos());
+
+
+
+            if (tau1.norm_2() > m_args.max_acc)
+            {
+              tau1 = m_args.max_acc * tau1 / tau1.norm_2();
+            }
+
+            spew("Trying to reach acc: %.3f", m_args.max_acc);
+
+            // Step 2: A-part
+            Matrix tau2 = m_refmodel.k2 * (tau1 - m_refmodel.getVel());
+
+
+            // Actually jerk
+            if (tau2.norm_2() > m_args.refmodel_max_acc)
+            {
+              tau2 = m_args.refmodel_max_acc * tau2 / tau2.norm_2();
+            }
+
+            // Step 3: J-part
+            Matrix tau3 = m_refmodel.k3 * (tau2 - m_refmodel.getAcc());
+
+
+            // Integrate
+            m_refmodel.x += timestep * (m_refmodel.x.get(3,8,0,0).vertCat(tau3));
+
+            // Set correct acc output
+            Matrix acc = m_refmodel.getAcc();
+            m_refmodel.setAOut(acc);
+
+
+            // Print reference pos and vel
+            trace("x_r:\t [%1.2f, %1.2f, %1.2f]",
+                m_refmodel.x(0), m_refmodel.x(1), m_refmodel.x(2));
+            trace("v_r:\t [%1.2f, %1.2f, %1.2f]",
+                m_refmodel.x(3), m_refmodel.x(4), m_refmodel.x(5));
+          }
 
           //! Step function
           virtual void
@@ -242,15 +426,26 @@ namespace Control
 
             yawrate = pwmToValueDeadband( -Angles::radians(m_args.max_yaw_rate), Angles::radians(m_args.max_yaw_rate),  1100, 1900, 0, 0.07, m_pwm_inputs[CH_TUNE]);
 
+            // Step ref model
+            stepNewRefModel(*msg, vel, timestep);
+
+
             IMC::DesiredLinearState desLinState;
 
-            desLinState.vx = vel(0);
-            desLinState.vy = vel(1);
-            desLinState.vz = vel(2);
+            desLinState.vx = m_refmodel.x(0);
+            desLinState.vy = m_refmodel.x(1);
+            desLinState.vz = m_refmodel.x(2);
+
+            desLinState.ax = m_refmodel.x(3);
+            desLinState.ay = m_refmodel.x(4);
+            desLinState.az = m_refmodel.x(5);
 
             desLinState.flags = IMC::DesiredLinearState::FL_VX |
                                 IMC::DesiredLinearState::FL_VY |
-                                IMC::DesiredLinearState::FL_VZ;
+                                IMC::DesiredLinearState::FL_VZ |
+                                IMC::DesiredLinearState::FL_AX |
+                                IMC::DesiredLinearState::FL_AY |
+                                IMC::DesiredLinearState::FL_AZ;
 
             m_desired_yaw = m_desired_yaw + timestep * yawrate;
 
