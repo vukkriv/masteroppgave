@@ -59,7 +59,7 @@ namespace Control
           std::vector<std::string> ent_centroid_elocalstate;
 
           // Refmodel parameters
-          double refmodel_max_acc;
+          double refmodel_max_jerk;
           double refmodel_omega_n;
           double refmodel_xi;
         };
@@ -80,43 +80,33 @@ namespace Control
             A(9,9, 0.0),
             B(9,3, 0.0),
             x(9,1, 0.0),
-            a_out(3,1, 0.0),
-            prefilterState(3,1, 0.0),
             k1(0.0),k2(0.0),k3(0.0)
         {
             /* Intentionally Empty */
         }
           Matrix
-          getPos(void) { return x.get(0,2, 0,0); }
+          getVel(void) { return x.get(0,2, 0,0); }
 
           Matrix
-          getVel(void) { return x.get(3,5, 0,0); }
+          getAcc(void) { return x.get(3,5, 0,0); }
 
           Matrix
-          getAcc(void) { return x.get(6,8, 0,0); }
-
-          Matrix
-          getAOut(void) { return a_out; };
+          getJerk(void) { return x.get(6,8, 0,0); }
 
           void
-          setPos(Matrix& pos) { x.put(0,0, pos); }
+          setVel(Matrix& pos) { x.put(0,0, pos); }
 
           void
-          setVel(Matrix& vel) { x.put(3,0, vel); }
+          setAcc(Matrix& vel) { x.put(3,0, vel); }
 
           void
-          setAcc(Matrix& acc) { x.put(6,0, acc); }
-
-          void
-          setAOut(Matrix& a) { a_out.put(0, 0, a); }
-
+          setJerk(Matrix& acc) { x.put(6,0, acc); }
 
         public:
           Matrix A;
           Matrix B;
           Matrix x;
-          Matrix a_out;
-          Matrix prefilterState;
+
           double k1,k2,k3;
         };
 
@@ -165,15 +155,15 @@ namespace Control
             .units(Units::DegreePerSecond);
 
             param("Max Acc", m_args.max_acc)
-            .defaultValue("5")
+            .defaultValue("6")
             .visibility(Parameter::VISIBILITY_USER)
             .units(Units::MeterPerSquareSecond);
 
             param("Filter - Centroid EstimatedLocalState Entity", m_args.ent_centroid_elocalstate)
             .defaultValue("Formation Centroid");
 
-            param("Ref - Max Acceleration", m_args.refmodel_max_acc)
-            .defaultValue("3")
+            param("Ref - Max Jerk", m_args.refmodel_max_jerk)
+            .defaultValue("8")
             .visibility(Tasks::Parameter::VISIBILITY_USER)
             .scope(Tasks::Parameter::SCOPE_MANEUVER)
             .description("Max acceleration of the reference model.");
@@ -224,8 +214,6 @@ namespace Control
             Matrix zero = Matrix(3,3, 0.0);
 
             m_refmodel.x = Matrix(9, 1, 0.0);
-            m_refmodel.a_out = Matrix(3,1, 0.0);
-            m_refmodel.prefilterState = Matrix(3,1, 0.0);
 
 
 
@@ -358,7 +346,7 @@ namespace Control
             (void) state;
 
 
-            Matrix x_d = desiredVel;
+            Matrix v_d = desiredVel;
 
             //double T = m_args.prefilter_time_constant;
             //m_refmodel.prefilterState += ts.delta * (-(1/T)*m_refmodel.prefilterState + (1/T)*x_d);
@@ -366,7 +354,7 @@ namespace Control
 
 
             // Step 1: V-part
-            Matrix tau1 = m_refmodel.k1 * (x_d - m_refmodel.getPos());
+            Matrix tau1 = m_refmodel.k1 * (v_d - m_refmodel.getVel());
 
 
 
@@ -377,26 +365,22 @@ namespace Control
 
             spew("Trying to reach acc: %.3f", m_args.max_acc);
 
-            // Step 2: A-part
-            Matrix tau2 = m_refmodel.k2 * (tau1 - m_refmodel.getVel());
+            // Step 2: J-part
+            Matrix tau2 = m_refmodel.k2 * (tau1 - m_refmodel.getAcc());
 
 
             // Actually jerk
-            if (tau2.norm_2() > m_args.refmodel_max_acc)
+            if (tau2.norm_2() > m_args.refmodel_max_jerk)
             {
-              tau2 = m_args.refmodel_max_acc * tau2 / tau2.norm_2();
+              tau2 = m_args.refmodel_max_jerk * tau2 / tau2.norm_2();
             }
 
-            // Step 3: J-part
-            Matrix tau3 = m_refmodel.k3 * (tau2 - m_refmodel.getAcc());
+            // Step 3: dJ-part
+            Matrix tau3 = m_refmodel.k3 * (tau2 - m_refmodel.getJerk());
 
 
             // Integrate
             m_refmodel.x += timestep * (m_refmodel.x.get(3,8,0,0).vertCat(tau3));
-
-            // Set correct acc output
-            Matrix acc = m_refmodel.getAcc();
-            m_refmodel.setAOut(acc);
 
 
             // Print reference pos and vel
