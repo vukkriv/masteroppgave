@@ -178,9 +178,12 @@ namespace Control
 
         //! Enable integration of u-signal as well.
         bool enable_formation_integration;
+
+        //! Enable sync of bias
+        bool enable_bias_sync;
       };
 
-      static const std::string c_parcel_names[] = { DTR_RT("PID-X"), DTR_RT("PID-Y"), DTR_RT("PID-Z"),
+      static const std::string c_parcel_names[] = { DTR_RT("Force PID-X"), DTR_RT("Force PID-Y"), DTR_RT("Force PID-Z"),
                                                     DTR_RT("Mission-X"), DTR_RT("Mission-Y"), DTR_RT("Mission-Z"),
                                                     DTR_RT("Collision-X"), DTR_RT("Collision-Y"), DTR_RT("Collision-Z"),
                                                     DTR_RT("Formation-X"), DTR_RT("Formation-Y"), DTR_RT("Formation-Z"),
@@ -485,7 +488,7 @@ namespace Control
           .description("Coefficient to use in wind ff");
 
           param("Enable Bias Compensation", m_args.enable_bias_compensation)
-          .defaultValue("false")
+          .defaultValue("true")
           .visibility(Tasks::Parameter::VISIBILITY_USER);
 
           param("Max wind speed estimate", m_args.max_wind_speed_estimate)
@@ -493,7 +496,12 @@ namespace Control
           .description("Max wind speed estimate, used for integral windup. ");
 
           param("Enable formation integration", m_args.enable_formation_integration)
-          .defaultValue("false");
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER);
+
+          param("Enable bias sync", m_args.enable_bias_sync)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER);
 
           // Bind incoming IMC messages
           bind<IMC::DesiredLinearState>(this);
@@ -1558,7 +1566,7 @@ namespace Control
             u_bias_est = max_contr * u_bias_est / u_bias_est.norm_2();
 
           Matrix u_sync = Matrix(3,1, 0.0);
-          if (m_args.enable_formation_integration)
+          if (m_args.enable_bias_sync)
           {
             u_sync = 100*streamSyncBias();
           }
