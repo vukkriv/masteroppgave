@@ -1087,6 +1087,7 @@ namespace Control
               inf("Using current vehicle positions as desired formation.");
               // Set desired formation to current positions
               m_x_c = m_x;
+              m_x_c_default = transpose(RNedCentroid())*m_x;
               // Update desired difference variables matrix
               calcDiffVariable(&m_z_d, m_D, m_x_c);
               printMatrix(m_z_d);
