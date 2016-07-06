@@ -218,12 +218,12 @@ namespace Monitors
           {
             IMC::Ping response = generateResponse(msg);
             dispatch(response, DF_LOOP_BACK);
-            spew("Got requests, id: %d ", msg->id);
+            spew("Got requests, id: %d ", msg->ping_id);
             break;
           }
           case IMC::Ping::PT_RESPONSE:
             handleResponseAndDispatchAck(msg);
-            spew("Got response, id: %d", msg->id);
+            spew("Got response, id: %d", msg->ping_id);
             break;
           case IMC::Ping::PT_ACK:
             // NOP. Consider storing time as another measurement.
@@ -245,7 +245,7 @@ namespace Monitors
 
           for (Requests::iterator it = entry->requests.begin(); it != entry->requests.end(); ++it)
           {
-            if (it->id == response->id)
+            if (it->id == response->ping_id)
             {
               // Found the right ID
               // Calculate the round-trip time
@@ -262,7 +262,7 @@ namespace Monitors
               ack.type = IMC::Ping::PT_ACK;
               ack.setDestination(response->getSource());
 
-              ack.id = it->id;
+              ack.ping_id = it->id;
               ack.time = it->ping;
 
               dispatch(ack, DF_LOOP_BACK);
@@ -283,7 +283,7 @@ namespace Monitors
       generateResponse(const IMC::Ping* request)
       {
         IMC::Ping response;
-        response.id = request->id;
+        response.ping_id = request->ping_id;
         response.type = IMC::Ping::PT_RESPONSE;
         response.time = request->time;
 
@@ -403,12 +403,12 @@ namespace Monitors
             IMC::Ping request;
             request.type = IMC::Ping::PT_REQUEST;
             request.setDestination(entry->second.id);
-            request.id = entry->second.nextRequestId;
+            request.ping_id = entry->second.nextRequestId;
             request.time = entry->second.statistics.mean(); // Fill with mean just to have something.
 
             // Store the request
             PingRequest req;
-            req.id = request.id;
+            req.id = request.ping_id;
             req.time_of_dispatch = now;
 
             //entry->second.requests.push_back(req);
