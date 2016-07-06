@@ -111,6 +111,9 @@ namespace Control
             param("Filter - Centroid EstimatedLocalState Entity", m_args.ent_centroid_elocalstate)
             .defaultValue("Formation Centroid");
 
+            // Initialize
+            m_centroid_elstate.clear();
+
 
             bind<IMC::PWM>(this);
             bind<IMC::EstimatedLocalState>(this);
