@@ -181,6 +181,9 @@ namespace Control
 
         //! Enable sync of bias
         bool enable_bias_sync;
+
+        //! bias sync gain
+        double bias_sync_gain;
       };
 
       static const std::string c_parcel_names[] = { DTR_RT("Force PID-X"), DTR_RT("Force PID-Y"), DTR_RT("Force PID-Z"),
@@ -501,6 +504,10 @@ namespace Control
 
           param("Enable bias sync", m_args.enable_bias_sync)
           .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER);
+
+          param("Bias sync gain", m_args.bias_sync_gain)
+          .defaultValue("1")
           .visibility(Tasks::Parameter::VISIBILITY_USER);
 
           // Bind incoming IMC messages
@@ -1321,8 +1328,6 @@ namespace Control
         streamSyncBias(void)
         {
           Matrix u_bias(3, 1, 0);
-          if (!m_args.enable_formation_integration)
-            return u_bias;
 
           Matrix bias_z = Matrix();
           bias_z.resizeAndFill(3, m_L, 0);
@@ -1334,7 +1339,7 @@ namespace Control
 
           for (unsigned int link = 0; link < m_L; link++)
           {
-            u_bias -= m_D(m_i, link) * 0.01 *  z_tilde.column(link);
+            u_bias -= m_D(m_i, link) * z_tilde.column(link);
           }
 
           return u_bias;
@@ -1568,7 +1573,7 @@ namespace Control
           Matrix u_sync = Matrix(3,1, 0.0);
           if (m_args.enable_bias_sync)
           {
-            u_sync = 100*streamSyncBias();
+            u_sync = m_args.bias_sync_gain*streamSyncBias();
           }
 
           m_bias_estimate(0) += ((double)m_time_diff/1.0E3) * m_args.Ki(0) * ((v_error_ned(0) + formation_int_enable * u_bias_est(0)) + u_sync(0));
