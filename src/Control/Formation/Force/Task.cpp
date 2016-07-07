@@ -1102,6 +1102,21 @@ namespace Control
               // Update desired difference variables matrix
               calcDiffVariable(&m_z_d, m_D, m_x_c);
               printMatrix(m_z_d);
+
+              inf("Default desired formation:");
+              printMatrix(m_x_c_default, DEBUG_LEVEL_NONE);
+              inf("Current desired formation:");
+              printMatrix(m_x_c, DEBUG_LEVEL_NONE);
+              inf("Current desired heading: %f [rad]", m_curr_desired_heading);
+              inf("Current Centroid Heading: %f [rad]", m_curr_heading);
+              inf("Current Mission Velocity: [%1.1f, %1.1f, %1.1f]", m_v_mission_centroid(0),
+                  m_v_mission_centroid(1), m_v_mission_centroid(2));
+
+              inf("Current positions:");
+              printMatrix(m_x, DEBUG_LEVEL_NONE);
+              inf("Current difference variables:");
+              printMatrix(m_z_d, DEBUG_LEVEL_NONE);
+
             }
           }
         }
