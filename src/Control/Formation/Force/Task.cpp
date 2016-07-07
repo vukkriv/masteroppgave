@@ -635,6 +635,10 @@ namespace Control
           m_time_end = Clock::getMsec();
           m_time_diff = 0.0;
           m_bias_estimate = Matrix(3,1, 0.0);
+
+          // Reset the desired heading to current heading, to fix issue where were using the
+          // desired heading from last iteration, and setting the formation based on current heading.
+          m_curr_desired_heading = m_curr_heading;
         }
 
         void
