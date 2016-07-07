@@ -1390,7 +1390,8 @@ namespace Control
             for (unsigned int link = 0; link < m_L; link++)
             {
               u_form -= m_D(m_i, link) * gain * z_tilde.column(link);
-
+              // FIeld hack: Take the gain to one third
+              u_form(2) *= 0.3;
               link_errors_agent += m_D(m_i, link) * z_tilde.column(link);
             }
           }
