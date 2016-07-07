@@ -463,7 +463,7 @@ namespace Monitors
           waitForMessages(1.0);
           cleanRequestsUpdateStatistics();
           sendNewRequests();
-          spew("Entries: %lu", m_addressBook.size());
+          spew("Entries: %u", m_addressBook.size());
 
         }
       }
