@@ -248,12 +248,14 @@ namespace Control
           //pcs->toText(std::cout);
 
           // Check if we just stopped executing a plan
+          spew("Last state: %d. New state: %d. Outcome: %d. ", m_last_pcs.state, pcs->state, pcs->last_outcome);
           if (m_last_pcs.state == IMC::PlanControlState::PCS_EXECUTING
               && pcs->state == IMC::PlanControlState::PCS_READY)
           {
             debug("Plan stopped");
             // Check if success
-            if (pcs->last_outcome == IMC::PlanControlState::LPO_SUCCESS)
+            if (pcs->last_outcome == IMC::PlanControlState::LPO_SUCCESS
+                || pcs->last_outcome == IMC::PlanControlState::LPO_FAILURE)
             {
               debug("Plan success");
               // Notify vehicles in formation
