@@ -184,6 +184,9 @@ namespace Control
 
         //! bias sync gain
         double bias_sync_gain;
+
+        //! Extra link gain for the z-axis. Typically 0.3.
+        double link_z_gain_multiplier;
       };
 
       static const std::string c_parcel_names[] = { DTR_RT("Force PID-X"), DTR_RT("Force PID-Y"), DTR_RT("Force PID-Z"),
@@ -509,6 +512,10 @@ namespace Control
           param("Bias sync gain", m_args.bias_sync_gain)
           .defaultValue("1")
           .visibility(Tasks::Parameter::VISIBILITY_USER);
+
+          param("Link Z Gain Multiplier", m_args.link_z_gain_multiplier)
+          .defaultValue("0.3")
+          .description("Additional multiplier used to lower the gain on the z-axis of formation. Typically 0.3");
 
           // Bind incoming IMC messages
           bind<IMC::DesiredLinearState>(this);
@@ -1390,8 +1397,9 @@ namespace Control
             for (unsigned int link = 0; link < m_L; link++)
             {
               u_form -= m_D(m_i, link) * gain * z_tilde.column(link);
-              // FIeld hack: Take the gain to one third
-              u_form(2) *= 0.3;
+
+              // Gain down the z-axis component
+              u_form(2) *= m_args.link_z_gain_multiplier;
               link_errors_agent += m_D(m_i, link) * z_tilde.column(link);
             }
           }
