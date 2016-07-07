@@ -416,20 +416,22 @@ namespace Control
 
             IMC::DesiredLinearState desLinState;
 
+
+            // Only use for x,y. Send z directly, no acc (for now)
             desLinState.vx = m_refmodel.x(0);
             desLinState.vy = m_refmodel.x(1);
-            desLinState.vz = m_refmodel.x(2);
+            desLinState.vz = vel(2);
 
             desLinState.ax = m_refmodel.x(3);
             desLinState.ay = m_refmodel.x(4);
-            desLinState.az = m_refmodel.x(5);
+            desLinState.az = 0;
 
             desLinState.flags = IMC::DesiredLinearState::FL_VX |
                                 IMC::DesiredLinearState::FL_VY |
                                 IMC::DesiredLinearState::FL_VZ |
                                 IMC::DesiredLinearState::FL_AX |
                                 IMC::DesiredLinearState::FL_AY |
-                                IMC::DesiredLinearState::FL_AZ;
+                                IMC::DesiredLinearState::FL_AZ; // Keep flag just so it uses the other ones.
 
             m_desired_yaw = m_desired_yaw + timestep * yawrate;
 
