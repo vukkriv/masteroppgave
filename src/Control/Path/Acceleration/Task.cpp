@@ -79,7 +79,6 @@ namespace Control
         bool enable_sigmmoid_smoothing;
         double sigmoid_acc_thresh;
         double sigmoid_history_time;
-        double sigmoid_gain;
         double sigmoid_offsetAt99;
         double sigmoid_center;
         bool enable_pendulum_observer;
@@ -87,7 +86,6 @@ namespace Control
         bool enable_sigmoid_gainscheduler;
         double sigmoid_gainschedule_angle_thresh;
         double sigmoid_gainschedule_history_time;
-        double sigmoid_gainschedule_gain;
         double sigmoid_gainschedule_offsetAt99;
         double sigmoid_gainschedule_center;
       };
@@ -352,36 +350,6 @@ namespace Control
         {
           return this->get(percent_below_threshold);
         }
-
-        double percent_below_threshold;
-      };
-
-      class SigmoidSmoothingState: public SigmoidGain
-      {
-      public:
-        SigmoidSmoothingState():
-          percent_below_threshold(0.0)
-        {
-          /* Intentionally Empty */
-        };
-
-        double
-        getGain(void)
-        {
-          return this->get(percent_below_threshold);
-        }
-
-        double percent_below_threshold;
-      };
-
-      class SigmoidGainScheduleState
-      {
-      public:
-        SigmoidGainScheduleState():
-          percent_below_threshold(0.0)
-      {
-          /* Intentionally Empty */
-      };
 
         double percent_below_threshold;
       };
@@ -749,10 +717,6 @@ namespace Control
           .defaultValue("2.0")
           .visibility(Parameter::VISIBILITY_USER);
 
-          param("Sigmoid - Gain", m_args.sigmoid_gain)
-          .defaultValue("15")
-          .visibility(Parameter::VISIBILITY_USER);
-
           param("Sigmoid - Offset At 99%", m_args.sigmoid_offsetAt99)
           .minimumValue("0.0")
           .defaultValue("20.0")
@@ -805,10 +769,6 @@ namespace Control
 
           param("Sigmoid Gain Scheuler - Backwards History Time",m_args.sigmoid_gainschedule_history_time)
           .defaultValue("3.0")
-          .visibility(Parameter::VISIBILITY_USER);
-
-          param("Sigmoid Gain Scheuler - Gain", m_args.sigmoid_gainschedule_gain)
-          .defaultValue("15")
           .visibility(Parameter::VISIBILITY_USER);
 
           param("Sigmoid gain Scheuler - Offset At 99%", m_args.sigmoid_gainschedule_offsetAt99)
