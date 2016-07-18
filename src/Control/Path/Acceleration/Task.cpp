@@ -80,14 +80,16 @@ namespace Control
         double sigmoid_acc_thresh;
         double sigmoid_history_time;
         double sigmoid_gain;
-        double sigmoid_shift;
+        double sigmoid_offsetAt99;
+        double sigmoid_center;
         bool enable_pendulum_observer;
         double slung_numerical_diff_filter_beta;
         bool enable_sigmoid_gainscheduler;
         double sigmoid_gainschedule_angle_thresh;
         double sigmoid_gainschedule_history_time;
         double sigmoid_gainschedule_gain;
-        double sigmoid_gainschedule_shift;
+        double sigmoid_gainschedule_offsetAt99;
+        double sigmoid_gainschedule_center;
       };
 
       static const std::string c_parcel_names[] = {DTR_RT("PID"), DTR_RT("Beta-X"),
@@ -273,7 +275,88 @@ namespace Control
         Matrix filteredRef;
       };
 
-      class SigmoidSmoothingState
+      // Root class for a sigmoid gain function.
+      class SigmoidGain
+      {
+      public:
+        // Default constructor. Centre 0.5, 99 at 0.7.
+        SigmoidGain()
+        {
+          updateGains(0.0, 0.2);
+        };
+
+        SigmoidGain(double centre, double offsetAt99)
+        {
+          updateGains(centre, offsetAt99, 0.99);
+        };
+
+
+        SigmoidGain(double centre, double offsetAtX, double X)
+        {
+          updateGains(centre, offsetAtX, X);
+        }
+
+
+        void
+        updateGains(double centre, double offsetAt99)
+        {
+          updateGains(centre, offsetAt99, 0.99);
+        }
+
+        void
+        updateGains(double centre, double offsetAtX, double X)
+        {
+          // Calculate slope based on a certain value at a point.
+          // That is, at centre + offsetAtX, the gain will be X. (typically 0.95 or 0.99)
+
+          m_centre = centre;
+          m_slope = - (1 / (offsetAtX - centre ) ) * std::log( 1.0/X - 1.0);
+        }
+
+        double
+        get(double value)
+        {
+          return sigmoid(m_slope * (value - m_centre));
+        }
+
+        double
+        getGain(double value)
+        {
+          return get(value);
+        }
+
+      private:
+
+        double
+        sigmoid(double t)
+        {
+          return 1.0 / (1.0 + std::exp(-t));
+        }
+        double m_centre;
+        double m_slope;
+
+
+      };
+
+      class SigmoidGainState: public SigmoidGain
+      {
+      public:
+        SigmoidGainState():
+          percent_below_threshold(0.0)
+        {
+          /* Intentionally Empty */
+        };
+
+        double
+        getGain(void)
+        {
+          return this->get(percent_below_threshold);
+        }
+
+        double percent_below_threshold;
+      };
+
+      class SigmoidSmoothingState: public SigmoidGain
       {
       public:
         SigmoidSmoothingState():
@@ -281,6 +364,12 @@ namespace Control
         {
           /* Intentionally Empty */
         };
+
+        double
+        getGain(void)
+        {
+          return this->get(percent_below_threshold);
+        }
 
         double percent_below_threshold;
       };
@@ -453,13 +542,13 @@ namespace Control
         //! Current desired Z
         IMC::DesiredZ m_dz;
         //! State of the sigmoid smoother
-        SigmoidSmoothingState m_sigmoid_state;
+        SigmoidGainState m_sigmoid_state;
         //! Reference history to use by sigmoid smoother
         std::vector<ReferenceHistoryContainer> m_sigmoid_refhistory;
         //! Observer State
         ObserverState m_observer_state;
         //! State of the sigmoid gain scheduler
-        SigmoidGainScheduleState m_sigmoid_gainschedule_state;
+        SigmoidGainState m_sigmoid_gainschedule_state;
         //! Angle history for the gain scheduler
         std::vector<LoadAngleHistoryContainer> m_sigmoid_gainschedule_anghistory;
 
@@ -664,8 +753,18 @@ namespace Control
           .defaultValue("15")
           .visibility(Parameter::VISIBILITY_USER);
 
-          param("Sigmoid - Shift", m_args.sigmoid_shift)
-          .defaultValue("-0.5")
+          param("Sigmoid - Offset At 99%", m_args.sigmoid_offsetAt99)
+          .minimumValue("0.0")
+          .defaultValue("20.0")
+          .maximumValue("100.0")
+          .units(Units::Percentage)
+          .visibility(Parameter::VISIBILITY_USER);
+
+          param("Sigmoid - Center", m_args.sigmoid_center)
+          .minimumValue("0.0")
+          .defaultValue("50.0")
+          .maximumValue("100.0")
+          .units(Units::Percentage)
           .visibility(Parameter::VISIBILITY_USER);
 
           param("CtrlMisc - Enable Output Division By Mass", m_args.enable_mass_division)
@@ -712,8 +811,18 @@ namespace Control
           .defaultValue("15")
           .visibility(Parameter::VISIBILITY_USER);
 
-          param("Sigmoid Gain Scheuler - Shift", m_args.sigmoid_gainschedule_shift)
-          .defaultValue("-0.5")
+          param("Sigmoid gain Scheuler - Offset At 99%", m_args.sigmoid_gainschedule_offsetAt99)
+          .minimumValue("0.0")
+          .defaultValue("20.0")
+          .maximumValue("100.0")
+          .units(Units::Percentage)
+          .visibility(Parameter::VISIBILITY_USER);
+
+          param("Sigmoid Gain Scheuler - Center", m_args.sigmoid_gainschedule_center)
+          .minimumValue("0.0")
+          .defaultValue("50.0")
+          .maximumValue("100.0")
+          .units(Units::Percentage)
           .visibility(Parameter::VISIBILITY_USER);
 
 
@@ -804,6 +913,16 @@ namespace Control
 
             dispatch(toSet, DF_LOOP_BACK);
 
+          }
+
+          if (paramChanged(m_args.sigmoid_center) || paramChanged(m_args.sigmoid_offsetAt99))
+          {
+            m_sigmoid_state.updateGains(m_args.sigmoid_center/100.0, m_args.sigmoid_offsetAt99/100.0);
+          }
+
+          if (paramChanged(m_args.sigmoid_gainschedule_center) || paramChanged(m_args.sigmoid_gainschedule_offsetAt99))
+          {
+            m_sigmoid_gainschedule_state.updateGains(m_args.sigmoid_gainschedule_center/100.0, m_args.sigmoid_gainschedule_offsetAt99/100.0);
           }
 
           // Update observer matrices
@@ -1252,8 +1371,7 @@ namespace Control
             // Update and check the sigmoid
             updateSigmoidSmoothingState(now);
 
-            double gain = gainedSigmoid(m_sigmoid_state.percent_below_threshold);
-
+            double gain = m_sigmoid_state.getGain();
 
             trace("Sigmoid percent, gain: %.3f, %.3f", m_sigmoid_state.percent_below_threshold, gain);
             Gd = gain * Gd;
@@ -1264,8 +1382,7 @@ namespace Control
           {
 
             // The state is updated when receiving and angle.
-
-            double gain = 1.0-gainedSigmoidScheduler(m_sigmoid_gainschedule_state.percent_below_threshold);
+            double gain = m_sigmoid_gainschedule_state.getGain();
 
             trace("Gainscheduler percent, gain: %.3f, %.3f", m_sigmoid_gainschedule_state.percent_below_threshold, gain);
 
@@ -1326,24 +1443,6 @@ namespace Control
           dispatch(m_parcels[PC_DELAYED_X]);
           dispatch(m_parcels[PC_DELAYED_Y]);
 
-        }
-
-        double
-        gainedSigmoid(double t)
-        {
-          return sigmoid(m_args.sigmoid_gain * (m_args.sigmoid_shift + t));
-        }
-
-        double
-        gainedSigmoidScheduler(double t)
-        {
-          return sigmoid(m_args.sigmoid_gainschedule_gain * (m_args.sigmoid_gainschedule_shift + t));
-        }
-
-        double
-        sigmoid(double t)
-        {
-          return 1.0 / (1.0 + std::exp(-t));
         }
 
         void
