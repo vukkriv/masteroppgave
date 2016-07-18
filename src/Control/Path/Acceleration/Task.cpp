@@ -1327,6 +1327,7 @@ namespace Control
           trace("Angle history size: %lu", m_anglehistory.size());
 
           // Check sigmoid smoothing
+          double Gd_orig = Gd;
           if (m_args.enable_sigmmoid_smoothing)
           {
 
@@ -1351,6 +1352,9 @@ namespace Control
             m_log.virt_err_y = gain;
             Gd = gain * Gd;
           }
+
+          // Log the total gain
+          m_log.virt_err_z = Gd / Gd_orig;
 
 
 
