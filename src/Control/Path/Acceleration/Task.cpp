@@ -519,6 +519,8 @@ namespace Control
         SigmoidGainState m_sigmoid_gainschedule_state;
         //! Angle history for the gain scheduler
         std::vector<LoadAngleHistoryContainer> m_sigmoid_gainschedule_anghistory;
+        //! Log history
+        IMC::RelativeState m_log;
 
 
 
@@ -1334,6 +1336,7 @@ namespace Control
             double gain = m_sigmoid_state.getGain();
 
             trace("Sigmoid percent, gain: %.3f, %.3f", m_sigmoid_state.percent_below_threshold, gain);
+            m_log.virt_err_x = gain;
             Gd = gain * Gd;
           }
 
@@ -1345,7 +1348,7 @@ namespace Control
             double gain = m_sigmoid_gainschedule_state.getGain();
 
             trace("Gainscheduler percent, gain: %.3f, %.3f", m_sigmoid_gainschedule_state.percent_below_threshold, gain);
-
+            m_log.virt_err_y = gain;
             Gd = gain * Gd;
           }
 
@@ -1660,10 +1663,9 @@ namespace Control
             dispatch(m_parcels[PC_ERROR_X+i]);
           }
 
-          IMC::RelativeState relstate;
-          relstate.err_x = error_p(0); relstate.err_y = error_p(1); relstate.err_z = error_p(2);
+          m_log.err_x = error_p(0); m_log.err_y = error_p(1); m_log.err_z = error_p(2);
 
-          dispatch(relstate);
+          dispatch(m_log);
 
 
           if (m_args.enable_slung_control )
