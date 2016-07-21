@@ -1346,7 +1346,7 @@ namespace Control
           {
 
             // The state is updated when receiving and angle.
-            double gain = m_sigmoid_gainschedule_state.getGain();
+            double gain = 1-m_sigmoid_gainschedule_state.getGain();
 
             trace("Gainscheduler percent, gain: %.3f, %.3f", m_sigmoid_gainschedule_state.percent_below_threshold, gain);
             m_log.virt_err_y = gain;
