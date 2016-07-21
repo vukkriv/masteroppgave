@@ -308,7 +308,7 @@ namespace Control
           // That is, at centre + offsetAtX, the gain will be X. (typically 0.95 or 0.99)
 
           m_centre = centre;
-          m_slope = - (1 / (offsetAtX - centre ) ) * std::log( 1.0/X - 1.0);
+          m_slope = - (1 / (offsetAtX ) ) * std::log( 1.0/X - 1.0);
         }
 
         double
