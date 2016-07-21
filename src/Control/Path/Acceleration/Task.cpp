@@ -1579,6 +1579,14 @@ namespace Control
           clearInputShapingState();
         }
 
+
+        // Override loiter functionality to just hover.
+        void
+        loiter(const IMC::EstimatedState& state, const TrackingState& ts)
+        {
+          step(state, ts);
+        }
+
         void
         step(const IMC::EstimatedState& state, const TrackingState& ts)
         {
