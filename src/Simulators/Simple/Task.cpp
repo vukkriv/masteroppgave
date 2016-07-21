@@ -405,6 +405,7 @@ namespace Simulators
         m_estate.lat = m_sstate.lat;
         m_estate.lon = m_sstate.lon;
         m_estate.height = m_sstate.height;
+        m_estate.alt = -m_sstate.z;
 
         m_estate.x = m_sstate.x;
         m_estate.y = m_sstate.y;

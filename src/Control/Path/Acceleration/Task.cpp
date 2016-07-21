@@ -308,7 +308,7 @@ namespace Control
           // That is, at centre + offsetAtX, the gain will be X. (typically 0.95 or 0.99)
 
           m_centre = centre;
-          m_slope = - (1 / (offsetAtX - centre ) ) * std::log( 1.0/X - 1.0);
+          m_slope = - (1 / (offsetAtX ) ) * std::log( 1.0/X - 1.0);
         }
 
         double
@@ -1346,7 +1346,7 @@ namespace Control
           {
 
             // The state is updated when receiving and angle.
-            double gain = m_sigmoid_gainschedule_state.getGain();
+            double gain = 1-m_sigmoid_gainschedule_state.getGain();
 
             trace("Gainscheduler percent, gain: %.3f, %.3f", m_sigmoid_gainschedule_state.percent_below_threshold, gain);
             m_log.virt_err_y = gain;
