@@ -1650,7 +1650,7 @@ namespace Control
           IMC::ControlParcel parcel = m_parcels[PC_PID];
           Matrix parcel_p = m_args.Kp * error_p;
           Matrix parcel_d = m_args.Kd * error_d;
-          Matrix parcel_i = m_args.Ki * m_integrator_value;
+          Matrix parcel_i = m_integrator_value;
 
           if (!m_args.use_altitude)
           {
