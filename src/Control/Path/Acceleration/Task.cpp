@@ -1314,7 +1314,7 @@ namespace Control
           // This function uses the angle-history to update the current additions to the reference signal
 
           // To be able to continiously update the parameters, they are re-calculated each step.
-          double pd =  0.001;
+          double pd = m_args.pd;
           double omega_n = std::sqrt(Math::c_gravity/m_args.suspended_rope_length);
           double xi = pd/(2*omega_n*(m_args.suspended_load_mass_g/1000.0));
           double omega_d = omega_n*std::sqrt(1 - std::pow(xi,2));
