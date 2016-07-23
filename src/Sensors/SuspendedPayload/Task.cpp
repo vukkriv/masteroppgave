@@ -92,7 +92,7 @@ namespace Sensors
 
         param("Offset Phi", m_args.offset_phi_deg)
         .units(Units::Degree)
-        .defaultValue("-6");
+        .defaultValue("1");
 
         param("Offset Theta", m_args.offset_theta_deg)
         .units(Units::Degree)
