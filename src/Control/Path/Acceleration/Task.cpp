@@ -543,33 +543,33 @@ namespace Control
           .description("Enable Acc Controller");
 
           param("Max Acceleration", m_args.max_acc)
-          .defaultValue("3")
+          .defaultValue("7")
           .units(Units::MeterPerSquareSecond)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Max acceleration of the vehicle");
 
           param("Ref - Max Acceleration", m_args.refmodel_max_acc)
-          .defaultValue("1.5")
+          .defaultValue("6")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Max acceleration of the reference model.");
 
           param("Ref - Natural Frequency",m_args.refmodel_omega_n)
           .units(Units::RadianPerSecond)
-          .defaultValue("0.5")
+          .defaultValue("1.1")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Natural frequency for the speed reference model");
 
           param("Ref - Relative Damping", m_args.refmodel_xi)
           .units(Units::None)
-          .defaultValue("0.9")
+          .defaultValue("1.1")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Relative Damping Factor of the speed reference model");
 
           param("Ref - Pre-filter Time Constant", m_args.prefilter_time_constant)
-          .defaultValue("0.05")
+          .defaultValue("0.01")
           .minimumValue("0.01")
           .maximumValue("0.99")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -586,7 +586,7 @@ namespace Control
           .description("Controller bandwidth");
 
           param("Controller - Relative Damping", m_args.ctrl_xi)
-          .defaultValue("1.0")
+          .defaultValue("0.9")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Controller damping");
 
@@ -630,7 +630,7 @@ namespace Control
           .description("Choose whether to reset the integrator in a path activation. ");
 
           param("Model - Copter Mass", m_args.copter_mass_kg)
-          .defaultValue("2.5")
+          .defaultValue("3")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .units(Units::Kilogram)
           .description("Mass of the copter");
@@ -648,7 +648,7 @@ namespace Control
           .description("Length of suspended rope. Used for various filters. ");
 
           param("Model - Wind Drag Coefficient", m_args.wind_drag_coefficient)
-          .defaultValue("0.05")
+          .defaultValue("0.2")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_PLAN)
           .description("Coefficient to use in wind ff");
