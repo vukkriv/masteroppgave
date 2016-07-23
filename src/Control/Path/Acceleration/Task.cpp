@@ -1623,7 +1623,7 @@ namespace Control
           Matrix refAcc  = m_reference.getAcc();
 
           // Integral effect
-          m_integrator_value += ts.delta * error_p;
+          m_integrator_value += ts.delta * m_args.Ki * error_p;
           // Negate altitude
           if (!m_args.use_altitude)
             m_integrator_value(2) = 0.0;
@@ -1632,8 +1632,18 @@ namespace Control
           if (m_integrator_value.norm_2() > m_args.max_integral)
             m_integrator_value = m_args.max_integral * m_integrator_value / m_integrator_value.norm_2();
 
-          desiredAcc = m_args.copter_mass_kg * refAcc + m_args.Kd * error_d + m_args.Kp * error_p + m_args.Ki * m_integrator_value;
+          desiredAcc = m_args.copter_mass_kg * refAcc + m_args.Kd * error_d + m_args.Kp * error_p + m_integrator_value;
 
+          IMC::EstimatedStreamVelocity esv;
+          esv.x = m_integrator_value(0)/m_args.wind_drag_coefficient;
+          esv.y = m_integrator_value(1)/m_args.wind_drag_coefficient;
+          esv.z = m_integrator_value(2)/m_args.wind_drag_coefficient;
+
+          dispatch(esv);
+
+          m_log.ss_x = m_integrator_value(0)/m_args.wind_drag_coefficient;
+          m_log.ss_y = m_integrator_value(1)/m_args.wind_drag_coefficient;
+          m_log.ss_z = m_integrator_value(2)/m_args.wind_drag_coefficient;
 
 
           // Dispatch debug parcels
