@@ -707,21 +707,21 @@ namespace Control
           }
 
           param("Sigmoid - Enable", m_args.enable_sigmmoid_smoothing)
-          .defaultValue("false")
+          .defaultValue("true")
           .visibility(Parameter::VISIBILITY_USER);
 
           param("Sigmoid - Acceleration Threshold", m_args.sigmoid_acc_thresh)
-          .defaultValue("0.05")
+          .defaultValue("0.5")
           .visibility(Parameter::VISIBILITY_USER);
 
 
           param("Sigmoid - Backwards History Time",m_args.sigmoid_history_time)
-          .defaultValue("2.0")
+          .defaultValue("1.0")
           .visibility(Parameter::VISIBILITY_USER);
 
           param("Sigmoid - Offset At 99%", m_args.sigmoid_offsetAt99)
           .minimumValue("0.0")
-          .defaultValue("20.0")
+          .defaultValue("10.0")
           .maximumValue("100.0")
           .units(Units::Percentage)
           .visibility(Parameter::VISIBILITY_USER);
@@ -750,7 +750,7 @@ namespace Control
           .description("Use the square of the velocity to calculate wind ff");
 
           param("CtrlMisc - Enable Pendulum Observer", m_args.enable_pendulum_observer)
-          .defaultValue("true")
+          .defaultValue("false")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Enable Luenberger type observer for pendulum behavior. ");
 
@@ -761,7 +761,7 @@ namespace Control
           .description("Increase to make the response slower. ");
 
           param("Sigmoid Gain Scheuler - Enable", m_args.enable_sigmoid_gainscheduler)
-          .defaultValue("false")
+          .defaultValue("true")
           .visibility(Parameter::VISIBILITY_USER);
 
           param("Sigmoid Gain Scheuler - Angle Threshold", m_args.sigmoid_gainschedule_angle_thresh)
@@ -770,19 +770,19 @@ namespace Control
           .visibility(Parameter::VISIBILITY_USER);
 
           param("Sigmoid Gain Scheuler - Backwards History Time",m_args.sigmoid_gainschedule_history_time)
-          .defaultValue("3.0")
+          .defaultValue("10.0")
           .visibility(Parameter::VISIBILITY_USER);
 
           param("Sigmoid gain Scheuler - Offset At 99%", m_args.sigmoid_gainschedule_offsetAt99)
           .minimumValue("0.0")
-          .defaultValue("20.0")
+          .defaultValue("10.0")
           .maximumValue("100.0")
           .units(Units::Percentage)
           .visibility(Parameter::VISIBILITY_USER);
 
           param("Sigmoid Gain Scheuler - Center", m_args.sigmoid_gainschedule_center)
           .minimumValue("0.0")
-          .defaultValue("50.0")
+          .defaultValue("60.0")
           .maximumValue("100.0")
           .units(Units::Percentage)
           .visibility(Parameter::VISIBILITY_USER);
