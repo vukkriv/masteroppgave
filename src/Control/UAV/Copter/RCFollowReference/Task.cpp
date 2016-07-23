@@ -148,7 +148,7 @@ namespace Control
 
             param("Knob Tuning Parameter", m_args.knob_tuning_parameter)
             .visibility(Parameter::VISIBILITY_USER)
-            .values("None,Controller - Bandwidth,Model - Wind Drag Coefficient,Delayed - tau_d extra,Model - Suspended Rope Length")
+            .values("None,Controller - Bandwidth,Model - Wind Drag Coefficient,Delayed - tau_d extra,Model - Suspended Rope Length,Delayed - pd")
             .defaultValue("None")
             .description("Which parameter to tune. ");
 
