@@ -330,7 +330,13 @@ namespace Control
           virtual void
           reset(void)
           {
-            m_desired_yaw = m_centroid_elstate.state->psi;
+            if (m_centroid_elstate.state.isNull())
+            {
+              err("Not yet gotten centroid yaw. Setting desired yaw to 0");
+              m_desired_yaw = 0;
+            }
+            else
+              m_desired_yaw = m_centroid_elstate.state->psi;
             initRefmodel();
           }
 
