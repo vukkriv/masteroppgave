@@ -155,6 +155,7 @@ namespace Monitors
           if (send_abort)
           {
             IMC::Abort abort;
+            abort.setDestination(getSystemId());
             dispatch(abort);
 
             m_time_prev_abort = Clock::get();
