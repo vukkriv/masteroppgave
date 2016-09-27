@@ -1343,7 +1343,7 @@ namespace Control
                 IMC::Abort abort_msg;
                 abort_msg.setDestination(getSystemId());
                 dispatch(abort_msg);
-                debug("Abort sent.");
+                war("Abort sent due to old data. ");
                 last_abort_sent = now;
               }
             }
