@@ -68,16 +68,20 @@ namespace Monitors
         AbortState(): got_abort(false),
                       got_vs_error(false),
                       got_formcord_abort(false),
+                      got_vs_back_to_service(false),
+                      got_idle_maneuver(false),
                       time_of_abort(0)
         {
           /* Intentionally empty. */
         };
 
-        bool allConditionsMet(void) { return (got_abort && got_vs_error); };
+        bool allConditionsMet(void) { return (got_abort && got_vs_error && got_vs_back_to_service && got_idle_maneuver); };
 
         bool got_abort;
         bool got_vs_error;
         bool got_formcord_abort;
+        bool got_vs_back_to_service;
+        bool got_idle_maneuver;
 
         double time_of_abort;
 
@@ -154,7 +158,7 @@ namespace Monitors
 
 
           param("State Timeout", m_args.state_reset_timeout)
-          .defaultValue("1")
+          .defaultValue("2")
           .description("Maximum time to wait for all criterias to be met. ");
 
           param("Filter - Centroid EstimatedLocalState Entity", m_args.ent_centroid_elocalstate)
@@ -165,6 +169,7 @@ namespace Monitors
           bind<IMC::VehicleState>(this);
           bind<IMC::EstimatedLocalState>(this);
           bind<IMC::EstimatedState>(this);
+          bind<IMC::IdleManeuver>(this);
 
         }
 
@@ -242,15 +247,44 @@ namespace Monitors
         void
         consume(const IMC::VehicleState* msg)
         {
+
+          //! Check if got abort (either from normal abort or foormcoord. Both sets abort flag.
           if (!m_abortState.got_abort)
             return;
 
-          //! Check if got abort (either from normal abort or foormcoord. Both sets abort flag.
-          if (msg->op_mode == VehicleState::VS_ERROR)
+          // We need the sequence of events: abort -> error -> service.
+          // Possible extension is to cancel abortPlan sequence if we drop back into error.
+
+          if ( !m_abortState.got_vs_error
+               && msg->op_mode == VehicleState::VS_ERROR )
           {
+            debug("Got error state. ");
             m_abortState.got_vs_error = true;
           }
 
+          if ( m_abortState.got_vs_error
+               && !m_abortState.got_vs_back_to_service
+               &&  msg->op_mode == VehicleState::VS_SERVICE)
+          {
+            debug("Got Back to Service. ");
+            m_abortState.got_vs_back_to_service = true;
+          }
+
+        }
+
+        void
+        consume(const IMC::IdleManeuver* msg)
+        {
+          (void) msg;
+
+          debug("Got Idle maneuver");
+
+          // This actually comes right after abort..
+          if (m_abortState.got_abort)
+          {
+            debug("Registered Idle Maneuver. ");
+            m_abortState.got_idle_maneuver = true;
+          }
         }
 
         void
@@ -272,10 +306,12 @@ namespace Monitors
 
         // Reset abort state
         void
-        resetAbortState(void)
+        resetAbortState(bool executed = false)
         {
           m_abortState = AbortState();
-          inf("Abort-state reset. ");
+
+          if (!executed)
+            war("Abort-state reset. ");
         }
 
         // Issue abort plan
@@ -340,7 +376,7 @@ namespace Monitors
 
 
           // Reset abortstate
-          resetAbortState();
+          resetAbortState(true);
         }
 
         void
