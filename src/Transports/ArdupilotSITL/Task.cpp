@@ -280,7 +280,8 @@ namespace Transports
       consume(const IMC::PWM* msg)
       {
         // Check source entity label
-        if (resolveEntity(msg->getSourceEntity()) == "RcViaArdupilot" ||
+        if (resolveEntity(msg->getSourceEntity()) == "RC Input" ||
+            resolveEntity(msg->getSourceEntity()) == "RcViaArdupilot" ||
             resolveEntity(msg->getSourceEntity()) == "Visualisor")
         {
 
