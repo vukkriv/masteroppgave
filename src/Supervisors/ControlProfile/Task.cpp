@@ -42,7 +42,7 @@ namespace Supervisors
     using DUNE_NAMESPACES;
 
     const std::string c_controller_profiles = "Normal,High Gain,Cruise";
-    const std::string c_controller_profile_flags = "No Integral,Land,Evasive";
+    const std::string c_controller_profile_flags = "No Integral,Land,Evasive,Passive";
 
     struct Arguments
     {
