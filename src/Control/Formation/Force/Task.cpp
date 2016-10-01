@@ -318,6 +318,9 @@ namespace Control
         //! Parcel array
         IMC::ControlParcel m_parcels[NUM_PARCELS];
 
+        //! Current control profile
+        IMC::ControlProfile m_cprofile;
+
 
         //! Constructor.
         //! @param[in] name task name.
@@ -524,6 +527,7 @@ namespace Control
           bind<IMC::FormCoord>(this);
           bind<IMC::CoordConfig>(this);
           bind<IMC::EstimatedStreamVelocity>(this);
+          bind<IMC::ControlProfile>(this);
         }
 
         //! Update internal state with new parameter values.
@@ -1121,6 +1125,17 @@ namespace Control
           }
         }
 
+        void
+        consume(const IMC::ControlProfile* msg)
+        {
+          // Check if it is a request
+          if (msg->op != IMC::ControlProfile::CPO_REQUEST)
+            return;
+
+          // Store the new profile
+          m_cprofile = *msg;
+        }
+
         bool
         isDesiredLinear(uint8_t msgSourceEntity)
         {
@@ -1605,16 +1620,20 @@ namespace Control
             u_sync = m_args.bias_sync_gain*streamSyncBias();
           }
 
-          m_bias_estimate(0) += ((double)m_time_diff/1.0E3) * m_args.Ki(0) * ((v_error_ned(0) + formation_int_enable * u_bias_est(0)) + u_sync(0));
-          m_bias_estimate(1) += ((double)m_time_diff/1.0E3) * m_args.Ki(1) * ((v_error_ned(1) + formation_int_enable * u_bias_est(1)) + u_sync(1));
-          m_bias_estimate(2) += ((double)m_time_diff/1.0E3) * m_args.Ki(2) * ((v_error_ned(2) + formation_int_enable * u_bias_est(2)) + u_sync(2));
+          // Do not update in NO_INTEGRAL mode
+          if ((m_cprofile.flags & IMC::ControlProfile::CPF_NO_INTEGRAL) == 0)
+          {
+            m_bias_estimate(0) += ((double)m_time_diff/1.0E3) * m_args.Ki(0) * ((v_error_ned(0) + formation_int_enable * u_bias_est(0)) + u_sync(0));
+            m_bias_estimate(1) += ((double)m_time_diff/1.0E3) * m_args.Ki(1) * ((v_error_ned(1) + formation_int_enable * u_bias_est(1)) + u_sync(1));
+            m_bias_estimate(2) += ((double)m_time_diff/1.0E3) * m_args.Ki(2) * ((v_error_ned(2) + formation_int_enable * u_bias_est(2)) + u_sync(2));
 
 
-          // Integral anti-windup
-          // Relationship is b = d * wind
-          if (m_bias_estimate.norm_2() / m_args.wind_drag_coefficient > m_args.max_wind_speed_estimate)
-            m_bias_estimate = (m_args.max_wind_speed_estimate * m_args.wind_drag_coefficient) * m_bias_estimate / m_bias_estimate.norm_2();
+            // Integral anti-windup
+            // Relationship is b = d * wind
+            if (m_bias_estimate.norm_2() / m_args.wind_drag_coefficient > m_args.max_wind_speed_estimate)
+              m_bias_estimate = (m_args.max_wind_speed_estimate * m_args.wind_drag_coefficient) * m_bias_estimate / m_bias_estimate.norm_2();
 
+          }
           // Add acceleration feed-forward and coordination input u
           F_i += m_args.mass * dv_des + u;
 
