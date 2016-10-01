@@ -1596,11 +1596,14 @@ namespace Control
           Matrix v_error_ned  = v_des - m_v_ned;
           Matrix dv_error_ned = dv_des - m_a_ned;
 
-          // F_i is transformed to NED before dispatch.
-          F_i(0) = m_args.Kp(0) * v_error_ned(0);
-          F_i(1) = m_args.Kp(1) * v_error_ned(1);
-          F_i(2) = m_args.Kp(2) * v_error_ned(2);
-
+          // Only add if not in passive mode
+          if ((m_cprofile.flags & IMC::ControlProfile::CPF_PASSIVE) == 0)
+          {
+            // F_i is transformed to NED before dispatch.
+            F_i(0) = m_args.Kp(0) * v_error_ned(0);
+            F_i(1) = m_args.Kp(1) * v_error_ned(1);
+            F_i(2) = m_args.Kp(2) * v_error_ned(2);
+          }
           // Add damping on acceleration. (Basically acceleration feed-forward. Will act as a mass-increaser, might make more robust to wind)
           F_i(0) += m_args.Kd(0) * dv_error_ned(0);
           F_i(1) += m_args.Kd(1) * dv_error_ned(1);
