@@ -1612,17 +1612,31 @@ namespace Control
           dv_error_ned(2) += Math::c_gravity;
 
           // Only add if not in passive mode
-          if ((m_cprofile.flags & IMC::ControlProfile::CPF_PASSIVE) == 0)
+          bool isNotPassiveMode = ((m_cprofile.flags & IMC::ControlProfile::CPF_PASSIVE) == 0);
+
+          if (isNotPassiveMode)
           {
             // F_i is transformed to NED before dispatch.
             F_i(0) = m_args.Kp(0) * v_error_ned(0);
             F_i(1) = m_args.Kp(1) * v_error_ned(1);
             F_i(2) = m_args.Kp(2) * v_error_ned(2);
+
+            // Add damping on acceleration. (Basically acceleration feed-forward. Will act as a mass-increaser, might make more robust to wind)
+            F_i(0) += m_args.Kd(0) * dv_error_ned(0);
+            F_i(1) += m_args.Kd(1) * dv_error_ned(1);
+            F_i(2) += m_args.Kd(2) * dv_error_ned(2);
           }
-          // Add damping on acceleration. (Basically acceleration feed-forward. Will act as a mass-increaser, might make more robust to wind)
-          F_i(0) += m_args.Kd(0) * dv_error_ned(0);
-          F_i(1) += m_args.Kd(1) * dv_error_ned(1);
-          F_i(2) += m_args.Kd(2) * dv_error_ned(2);
+          else
+          {
+            trace("In passive mode. ");
+            // Only acceleration damping
+            F_i(0) = m_args.Kd(0) * -m_a_ned(0);
+            F_i(1) = m_args.Kd(1) * -m_a_ned(1);
+            F_i(2) = m_args.Kd(2) * -m_a_ned(2);
+
+            // Set desired acc to zero to disable feed forward
+            dv_des = Matrix(3, 1, 0.0);
+          }
 
           // Do integration of the mission velocity error
           int formation_int_enable = m_args.enable_formation_integration ? 1.0 : 0.0;
@@ -1638,8 +1652,8 @@ namespace Control
             u_sync = m_args.bias_sync_gain*streamSyncBias();
           }
 
-          // Do not update in NO_INTEGRAL mode
-          if ((m_cprofile.flags & IMC::ControlProfile::CPF_NO_INTEGRAL) == 0)
+          // Do not update in NO_INTEGRAL mode, or in PASSIVE mode as the v_error_ned is not valid.
+          if (isNotPassiveMode && ((m_cprofile.flags & IMC::ControlProfile::CPF_NO_INTEGRAL) == 0))
           {
             m_bias_estimate(0) += ((double)m_time_diff/1.0E3) * m_args.Ki(0) * ((v_error_ned(0) + formation_int_enable * u_bias_est(0)) + u_sync(0));
             m_bias_estimate(1) += ((double)m_time_diff/1.0E3) * m_args.Ki(1) * ((v_error_ned(1) + formation_int_enable * u_bias_est(1)) + u_sync(1));
@@ -1660,7 +1674,7 @@ namespace Control
             F_i += m_bias_estimate;
 
           // Add optional wind feed forward
-          if (m_args.enable_wind_ff)
+          if (m_args.enable_wind_ff && isNotPassiveMode)
             F_i += m_args.wind_drag_coefficient * m_v_ned;
 
           // Do some logging.
