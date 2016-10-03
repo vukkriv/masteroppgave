@@ -476,7 +476,7 @@ namespace Control
           param("Vehicle Mass", m_args.mass)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .minimumValue("0.0")
-          .defaultValue("2.0")
+          .defaultValue("2.5")
           .maximumValue("20")
           .description("Mass of the current vehicle. ");
 
