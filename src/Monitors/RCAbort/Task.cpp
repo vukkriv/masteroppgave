@@ -72,7 +72,7 @@ namespace Monitors
         .description("Channel [1-12] to trigger on. ");
 
         param("Trigger On High", m_args.trigger_on_high)
-        .defaultValue("true")
+        .defaultValue("false")
         .description("Set to true to trigger on higher than treshold. Set to false to trigger on lower than threshold.");
 
         param("Threshold", m_args.threshold)
