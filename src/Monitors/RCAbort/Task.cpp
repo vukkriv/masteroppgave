@@ -63,6 +63,8 @@ namespace Monitors
         DUNE::Tasks::Task(name, ctx),
         m_prev_duty_cycle(1500)
       {
+        paramActive(Parameter::SCOPE_GLOBAL, Parameter::VISIBILITY_USER, true);
+
         param("Channel", m_args.channel)
         .minimumValue("1")
         .defaultValue("7")
@@ -132,6 +134,9 @@ namespace Monitors
       void
       consume(const IMC::PWM* pwm)
       {
+        if (!isActive())
+          return;
+
         //! Check for channel
         // ID is 1-indexed for both argument and message.
         if( (pwm->id ) == m_args.channel)
@@ -173,7 +178,7 @@ namespace Monitors
       {
         if ( m_args.trigger_on_high && pwmValue > m_args.threshold)
           return true;
-        if (!m_args.trigger_on_high && pwmValue < m_args.threshold)
+        if (!m_args.trigger_on_high && pwmValue < m_args.threshold && pwmValue > 1000)
           return true;
 
         return false;
