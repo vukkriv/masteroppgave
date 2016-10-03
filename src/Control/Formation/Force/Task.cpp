@@ -1134,6 +1134,7 @@ namespace Control
 
           // Store the new profile
           m_cprofile = *msg;
+          debug("Got new control profile. ");
         }
 
         bool
