@@ -1608,6 +1608,9 @@ namespace Control
           Matrix v_error_ned  = v_des - m_v_ned;
           Matrix dv_error_ned = dv_des - m_a_ned;
 
+          // Acceleration in z is received with gravity component, cancel
+          dv_error_ned(2) += Math::c_gravity;
+
           // Only add if not in passive mode
           if ((m_cprofile.flags & IMC::ControlProfile::CPF_PASSIVE) == 0)
           {
