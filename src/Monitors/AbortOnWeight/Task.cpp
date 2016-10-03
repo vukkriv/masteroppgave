@@ -67,7 +67,7 @@ namespace Monitors
         m_tstate(TS_INIT),
         m_time_last_trigger(0)
       {
-        paramActive(Parameter::SCOPE_GLOBAL, Parameter::VISIBILITY_USER);
+        paramActive(Parameter::SCOPE_GLOBAL, Parameter::VISIBILITY_USER, true);
 
         param("Weight Threshold", m_args.weight_treshold)
         .minimumValue("0.0")
@@ -129,6 +129,7 @@ namespace Monitors
           return;
 
 
+        trace("Got Weight of %f, is in state: %d", msg->value, (int)m_tstate);
         switch(m_tstate)
         {
           case TS_INIT:
@@ -136,6 +137,7 @@ namespace Monitors
             {
               m_tstate = TS_TRIGGER_WAIT;
               m_time_last_trigger = Clock::get();
+              debug("Weight above threshold, started timer. ");
             }
             break;
           case TS_TRIGGER_WAIT:
@@ -144,6 +146,7 @@ namespace Monitors
             {
               // Got below the threshold while waiting, got back to init state.
               m_tstate = TS_INIT;
+              debug("Weight now below threshold. ");
             }
             break;
         }
@@ -163,13 +166,14 @@ namespace Monitors
           // Check the timers
           if (m_tstate == TS_TRIGGER_WAIT)
           {
-            if (Clock::get() > m_time_last_trigger)
+            if (Clock::get() > m_time_last_trigger + m_args.trigger_minimum_time)
             {
               // Abort
               IMC::Abort abort;
               abort.setDestination(getSystemId());
 
               dispatch(abort);
+              inf("Sent abort due to weight limit. ");
 
               m_tstate = TS_ABORT_SENT;
             }
