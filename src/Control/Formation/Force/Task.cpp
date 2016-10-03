@@ -1285,9 +1285,21 @@ namespace Control
             return input;
 
           // Check valid inputs
-          assert(input.size() == output.size());
-          assert(dt > 0);
-          assert(RC > 0);
+          if (input.size() != output.size())
+          {
+            debug("lowPassSmoothing: Invalid output size. ");
+            return output;
+          }
+          if (dt < 0)
+          {
+            debug("lowPassSmoothing: Invalid dt: %f", dt);
+            return output;
+          }
+          if (RC < 0)
+          {
+            debug("lowPassSmoothing: Invalid RC: %f", RC);
+            return output;
+          }
 
           // Calculate alpha
           double alpha = dt / (RC + dt);
