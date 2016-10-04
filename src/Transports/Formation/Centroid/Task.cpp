@@ -241,6 +241,28 @@ namespace Transports
         fp32_t
         centroidHeading(std::vector<IMC::EstimatedLocalState> &el_v)
         {
+          // Heading is defined as direction between vehicle 1 and vehicle 0 in the formation.
+          /*
+           *
+           * Example of 0 deg
+           *  p0 -- p1
+           *
+           * Example of 45 deg
+           * p0  x   x
+           * x   x   x
+           * x   x   p1
+           *
+           * Example of -45 deg
+           * x   x   p1
+           * x   x   x
+           * p0  x   x
+           *
+           * Example of -135 deg
+           * x   p1  x
+           * x   x   x
+           * x   x   p0
+           *
+           */
           if (this->m_N > 1)
           {
             Matrix p = Matrix(2, this->m_N, 0);
