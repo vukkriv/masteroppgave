@@ -288,6 +288,8 @@ namespace Navigation
 
           // Default, we use full external state
           m_navsources.mask = (NS_EXTERNAL_FULLSTATE | NS_EXTERNAL_AHRS | NS_EXTERNAL_POSREF);
+          m_navsources.available_mask = (NS_EXTERNAL_FULLSTATE | NS_EXTERNAL_AHRS | NS_EXTERNAL_POSREF);
+
 
           m_extnav.state.set(IMC::EstimatedState());
 
