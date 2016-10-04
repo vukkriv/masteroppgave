@@ -42,6 +42,7 @@ namespace Monitors
       bool trigger_on_high;
       double threshold;
       double time_between_aborts;
+      bool only_during_maneuver;
 
     };
 
@@ -55,6 +56,9 @@ namespace Monitors
 
       //! Previous pwm value on channel
       int m_prev_duty_cycle;
+
+      //! Last recieved vehicle state
+      IMC::VehicleState m_vstate;
 
       //! Constructor.
       //! @param[in] name task name.
@@ -86,12 +90,17 @@ namespace Monitors
         .units(Units::Second)
         .description("Time between consequtive aborts being sent .");
 
+        param("Only In Maneuver", m_args.only_during_maneuver)
+        .defaultValue("true")
+        .description("Only send abort from RC during a maneuver. ");
+
         // Initiate previous abort time;
         m_time_prev_abort = Clock::get();
 
 
 
         bind<IMC::PWM>(this);
+        bind<IMC::VehicleState>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -158,7 +167,7 @@ namespace Monitors
           if (triggered && Clock::get() > m_time_prev_abort + m_args.time_between_aborts)
             send_abort = true;
 
-          if (send_abort)
+          if (send_abort && (!m_args.only_during_maneuver || m_vstate.op_mode == IMC::VehicleState::VS_MANEUVER))
           {
             IMC::Abort abort;
             abort.setDestination(getSystemId());
@@ -184,6 +193,12 @@ namespace Monitors
 
         return false;
 
+      }
+
+      void
+      consume(const IMC::VehicleState* msg)
+      {
+        m_vstate = *msg;
       }
 
       //! Main loop.
