@@ -278,6 +278,7 @@ namespace Supervisors
       void
       onResourceInitialization(void)
       {
+        setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
       }
 
       //! Release resources.
