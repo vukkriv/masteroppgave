@@ -414,7 +414,7 @@ namespace Control
             vel(1) = pwmToValueDeadband(-m_args.max_speed_xy, m_args.max_speed_xy, 1100, 1900, 0, 0.07, m_pwm_inputs[CH_Y]);
             vel(2) = pwmToValueDeadband( m_args.max_speed_z, -m_args.max_speed_z,  1100, 1900, 0, 0.07, m_pwm_inputs[CH_Z]);
 
-            yawrate = pwmToValueDeadband( -Angles::radians(m_args.max_yaw_rate), Angles::radians(m_args.max_yaw_rate),  1100, 1900, 0, 0.07, m_pwm_inputs[CH_TUNE]);
+            yawrate = pwmToValueDeadband( -Angles::radians(m_args.max_yaw_rate), Angles::radians(m_args.max_yaw_rate),  1100, 1900, 0, 0.07, m_pwm_inputs[CH_YAW]);
 
             // Step ref model
             stepNewRefModel(*msg, vel, timestep);
