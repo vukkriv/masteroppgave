@@ -301,6 +301,12 @@ namespace Control
           {
             spew("Got pwm: %d, %d", pwm->id, pwm->duty_cycle);
 
+            // Sanitycheck value
+            if (pwm->duty_cycle < 900)
+            {
+              spew("Got invalid pwm value, ignoring. ");
+              return;
+            }
 
 
             if (pwm->id > 0 && pwm->id <=8 )
