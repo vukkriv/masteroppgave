@@ -236,6 +236,7 @@ namespace Control
 
           double glideslope_angle = atan2((std::abs(ts.end.z) -std::abs(ts.start.z)),ts.track_length); //Negative for decent
 
+          // Assumes no wind
           double alpha_now = gamma_now - state.theta;
 
           double gamma_desired = asin(m_dvrate/Vg);
@@ -256,22 +257,18 @@ namespace Control
           m_thr_i = trimValue(m_thr_i,m_args.thr_min,m_args.thr_max); //Throttle anti wind-up at 
 
           //Calculate desired throttle and pitch
-          double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i *m_thr_i+ H_error*m_args.k_thr_ph + m_args.trim_throttle;
-          //double pitch_desired = gamma_desired + alpha_now-gamma_error*m_args.k_gamma_p;
+          double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i*m_thr_i + H_error*m_args.k_thr_ph + m_args.trim_throttle;
           double pitch_desired = gamma_desired + Angles::radians(m_args.trim_pitch)-gamma_error*m_args.k_gamma_p; //Backstepping,pitch_desired = gamma_desired + alpha_0
           pitch_desired = trimValue(pitch_desired,Angles::radians(m_args.pitch_min_deg),Angles::radians(m_args.pitch_max_deg));
           m_throttle.value = throttle_desired;
           m_pitch.value = pitch_desired;
 
           m_parcel_throttle.p = m_args.k_thr_p*V_error;
-          m_parcel_throttle.i = m_args.k_thr_i *m_thr_i;
+          m_parcel_throttle.i = m_args.k_thr_i*m_thr_i;
           m_parcel_throttle.d = H_error*m_args.k_thr_ph ;
-          m_parcel_throttle.a = gamma_error*m_args.k_gamma_p; // pitch
+          m_parcel_throttle.a = gamma_error*m_args.k_gamma_p; 
 
-
-
-
-          spew("pitch desired er %f, og alpha_0 er: %f",m_pitch.value,Angles::degrees(alpha_now));
+          spew("pitch desired: %f \t alpha_0: %f",m_pitch.value,Angles::degrees(alpha_now));
 
           dispatch(m_throttle);
           dispatch(m_pitch);
