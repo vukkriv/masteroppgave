@@ -51,6 +51,8 @@ namespace Control
         double k_thr_ph;
         double trim_pitch;
         double trim_throttle;
+        double pitch_max_deg;
+        double pitch_min_deg;
         // Input filtering
         std::string dz_src;
 
@@ -113,6 +115,16 @@ namespace Control
           param("Trim throttle", m_args.trim_throttle)
           .defaultValue("44.0")
           .description("Trim throttle for level flight");
+
+          param("Minimum pitch", m_args.pitch_min_deg)
+          .defaultValue("-10.0")              
+          .units(Units::Degree)
+          .description("Desired pitch is saturated to this value");
+
+          param("Maximum pitch", m_args.pitch_max_deg)
+          .defaultValue("15.0")
+          .units(Units::Degree)
+          .description("Desired pitch is saturated to this value");
 
           param("DesiredZ Filter", m_args.dz_src)
           .defaultValue("Tracking Altitude Controller")
@@ -235,7 +247,7 @@ namespace Control
           double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i *m_thr_i+ H_error*m_args.k_thr_ph + m_args.trim_throttle;
           //double pitch_desired = gamma_desired + alpha_now-gamma_error*m_args.k_gamma_p;
           double pitch_desired = gamma_desired + Angles::radians(m_args.trim_pitch)-gamma_error*m_args.k_gamma_p; //Backstepping,pitch_desired = gamma_desired + alpha_0
-          pitch_desired = trimValue(pitch_desired,-0.1745,0.2618); //Trim pitch -10 / 15 degree
+          pitch_desired = trimValue(pitch_desired,Angles::radians(m_args.pitch_min_deg),Angles::radians(m_args.pitch_max_deg));
           m_throttle.value = throttle_desired;
           m_pitch.value = pitch_desired;
 
