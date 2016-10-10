@@ -51,6 +51,10 @@ namespace Plan
       bool dynamically_landing;
       //! Arc segment distance
       double arc_segment_distance;
+      double overrideTOA;
+      std::string lat_ctrl;
+      std::string fbwa_lon_ctrl;
+      std::string glideslope_ctrl;
     };
 
     struct LandingPathArguments
@@ -176,6 +180,22 @@ namespace Plan
         .visibility(Tasks::Parameter::VISIBILITY_USER)
         .defaultValue("false")
         .description("True = Dynamically net, False = Stationary net");
+
+        param("Override Time-of-Arrival factor", m_args.overrideTOA)
+        .defaultValue("1.0")
+        .description("Value to override Time-of-Arrival factor for controllers during landing");
+
+        param("Glideslope Height Controller", m_args.glideslope_ctrl)
+        .defaultValue("Glideslope Height Controller")
+        .description("Glideslope Height Controller that will be used in landing");
+
+        param("FBWA Longitudinal Controller", m_args.fbwa_lon_ctrl)
+        .defaultValue("FBWA Longitudinal Controller")
+        .description("FBWA Longitudinal Controller that will be used in landing");
+
+        param("Lateral LOS Controller", m_args.lat_ctrl)
+        .defaultValue("Lateral LOS Control")
+        .description("Lateral LOS Controller that will be used in landing");
 
         //! Bind IMC messages
         bind<IMC::EstimatedState>(this);
@@ -515,23 +535,23 @@ namespace Plan
             IMC::SetEntityParameters eparam_start;
             IMC::EntityParameter param_t;
 
-            eparam_start.name = "Path Control";
+            eparam_start.name = m_args.lat_ctrl;
             param_t.name = "Override Time Of Arrival Factor";
-            param_t.value = "1.0";
+            param_t.value = m_args.overrideTOA;
             eparam_start.params.push_back(param_t);
 
             man_spec.start_actions.push_back(eparam_start);
 
-            eparam_start.name = "Longitudinal Controller";
+            eparam_start.name = m_args.fbwa_lon_ctrl;
             param_t.name = "Override Time Of Arrival Factor";
-            param_t.value = "1.0";
+            param_t.value = m_args.overrideTOA;
             eparam_start.params.push_back(param_t);
 
             man_spec.start_actions.push_back(eparam_start);
 
-            eparam_start.name = "Tracking Altitude Controller";
+            eparam_start.name = m_args.glideslope_ctrl;
             param_t.name = "Override Time Of Arrival Factor";
-            param_t.value = "1.0";
+            param_t.value = m_args.overrideTOA;
             eparam_start.params.push_back(param_t);
 
             man_spec.start_actions.push_back(eparam_start);
