@@ -64,6 +64,8 @@ namespace Control
         double Tref_z;
         double Tref_gamma;
 
+        double los_min_deg;
+        double los_max_deg;
       };
 
       class ReferenceModel
@@ -234,6 +236,16 @@ namespace Control
           .defaultValue("1.0")
           .description("Time constant for reference model for gamma");
 
+          param("Minimum LOS angle", m_args.los_min_deg)
+          .defaultValue("-7.0")              
+          .units(Units::Degree)
+          .description("Longitudinal line of sight angle is saturated to this value");
+
+          param("Maximum LOS angle", m_args.los_max_deg)
+          .defaultValue("7.0")              
+          .units(Units::Degree)
+          .description("Longitudinal line of sight angle is saturated to this value");
+
           param("Use reference model", m_args.use_refmodel)
           .defaultValue("true")
           .description("Flag to use reference model");
@@ -372,8 +384,8 @@ namespace Control
             debug("start-z : %f",ts.start.z);
           }
           else{
-          debug("end-z : %f",ts.end.z);
-          debug("start-z : %f",ts.start.z);
+            debug("end-z : %f",ts.end.z);
+            debug("start-z : %f",ts.start.z);
           }
 
           //****************************************************
@@ -433,7 +445,7 @@ namespace Control
           }
 
 
-          los_angle = trimValue(los_angle,-Angles::radians(7.0),Angles::radians(7.0));
+          los_angle = trimValue(los_angle,Angles::radians(m_args.los_min_deg),Angles::radians(m_args.los_max_deg));
           debug("Los_angle: %f",los_angle*(180/3.14159265));
 
           double gamma_cmd = glideslope_angle + los_angle; //Commanded flight path angle
