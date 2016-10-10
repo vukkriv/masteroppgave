@@ -138,9 +138,9 @@ namespace Control
           .units(Units::Percentage)
           .description("Throttle integrator is limited to this percentage");
 
-          param("DesiredZ Filter", m_args.dz_src)
-          .defaultValue("Tracking Altitude Controller")
-          .description("Entity allowed to set DesiredZ.");
+          param("Height source", m_args.dz_src)
+          .defaultValue("Glideslope Height Controller")
+          .description("Entity allowed to set DesiredZ and DesiredVerticalRate.");
 
           bind<IMC::IndicatedSpeed>(this);
           bind<IMC::DesiredVerticalRate>(this);
@@ -221,6 +221,9 @@ namespace Control
         void
         consume(const IMC::DesiredVerticalRate* d_vrate)
         {
+          if(!(d_vrate->getSourceEntity() == resolveEntity(m_args.dz_src))){
+            return;
+          }
           m_dvrate = d_vrate->value;
         }
 
