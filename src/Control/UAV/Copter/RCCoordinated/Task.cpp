@@ -165,21 +165,18 @@ namespace Control
             param("Ref - Max Jerk", m_args.refmodel_max_jerk)
             .defaultValue("8")
             .visibility(Tasks::Parameter::VISIBILITY_USER)
-            .scope(Tasks::Parameter::SCOPE_MANEUVER)
             .description("Max acceleration of the reference model.");
 
             param("Ref - Natural Frequency",m_args.refmodel_omega_n)
             .units(Units::RadianPerSecond)
             .defaultValue("1")
             .visibility(Tasks::Parameter::VISIBILITY_USER)
-            .scope(Tasks::Parameter::SCOPE_MANEUVER)
             .description("Natural frequency for the speed reference model");
 
             param("Ref - Relative Damping", m_args.refmodel_xi)
             .units(Units::None)
             .defaultValue("0.9")
             .visibility(Tasks::Parameter::VISIBILITY_USER)
-            .scope(Tasks::Parameter::SCOPE_MANEUVER)
             .description("Relative Damping Factor of the speed reference model");
 
             // Initialize
