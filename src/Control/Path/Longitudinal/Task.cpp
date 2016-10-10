@@ -51,6 +51,8 @@ namespace Control
         double k_thr_ph;
         double trim_pitch;
         double trim_throttle;
+        double thr_max;
+        double thr_min;
         double pitch_max_deg;
         double pitch_min_deg;
         // Input filtering
@@ -125,6 +127,16 @@ namespace Control
           .defaultValue("15.0")
           .units(Units::Degree)
           .description("Desired pitch is saturated to this value");
+
+          param("Minimum throttle", m_args.thr_min)
+          .defaultValue("-30.0")              
+          .units(Units::Percentage)
+          .description("Throttle integrator is limited to this percentage");
+
+          param("Maximum throttle", m_args.thr_max)
+          .defaultValue("30.0")              
+          .units(Units::Percentage)
+          .description("Throttle integrator is limited to this percentage");
 
           param("DesiredZ Filter", m_args.dz_src)
           .defaultValue("Tracking Altitude Controller")
@@ -241,7 +253,7 @@ namespace Control
           //Throttle integrator
           double timestep = m_last_step.getDelta();
           m_thr_i = m_thr_i + timestep*V_error;
-          m_thr_i = trimValue(m_thr_i,-30,30); //Anti wind-up at 30 % throttle
+          m_thr_i = trimValue(m_thr_i,m_args.thr_min,m_args.thr_max); //Throttle anti wind-up at 
 
           //Calculate desired throttle and pitch
           double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i *m_thr_i+ H_error*m_args.k_thr_ph + m_args.trim_throttle;
