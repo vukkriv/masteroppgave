@@ -419,8 +419,12 @@ namespace Control
 
             yawrate = pwmToValueDeadband( -Angles::radians(m_args.max_yaw_rate), Angles::radians(m_args.max_yaw_rate),  1100, 1900, 0, 0.07, m_pwm_inputs[CH_YAW]);
 
+            // Since we are not using the vel in z-axis from refmodel, remove it.
+            Matrix refModelInputVel = vel;
+            refModelInputVel(2) = 0.0;
+
             // Step ref model
-            stepNewRefModel(*msg, vel, timestep);
+            stepNewRefModel(*msg, refModelInputVel, timestep);
 
 
             IMC::DesiredLinearState desLinState;
