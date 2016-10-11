@@ -137,6 +137,7 @@ namespace Control
         Arguments m_args;
         IMC::DesiredVerticalRate m_vrate;
         IMC::DesiredZ  zref;
+        IMC::DesiredLinearState zref_nofilter; //Used as DesiredZ for non-filtered height reference, for live plotting in Neptus
         IMC::ControlParcel m_parcel_los;
         waypoint last_end_wp;
         Delta m_last_step;
@@ -391,6 +392,7 @@ namespace Control
           //****************************************************
           // Reference model for desired Z and flight-path angle
           //****************************************************
+          zref_nofilter.z = zref.value;
           if(m_args.use_refmodel)
           {
             debug("Z-ref before filter: %f",zref.value);
@@ -460,6 +462,7 @@ namespace Control
           dispatch(m_vrate);
           zref.z_units=Z_HEIGHT;
           dispatch(zref);
+          dispatch(zref_nofilter);
           dispatch(m_parcel_los);
 
           last_end_wp.x = ts.end.x;
