@@ -1630,10 +1630,16 @@ namespace Control
           else
           {
             trace("In passive mode. ");
+
+
+
             // Only acceleration damping
             F_i(0) = m_args.Kd(0) * -m_a_ned(0);
             F_i(1) = m_args.Kd(1) * -m_a_ned(1);
             F_i(2) = m_args.Kd(2) * -m_a_ned(2);
+
+            // Still control altitude.
+            F_i(2) += m_args.Kp(2) * v_error_ned(2);
 
             // Set desired acc to zero to disable feed forward
             dv_des = Matrix(3, 1, 0.0);
