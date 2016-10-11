@@ -138,7 +138,7 @@ namespace Control
           .units(Units::Percentage)
           .description("Throttle integrator is limited to this percentage");
 
-          param("Height source", m_args.dz_src)
+          param("Desired Vertical Rate source", m_args.dz_src)
           .defaultValue("Glideslope Height Controller")
           .description("Entity allowed to set DesiredZ and DesiredVerticalRate.");
 
