@@ -1456,6 +1456,8 @@ namespace Control
             {
               u_form -= m_D(m_i, link) * m_delta(link) * z_tilde.column(link);
 
+              u_form(2) *= m_args.link_z_gain_multiplier;
+
               link_errors_agent += m_D(m_i, link) * z_tilde.column(link);
             }
           }
