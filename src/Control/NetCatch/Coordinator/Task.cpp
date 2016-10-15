@@ -220,7 +220,7 @@ namespace Control
         std::vector<std::queue<Matrix> > m_cross_track_d_window;
         std::vector<Matrix> m_v_path_mean;
 
-        //! Position difference along path
+        //! Position difference along path. Aka difference between centroid net and fixed-wing.
         double m_delta_p_path_x;
         double m_delta_p_path_x_mean;
         //! Velocity difference along path
@@ -803,12 +803,13 @@ namespace Control
             m_p_path[s](2) = m_p_path[s](2) + m_runway.z_off_a;
           }
 
-          Matrix p_n = getNetPosition(m_p);
-          Matrix v_n = getNetVelocity(m_v);
+          Matrix p_net = getNetPosition(m_p);
+          Matrix v_net = getNetVelocity(m_v);
 
-          Matrix delta_p_path = R * (p_n - m_p[FIXEDWING]);
-          Matrix delta_v_path = R * (v_n - m_v[FIXEDWING]);
+          Matrix delta_p_path = R * (p_net - m_p[FIXEDWING]);
+          Matrix delta_v_path = R * (v_net - m_v[FIXEDWING]);
 
+          // Calculate position of the net relative to the fixed-wing.
           m_delta_p_path_x = delta_p_path(0);
           m_delta_v_path_x = delta_v_path(0);
         }
@@ -976,32 +977,41 @@ namespace Control
           }
         }
 
+        // Gets the path ramp along-track velocity.
+        // The function internally takes care of timing to produce the ramp
+        // from when the ramp previously was reset.
         double
         getPathVelocity(double v0, double v_ref, double a_n, bool reset_ramp)
         {
+
           double deltaT = (v_ref - v0) / a_n;
-          static bool rampEnabled = false;
-          static double startTime = -1;
-          static double deltaV = (v_ref - v0) / deltaT;
+
+
+          static bool s_rampEnabled = false;
+          static double s_startTime = -1;
+          static double s_deltaV = (v_ref - v0) / deltaT;
+
+
+
           if (reset_ramp)
           {
-            startTime = -1;
-            rampEnabled = false;
+            s_startTime = -1;
+            s_rampEnabled = false;
           }
           //when starting net-catch operation, this should be a ramp in velocity
           if (!reset_ramp)
-            rampEnabled = true;
-          if (rampEnabled && startTime == -1)
+            s_rampEnabled = true;
+          if (s_rampEnabled && s_startTime == -1)
           {
-            startTime = Clock::get();
-            deltaV = (v_ref - v0) / deltaT;
+            s_startTime = Clock::get();
+            s_deltaV = (v_ref - v0) / deltaT;
           }
           double vel = v0;
-          double deltaTime = Clock::get() - startTime;
-          if (rampEnabled)
+          double deltaTime = Clock::get() - s_startTime;
+          if (s_rampEnabled)
           {
             if (deltaTime < deltaT)
-              vel = v0 + deltaV * deltaTime;
+              vel = v0 + s_deltaV * deltaTime;
             else
               vel = v_ref;
           }
@@ -1014,7 +1024,7 @@ namespace Control
           {
             spew("getPathVelocity:\n");
             spew("\t u_d=%f \n  \t deltaTime=%f \n \t enabled=%d", vel, deltaTime,
-                 rampEnabled);
+                 s_rampEnabled);
             startPrint = Clock::get();
           }
 
@@ -1381,13 +1391,19 @@ namespace Control
             p_n_path = getNetPosition(m_p_path);
             v_n_path = getNetVelocity(m_v_path);
 
+
+            // Compute velocity setpoints for the net
+            // using desired along-track speed, and the current position and velocity of the centroid (net) and aircraft
             Matrix v_path_d = getDesiredPathVelocity(m_ud, p_a_path, v_a_path,
                                                      p_n_path, v_n_path);
 
+
+            // For now, assume zero acceleration.
             m_a_des_path(0) = 0;
             m_a_des_path(1) = 0;
             m_a_des_path(2) = 0;
 
+            // Transform the LinearState values to centroid frame (from virtual runway path frame)
             Matrix v_d = RCentroidPath()*v_path_d;
             Matrix a_d = RCentroidPath()*m_a_des_path;
 
