@@ -221,11 +221,11 @@ namespace Control
         std::vector<Matrix> m_v_path_mean;
 
         //! Position difference along path
-        double delta_p_path_x;
-        double delta_p_path_x_mean;
+        double m_delta_p_path_x;
+        double m_delta_p_path_x_mean;
         //! Velocity difference along path
-        double delta_v_path_x;
-        double delta_v_path_x_mean;
+        double m_delta_v_path_x;
+        double m_delta_v_path_x_mean;
 
         Matrix m_p_ref_path;
         Matrix m_v_ref_path;
@@ -276,10 +276,10 @@ namespace Control
           m_ref_valid(false),
           m_coordinatorEnabled(false),
           m_initializedCoord(false),
-          delta_p_path_x(0),
-          delta_p_path_x_mean(0),
-          delta_v_path_x(0),
-          delta_v_path_x_mean(0),
+          m_delta_p_path_x(0),
+          m_delta_p_path_x_mean(0),
+          m_delta_v_path_x(0),
+          m_delta_v_path_x_mean(0),
           m_p_ref_path(3, 1, 0.0),
           m_v_ref_path(3, 1, 0.0),
           m_a_des_path(3, 1, 0.0),
@@ -809,8 +809,8 @@ namespace Control
           Matrix delta_p_path = R * (p_n - m_p[FIXEDWING]);
           Matrix delta_v_path = R * (v_n - m_v[FIXEDWING]);
 
-          delta_p_path_x = delta_p_path(0);
-          delta_v_path_x = delta_v_path(0);
+          m_delta_p_path_x = delta_p_path(0);
+          m_delta_v_path_x = delta_v_path(0);
         }
 
         void
@@ -843,8 +843,8 @@ namespace Control
           m_cross_track_d_window[s].pop();
           m_cross_track_d_window[s].push(weightedAvg_d);
 
-          delta_p_path_x_mean = delta_p_path_x;
-          delta_v_path_x_mean = delta_v_path_x;
+          m_delta_p_path_x_mean = m_delta_p_path_x;
+          m_delta_v_path_x_mean = m_delta_v_path_x;
         }
 
         bool
@@ -922,9 +922,9 @@ namespace Control
           //monitor the path-along distance between the net and the aircraft
           // when at a given boundary, start the net-catch mission
           // this requires that the net are stand-by at the first WP at the runway
-          double delta_p = delta_p_path_x;
+          double delta_p = m_delta_p_path_x;
           if (m_args.use_mean_window_aircraft)
-            delta_p = delta_p_path_x_mean;
+            delta_p = m_delta_p_path_x_mean;
 
           if (std::abs(delta_p) <= m_startCatch_radius)
           {
@@ -1084,8 +1084,8 @@ namespace Control
           state.vy_a = m_v_path[FIXEDWING](1);
           state.vz_a = m_v_path[FIXEDWING](2);
 
-          state.delta_p_p = delta_p_path_x;
-          state.delta_v_p = delta_v_path_x;
+          state.delta_p_p = m_delta_p_path_x;
+          state.delta_v_p = m_delta_v_path_x;
 
           state.start_r = m_startCatch_radius;
 
