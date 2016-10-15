@@ -1118,17 +1118,23 @@ namespace Control
         }
 
         //! Control loop in path-frame
+        //! Main workhorse. Using desired along track velocity for the net,
+        //! and the current position of the net and aircraft (in the virtual runway path frame)
         Matrix
         getDesiredPathVelocity(double u_d_along_path, Matrix p_a_path,
             Matrix v_a_path, Matrix p_n_path, Matrix v_n_path)
         {
+
+          // Resulting desired velocity
           Matrix v_path = Matrix(3, 1, 0.0);
 
+          // Constraints
           Matrix p_max_path = Matrix(3, 1, 0.0);
           p_max_path(0) = m_runway.box_length;
           p_max_path(1) = m_runway.box_width / 2;
           p_max_path(2) = m_runway.box_height / 2;
 
+          // Set along-track (x) reference position.
           if (m_curr_state == IMC::NetRecoveryState::NR_CATCH
               || m_curr_state == IMC::NetRecoveryState::NR_END)
           {
@@ -1139,10 +1145,13 @@ namespace Control
             m_p_ref_path(0) = 0;
           }
 
+          // Set y,z refernce for position and velocity.
           if (m_curr_state != IMC::NetRecoveryState::NR_CATCH)
           {
             for (int i = 1; i <= 2; i = i + 1)
             {
+
+              // Bounding box on y-z position. If within, use aircraft position and velocity.
               if (sqrt(pow(p_a_path(i), 2)) < p_max_path(i))
               {
                 m_p_ref_path(i) = p_a_path(i);
@@ -1160,6 +1169,8 @@ namespace Control
           {
             m_v_ref_path(1) = 0;
             m_v_ref_path(2) = 0;
+
+            // Todo: Why is not m_p_ref_path(1,2) set here? Aka in Catch-state.
           }
 
           Matrix e_p_path = m_p_ref_path - p_n_path;
