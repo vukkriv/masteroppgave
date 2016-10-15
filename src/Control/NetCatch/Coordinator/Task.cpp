@@ -252,7 +252,7 @@ namespace Control
         //! To print the control-loop frequency
         uint64_t m_time_end;
 
-        //! To print the control-loop frequency
+        //! Time between executions of the main control-loop.
         uint64_t m_time_diff;
 
         //centroid heading
@@ -290,7 +290,7 @@ namespace Control
           m_ud(0.0),
           m_ad(0.0),
           m_scope_ref(0),
-          m_time_end(Clock::getMsec()),
+          m_time_end(Clock::get()),
           m_time_diff(0),
           m_centroid_heading(0)
         {
@@ -531,8 +531,8 @@ namespace Control
           v(2) = el->state->vz;
           m_v[s] = v;
 
-          static double last_print;
-          double now = Clock::getSinceEpoch();
+          static double last_print = 0.0;
+          double now = Clock::get();
 
           if (!allConnected())
           {
@@ -1329,7 +1329,7 @@ namespace Control
           m_initializedCoord = false;
           m_ref_valid = false;
           m_coordinatorEnabled = false;
-          m_time_end = Clock::getMsec();
+          m_time_end = Clock::get();
           m_time_diff = 0.0;
           m_p_int_value = Matrix(3, 1, 0.0);
           //reset ramp
@@ -1365,8 +1365,9 @@ namespace Control
             //spew("isActive: %d",isActive());
             return;
 
-          m_time_diff = Clock::getMsec() - m_time_end;
-          m_time_end = Clock::getMsec();
+          double now = Clock::get();
+          m_time_diff = now - m_time_end;
+          m_time_end = now;
           //spew("Frequency: %1.1f, %d", 1000.0/m_time_diff,m_coordinatorEnabled);
 
           //dispatch control if ready
