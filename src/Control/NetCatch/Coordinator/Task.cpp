@@ -1120,6 +1120,7 @@ namespace Control
         //! Control loop in path-frame
         //! Main workhorse. Using desired along track velocity for the net,
         //! and the current position of the net and aircraft (in the virtual runway path frame)
+        //! NB: Remember that optional offsets to the aircraft position is already added in p_a_path.
         Matrix
         getDesiredPathVelocity(double u_d_along_path, Matrix p_a_path,
             Matrix v_a_path, Matrix p_n_path, Matrix v_n_path)
@@ -1173,9 +1174,14 @@ namespace Control
             // Todo: Why is not m_p_ref_path(1,2) set here? Aka in Catch-state.
           }
 
+          // Error variables
           Matrix e_p_path = m_p_ref_path - p_n_path;
           Matrix e_v_path = m_v_ref_path - v_n_path;
+
+          // Integral effect of path error.
           m_p_int_value = m_p_int_value + e_p_path * m_time_diff;
+
+          // Constrain integral value.
           if (m_p_int_value.norm_2() > m_args.max_integral)
             m_p_int_value = m_args.max_integral * m_p_int_value / m_p_int_value.norm_2();
 
@@ -1217,10 +1223,14 @@ namespace Control
             v_path_yz(1) = v_temp(2);
 
             //limit velocity
-            if (v_path_yz.norm_2() > sqrt(pow(m_args.max_norm_v, 2) - pow(m_u_ref, 2)))
+            // Maximum velocity is limited by also reserving for the desired forward velocity.
+            double maximumYZSpeed = sqrt(pow(m_args.max_norm_v, 2) - pow(m_u_ref, 2));
+            if (v_path_yz.norm_2() > maximumYZSpeed)
             {
-              v_path_yz = sqrt(pow(m_args.max_norm_v, 2) - pow(m_u_ref, 2))* v_path_yz / v_path_yz.norm_2();
+              v_path_yz = maximumYZSpeed * v_path_yz / v_path_yz.norm_2();
             }
+
+            // Set forward velocity based on the velocity ramp profile and yz-controller.
             v_path(0) = u_d_along_path;
             v_path(1) = v_path_yz(0);
             v_path(2) = v_path_yz(1);
@@ -1284,7 +1294,6 @@ namespace Control
           dispatch(errors_cross_y);
           dispatch(errors_cross_z);
 
-		  //sendCentroidLinearState(m_v_ref_path,Matrix(3,1,0.0),D_REFERENCE);
           return v_path;
         }
 
