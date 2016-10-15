@@ -419,7 +419,7 @@ namespace Control
           .description("Choose whether to disable force output flag");
 
           param("Kp Velocity Control", m_args.Kp)
-          .defaultValue("1.0,1.0,1.0")
+          .defaultValue("0.7,0.7,0.7")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Position Controller tuning parameter Kp");
 
@@ -1454,7 +1454,12 @@ namespace Control
           {
             for (unsigned int link = 0; link < m_L; link++)
             {
-              u_form -= m_D(m_i, link) * m_delta(link) * z_tilde.column(link);
+              double wb = m_delta(link);
+              double wn = wb/0.64;
+
+              double Kp = m_args.mass * std::pow(wn, 2);
+
+              u_form -= m_D(m_i, link) * Kp * z_tilde.column(link);
 
               u_form(2) *= m_args.link_z_gain_multiplier;
 
@@ -1614,15 +1619,33 @@ namespace Control
           // Acceleration in z is received with gravity component, cancel
           dv_error_ned(2) += Math::c_gravity;
 
+          // Calculate gains from desired damping and bandwidth.
+          // TODO: Do more cleanly. Xi and wn should be sent from coordinator, just assume same gain for all members.
+
+          double wb = 1;
+
+          if (m_L > 1)
+            wb = m_delta(1);
+          else
+            trace("Using default wb. ");
+
+          double wn = wb/0.64;
+
+          // Actually damping matrix..
+          Matrix Kp = 2*m_args.mass * wn * m_args.Kp;
+
+          Matrix Ki = m_args.mass * std::pow(wn, 3) * m_args.Ki / 10.0;
+
+
           // Only add if not in passive mode
           bool isNotPassiveMode = ((m_cprofile.flags & IMC::ControlProfile::CPF_PASSIVE) == 0);
 
           if (isNotPassiveMode)
           {
             // F_i is transformed to NED before dispatch.
-            F_i(0) = m_args.Kp(0) * v_error_ned(0);
-            F_i(1) = m_args.Kp(1) * v_error_ned(1);
-            F_i(2) = m_args.Kp(2) * v_error_ned(2);
+            F_i(0) = Kp(0) * v_error_ned(0);
+            F_i(1) = Kp(1) * v_error_ned(1);
+            F_i(2) = Kp(2) * v_error_ned(2);
 
             // Add damping on acceleration. (Basically acceleration feed-forward. Will act as a mass-increaser, might make more robust to wind)
             F_i(0) += m_args.Kd(0) * dv_error_ned(0);
@@ -1641,7 +1664,7 @@ namespace Control
             F_i(2) = m_args.Kd(2) * -m_a_ned(2);
 
             // Still control altitude.
-            F_i(2) += m_args.Kp(2) * v_error_ned(2);
+            F_i(2) += Kp(2) * v_error_ned(2);
 
             // Set desired acc to zero to disable feed forward
             dv_des = Matrix(3, 1, 0.0);
@@ -1664,9 +1687,9 @@ namespace Control
           // Do not update in NO_INTEGRAL mode, or in PASSIVE mode as the v_error_ned is not valid.
           if (isNotPassiveMode && ((m_cprofile.flags & IMC::ControlProfile::CPF_NO_INTEGRAL) == 0))
           {
-            m_bias_estimate(0) += ((double)m_time_diff/1.0E3) * m_args.Ki(0) * ((v_error_ned(0) + formation_int_enable * u_bias_est(0)) + u_sync(0));
-            m_bias_estimate(1) += ((double)m_time_diff/1.0E3) * m_args.Ki(1) * ((v_error_ned(1) + formation_int_enable * u_bias_est(1)) + u_sync(1));
-            m_bias_estimate(2) += ((double)m_time_diff/1.0E3) * m_args.Ki(2) * ((v_error_ned(2) + formation_int_enable * u_bias_est(2)) + u_sync(2));
+            m_bias_estimate(0) += ((double)m_time_diff/1.0E3) * Ki(0) * ((v_error_ned(0) + formation_int_enable * u_bias_est(0)) + u_sync(0));
+            m_bias_estimate(1) += ((double)m_time_diff/1.0E3) * Ki(1) * ((v_error_ned(1) + formation_int_enable * u_bias_est(1)) + u_sync(1));
+            m_bias_estimate(2) += ((double)m_time_diff/1.0E3) * Ki(2) * ((v_error_ned(2) + formation_int_enable * u_bias_est(2)) + u_sync(2));
 
 
             // Integral anti-windup
