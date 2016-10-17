@@ -62,7 +62,9 @@ namespace Control
         double h_dot_p;
 
         double Tref_z;
+        double zeta_z;
         double Tref_gamma;
+        double zeta_gamma;
 
         double los_min_deg;
         double los_max_deg;
@@ -109,11 +111,19 @@ namespace Control
           B(2,0)=w*w*w;
           I(3);
         }
-        void setTimeconstant(double Tconst){
+        void setTimeconstant(double Tconst)
+        {
           T = Tconst;
           w = 1/Tconst;
           updateRefmodel();
         }
+
+        void setDampeningRatio(double zeta_z)
+        {
+          zeta = zeta_z;
+          updateRefmodel();
+        }
+
 
       public:
         Matrix A;
@@ -233,9 +243,17 @@ namespace Control
           .defaultValue("1.0")
           .description("Time constant for reference model for desired Z");
 
+          param("Dampening ratio refmodelZ", m_args.zeta_z)
+          .defaultValue("1.0")
+          .description("Dampening ratio for reference model for desired Z");
+
           param("Time constant refmodelGamma", m_args.Tref_gamma)
           .defaultValue("1.0")
           .description("Time constant for reference model for gamma");
+
+          param("Dampening ratio refmodelGamma", m_args.zeta_gamma)
+          .defaultValue("1.0")
+          .description("Dampening ratio for reference model for gamma");
 
           param("Minimum LOS angle", m_args.los_min_deg)
           .defaultValue("-7.0")              
@@ -260,6 +278,21 @@ namespace Control
           bind<IMC::IndicatedSpeed>(this);
 
         }
+
+        
+        void
+        onUpdateParameters(void)
+        {
+          PathController::onUpdateParameters();
+
+          m_first_run = true; //Updates parameters in a later if-statement
+          
+          //m_refmodel_z.setTimeconstant(m_args.Tref_z);
+          //m_refmodel_gamma.setTimeconstant(m_args.Tref_gamma);
+          //m_refmodel_z.setDampeningRatio(m_args.zeta_z);
+          //m_refmodel_gamma.setDampeningRatio(m_args.zeta_gamma);
+        }
+        
 
         void
         onPathActivation(void)
@@ -373,6 +406,8 @@ namespace Control
             m_refmodel_gamma.x(0,0) = glideslope_angle;
             m_refmodel_z.setTimeconstant(m_args.Tref_z);
             m_refmodel_gamma.setTimeconstant(m_args.Tref_gamma);
+            m_refmodel_z.setDampeningRatio(m_args.zeta_z);
+            m_refmodel_gamma.setDampeningRatio(m_args.zeta_gamma);
             m_first_run = false;
           }
 
