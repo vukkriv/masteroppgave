@@ -154,9 +154,10 @@ namespace Control
       {
         Arguments m_args;
         IMC::DesiredVerticalRate m_vrate;
-        IMC::DesiredZ  zref;
-        IMC::DesiredLinearState zref_nofilter; //Used as DesiredZ for non-filtered height reference, for live plotting in Neptus
+        IMC::DesiredZ zref;
+        IMC::DesiredLinearState ref_nofilter; //Used for non-filtered height and glideslope_angle reference filtered and gldeslope_angle, for live plotting in Neptus
         IMC::ControlParcel m_parcel_los;
+        IMC::RelativeState m_hdiff;
         waypoint last_end_wp;
         Delta m_last_step;
 
@@ -435,7 +436,9 @@ namespace Control
           //****************************************************
           // Reference model for desired Z and flight-path angle
           //****************************************************
-          zref_nofilter.z = zref.value;
+          ref_nofilter.z = zref.value;
+          ref_nofilter.ay = glideslope_angle;
+
           if(m_args.use_refmodel)
           {
             debug("Z-ref before filter: %f",zref.value);
@@ -448,6 +451,7 @@ namespace Control
             m_refmodel_gamma.x = (m_refmodel_gamma.I + (ts.delta*m_refmodel_gamma.A))*m_refmodel_gamma.x + (ts.delta*m_refmodel_gamma.B) * glideslope_angle;
             //glideslope_angle = m_refmodel_gamma.x(0,0);
             glideslope_angle = m_refmodel_z.C(0,0)*m_refmodel_gamma.x(0,0) + m_refmodel_z.C(0,1)*m_refmodel_gamma.x(1,0) + m_refmodel_z.C(0,2)*m_refmodel_gamma.x(2,0);
+            ref_nofilter.vy = glideslope_angle;
           }
 
 
@@ -504,11 +508,14 @@ namespace Control
           //h_dot_desired = Vg*sin(2*(M_PI/180));
           //m_vrate.value= h_dot_desired;
 
+          m_hdiff.err_z = (state.height - state.z) - zref.value;
+
           dispatch(m_vrate);
           zref.z_units=Z_HEIGHT;
           dispatch(zref);
-          dispatch(zref_nofilter);
+          dispatch(ref_nofilter);
           dispatch(m_parcel_los);
+          dispatch(m_hdiff);
 
           last_end_wp.x = ts.end.x;
           last_end_wp.y = ts.end.y;
