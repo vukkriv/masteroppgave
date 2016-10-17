@@ -60,12 +60,22 @@ namespace Control
 
       };
 
+      static const std::string c_parcel_names[] = {DTR_RT("Throttle"), DTR_RT("Pitch")};
+
+      enum Parcel {
+        PC_THR = 0,
+        PC_PTCH = 1
+      };
+
+      static const int NUM_PARCELS = 2;
+
       struct Task: public DUNE::Control::PathController
       {
         Arguments m_args;
         IMC::DesiredThrottle m_throttle;
         IMC::DesiredPitch m_pitch;
-        IMC::ControlParcel m_parcel_throttle;
+        //! Parcel array
+        IMC::ControlParcel m_parcels[NUM_PARCELS];
 
         double m_airspeed;
         double m_dspeed;
@@ -187,6 +197,15 @@ namespace Control
           }
         }
 
+        void
+        onEntityReservation(void)
+        {
+          PathController::onEntityReservation();
+
+          for (unsigned i = 0; i < NUM_PARCELS; ++i)
+            m_parcels[i].setSourceEntity(reserveEntity(c_parcel_names[i] + " Parcel"));
+        }
+
 
         bool
         hasSpecificZControl(void) const
@@ -266,16 +285,18 @@ namespace Control
           m_throttle.value = throttle_desired;
           m_pitch.value = pitch_desired;
 
-          m_parcel_throttle.p = m_args.k_thr_p*V_error;
-          m_parcel_throttle.i = m_args.k_thr_i*m_thr_i;
-          m_parcel_throttle.d = H_error*m_args.k_thr_ph ;
-          m_parcel_throttle.a = gamma_error*m_args.k_gamma_p; 
+          m_parcels[PC_THR].p = m_args.k_thr_p*V_error;
+          m_parcels[PC_THR].i = m_args.k_thr_i*m_thr_i;
+          m_parcels[PC_THR].d = H_error*m_args.k_thr_ph ;
+          m_parcels[PC_PTCH].p = gamma_error*m_args.k_gamma_p; 
 
           spew("pitch desired: %f \t alpha_0: %f",m_pitch.value,Angles::degrees(alpha_now));
 
           dispatch(m_throttle);
           dispatch(m_pitch);
-          dispatch(m_parcel_throttle);
+          for (int i = 0; i < NUM_PARCELS; ++i) {
+            dispatch(m_parcels[i]);
+          }
         }
       };
     }
