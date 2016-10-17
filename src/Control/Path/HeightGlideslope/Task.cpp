@@ -411,7 +411,14 @@ namespace Control
             zref.value = trimValue(zref.value,tan(glideslope_angle)*(ts.track_length)+ std::abs(start_z),std::abs(start_z));
           }
           if (m_first_run){
-            m_refmodel_z.x(0,0)     = (state.height - state.z);
+            // Avoid large jumps in the desired height when 
+            // going to first WP (since initial x(0,0) = 0)
+            // or when updating filter parameters
+            m_refmodel_z.x(0,0) = (state.height - state.z);// /(m_refmodel_z.w*m_refmodel_z.w*m_refmodel_z.w);
+            
+            //Technically this should also be implemented 
+            //m_refmodel_z.x(1,0) = "VERTICAL_RATE_IN_NED"/((2*m_refmodel_gamma.zeta+1)*m_refmodel_gamma.w);
+            
             m_refmodel_gamma.x(0,0) = glideslope_angle;
             m_refmodel_z.setTimeconstant(m_args.Tref_z);
             m_refmodel_gamma.setTimeconstant(m_args.Tref_gamma);
@@ -443,13 +450,11 @@ namespace Control
           {
             debug("Z-ref before filter: %f",zref.value);
             m_refmodel_z.x = (m_refmodel_z.I + (ts.delta*m_refmodel_z.A))*m_refmodel_z.x + (ts.delta*m_refmodel_z.B) * zref.value;
-            //zref.value = m_refmodel_z.x(0,0);
             zref.value = m_refmodel_z.C(0,0)*m_refmodel_z.x(0,0) + m_refmodel_z.C(0,1)*m_refmodel_z.x(1,0) + m_refmodel_z.C(0,2)*m_refmodel_z.x(2,0);
 
             debug("glideslope before filter: %f",glideslope_angle);
 
             m_refmodel_gamma.x = (m_refmodel_gamma.I + (ts.delta*m_refmodel_gamma.A))*m_refmodel_gamma.x + (ts.delta*m_refmodel_gamma.B) * glideslope_angle;
-            //glideslope_angle = m_refmodel_gamma.x(0,0);
             glideslope_angle = m_refmodel_z.C(0,0)*m_refmodel_gamma.x(0,0) + m_refmodel_z.C(0,1)*m_refmodel_gamma.x(1,0) + m_refmodel_z.C(0,2)*m_refmodel_gamma.x(2,0);
             ref_nofilter.vy = glideslope_angle;
           }
