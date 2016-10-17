@@ -76,6 +76,7 @@ namespace Control
         ReferenceModel():
           A(Matrix(3,3, 0.0)),
           B(3,1, 0.0),
+          C(1,3,0.0),
           I(3),
           x(3,1, 0.0),
           T(1.0),
@@ -98,7 +99,10 @@ namespace Control
            *      0;
            *      w^3]
            */
-          B(2,0)=w*w*w;
+          B(2,0)=1;
+          C(0,0)=w*w*w;
+          C(0,1)=(2*zeta+1)*w;
+          C(0,2)=0;
           I(3);
       }
         void updateRefmodel()
@@ -108,7 +112,10 @@ namespace Control
           A(2,0)=-w*-w*-w;
           A(2,1)=-(2*zeta+1)*w*w;
           A(2,2)=-(2*zeta+1)*w;
-          B(2,0)=w*w*w;
+          B(2,0)=1;
+          C(0,0)=w*w*w;
+          C(0,1)=(2*zeta+1)*w;
+          C(0,2)=0;
           I(3);
         }
         void setTimeconstant(double Tconst)
@@ -128,6 +135,7 @@ namespace Control
       public:
         Matrix A;
         Matrix B;
+        Matrix C;
         Matrix I;
         Matrix x;
         double T; //Time-constant
@@ -432,12 +440,14 @@ namespace Control
           {
             debug("Z-ref before filter: %f",zref.value);
             m_refmodel_z.x = (m_refmodel_z.I + (ts.delta*m_refmodel_z.A))*m_refmodel_z.x + (ts.delta*m_refmodel_z.B) * zref.value;
-            zref.value = m_refmodel_z.x(0,0);
+            //zref.value = m_refmodel_z.x(0,0);
+            zref.value = m_refmodel_z.C(0,0)*m_refmodel_z.x(0,0) + m_refmodel_z.C(0,1)*m_refmodel_z.x(1,0) + m_refmodel_z.C(0,2)*m_refmodel_z.x(2,0);
 
             debug("glideslope before filter: %f",glideslope_angle);
 
             m_refmodel_gamma.x = (m_refmodel_gamma.I + (ts.delta*m_refmodel_gamma.A))*m_refmodel_gamma.x + (ts.delta*m_refmodel_gamma.B) * glideslope_angle;
-            glideslope_angle = m_refmodel_gamma.x(0,0);
+            //glideslope_angle = m_refmodel_gamma.x(0,0);
+            glideslope_angle = m_refmodel_z.C(0,0)*m_refmodel_gamma.x(0,0) + m_refmodel_z.C(0,1)*m_refmodel_gamma.x(1,0) + m_refmodel_z.C(0,2)*m_refmodel_gamma.x(2,0);
           }
 
 
