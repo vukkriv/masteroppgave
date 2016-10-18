@@ -106,7 +106,7 @@ namespace Navigation
           m_estate.lon = m_rtk.base_lon;
           m_estate.height = m_rtk.base_height;
 
-          if (m_rtk.validity == IMC::GpsFixRtk::RFV_VALID_VEL)
+          if (m_rtk.validity & IMC::GpsFixRtk::RFV_VALID_VEL)
           {
             m_estate.vx = m_rtk.v_n;
             m_estate.vy = m_rtk.v_e;
