@@ -292,6 +292,10 @@ namespace Monitors
         consume(const IMC::EstimatedLocalState* elstate)
         {
 
+        // Only use local
+        if (!elstate->getSource() != getSystemId())
+          return;
+
          // Filter EstimatedLocalState by entities
          if (!m_elocalstate_filter->match(elstate))
            return;
