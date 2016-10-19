@@ -113,8 +113,9 @@ namespace Control
 
       struct VirtualRunway
       {
-        fp64_t lat_start, lon_start, altitude_start;
-        fp64_t lat_end, lon_end, altitude_end, z_off_a;
+        fp64_t lat_start, lon_start, height_start;
+        fp64_t lat_end, lon_end, height_end;
+        double z_off_a;
 
         fp32_t box_height, box_width, box_length;
 
