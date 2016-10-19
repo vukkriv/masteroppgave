@@ -43,6 +43,13 @@ namespace Control
           bool auto_enable;
           //! True if trying to start on idle mode, after recieving a plan stop
           bool idle_enable;
+          //! Plan-start on RC
+          bool rc_plan_toggle;
+          //! RC channel
+          int rc_channel;
+          //! Name of plan to start
+          std::string plan_name;
+
         };
 
         struct Task: public DUNE::Tasks::Task
@@ -62,12 +69,25 @@ namespace Control
           //! Time of last abort
           double m_time_prev_abort;
 
+          //! State to use, if we triggered a start of the plan
+          bool m_plantoggle_did_trigger;
+
+          //! Our toggle-plan is running
+          bool m_plantoggle_is_running;
+
+          //! Last pwm value of the intersting channel recieved
+          IMC::PWM m_pwm;
+
           //! Constructor.
           //! @param[in] name task name.
           //! @param[in] ctx context.
           Task(const std::string& name, Tasks::Context& ctx):
             DUNE::Tasks::Task(name, ctx),
-            m_fr_is_running(false)
+            m_fr_is_running(false),
+            m_time_prev_stop(0),
+            m_time_prev_abort(0),
+            m_plantoggle_did_trigger(false),
+            m_plantoggle_is_running(false)
           {
 
             param("Automatic Enable", m_args.auto_enable)
@@ -80,11 +100,29 @@ namespace Control
             .visibility(Parameter::VISIBILITY_USER)
             .description("Starts the rc coordinated plan if doing an idle parameter just after a plan stop, with no aborts. ");
 
+            param("RC Plan Start Enable", m_args.rc_plan_toggle)
+            .defaultValue("false")
+            .visibility(Parameter::VISIBILITY_USER)
+            .description("Use RC to toggle a plan. ");
+
+            param("RC Channel to use", m_args.rc_channel)
+            .minimumValue("1")
+            .defaultValue("6")
+            .maximumValue("8")
+            .description("Channel to use. ");
+
+            param("Plan to start on toggle", m_args.plan_name)
+            .defaultValue("netcatch_only")
+            .description("Name of plan to start on rc toggle if enabled. ");
+
+
             bind<IMC::PlanControlState>(this);
+            bind<IMC::PlanControl>(this);
             bind<IMC::AutopilotMode>(this);
             bind<IMC::RemoteActions>(this);
             bind<IMC::IdleManeuver>(this);
             bind<IMC::Abort>(this);
+            bind<IMC::PWM>(this);
 
             setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_IDLE);
           }
@@ -135,6 +173,18 @@ namespace Control
           }
 
           void
+          consume(const IMC::PlanControl* pc)
+          {
+            if (m_plantoggle_did_trigger
+                && pc->op == IMC::PlanControl::PC_START
+                && pc->type == IMC::PlanControl::PC_REQUEST)
+            {
+              m_plantoggle_did_trigger = false;
+              inf("resetting plantogle did trigger. ");
+            }
+          }
+
+          void
           consume(const IMC::PlanControlState* pcs)
           {
 
@@ -155,6 +205,12 @@ namespace Control
               m_fr_is_running = true;
             else
               m_fr_is_running = false;
+
+            if (pcs->plan_id == m_args.plan_name && pcs->state == IMC::PlanControlState::PCS_EXECUTING)
+              m_plantoggle_is_running = true;
+            else
+              m_plantoggle_is_running = false;
+
           }
 
           void
@@ -193,6 +249,59 @@ namespace Control
             }
 
             m_apmode = *apmode;
+          }
+
+          void
+          consume(const IMC::PWM* pwm)
+          {
+            if (pwm->getSource() != getSystemId())
+              return;
+
+            if (pwm->id != m_args.rc_channel)
+              return;
+
+            // sanity check
+            if (pwm->duty_cycle < 900)
+              return;
+
+            unsigned int limit = 1700;
+            // Check if we are considering starting a plan.
+            if (m_fr_is_running && m_args.rc_plan_toggle)
+            {
+
+
+              if (pwm->duty_cycle > limit && m_pwm.duty_cycle < limit)
+              {
+                // Do a plan start!
+                m_plantoggle_did_trigger = true;
+
+                IMC::PlanControl plan;
+                plan.op = IMC::PlanControl::PC_START;
+                plan.type = IMC::PlanControl::PC_REQUEST;
+                plan.plan_id = m_args.plan_name;
+                plan.request_id = 10;
+
+                inf("Started plan %s based on rc toggle. ", m_args.plan_name.c_str());
+                dispatch(plan);
+
+              }
+            }
+
+            // Check if we are considering stopping a plan
+            if (m_plantoggle_is_running && m_args.rc_plan_toggle)
+            {
+              if (m_plantoggle_did_trigger
+                  && pwm->duty_cycle < limit
+                  && m_pwm.duty_cycle > limit
+                  )
+              {
+
+                inf("Starting Follow Reference based toggle. ");
+                generatePlan();
+              }
+            }
+
+            m_pwm = *pwm;
           }
 
           void
