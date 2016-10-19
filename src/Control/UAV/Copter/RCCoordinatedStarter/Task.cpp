@@ -278,7 +278,7 @@ namespace Control
 
             IMC::EntityParameter param_ctrl_f;
             param_ctrl_f.name = "RCCoordinated Controller";
-            param_ctrl_f.value = "true";
+            param_ctrl_f.value = "false";
             coordinated_stop.params.push_back(param_ctrl_f);
 
             eparam_stop.params.push_back(param_f);
