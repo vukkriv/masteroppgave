@@ -286,7 +286,7 @@ namespace Control
           consume(const IMC::EstimatedLocalState* elstate)
           {
            // Only use local
-           if (!elstate->getSource() != getSystemId())
+           if (elstate->getSource() != getSystemId())
              return;
 
            // Filter EstimatedLocalState by entities
