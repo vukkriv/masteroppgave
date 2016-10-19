@@ -293,7 +293,7 @@ namespace Monitors
         {
 
         // Only use local
-        if (!elstate->getSource() != getSystemId())
+        if (elstate->getSource() != getSystemId())
           return;
 
          // Filter EstimatedLocalState by entities
