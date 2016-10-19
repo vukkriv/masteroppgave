@@ -304,6 +304,9 @@ namespace Control
         uint64_t m_time_end;
         uint64_t m_time_diff;
 
+        // Time of the last time a control output was done.
+        double m_time_prev_control_execution;
+
         bool m_configured;
 
         //! Container for logging errors
@@ -339,6 +342,7 @@ namespace Control
           m_v_int_value(3, 1, 0.0),
           m_time_end(0.0), 
           m_time_diff(0.0),
+          m_time_prev_control_execution(0),
           m_configured(false),
           m_bias_estimate(Matrix(3,1, 0.0)),
           m_self_local_updated(false)
@@ -636,6 +640,9 @@ namespace Control
         virtual void
         reset(void)
         {
+          if (skipResetDueToRecentExecution())
+            return;
+
           m_time_end = Clock::getMsec();
           m_time_diff = 0.0;
           m_bias_estimate = Matrix(3,1, 0.0);
@@ -1097,7 +1104,7 @@ namespace Control
           if (msg->type == IMC::FormCoord::FCT_REQUEST
               && msg->op == IMC::FormCoord::FCOP_START)
           {
-            if (m_args.hold_current_formation)
+            if (m_args.hold_current_formation && !skipResetDueToRecentExecution())
             {
               inf("Using current vehicle positions as desired formation.");
               // Set desired formation to current positions
@@ -1121,6 +1128,10 @@ namespace Control
               inf("Current difference variables:");
               printMatrix(m_z_d, DEBUG_LEVEL_NONE);
 
+            }
+            else if (m_args.hold_current_formation)
+            {
+              inf("Skipped formation hold reset due to recent execution. Timediff: %f", Clock::get() - m_time_prev_control_execution);
             }
           }
         }
@@ -1155,6 +1166,14 @@ namespace Control
             if (*it == msgEntity)
               return true;
           return false;
+        }
+
+        bool
+        skipResetDueToRecentExecution(void)
+        {
+          double now = Clock::get();
+
+          return (now < m_time_prev_control_execution + 1.5);
         }
 
         void
@@ -1829,6 +1848,8 @@ namespace Control
           // calculate velocity control force, tau
           m_time_diff = Clock::getMsec() - m_time_end;
           m_time_end = Clock::getMsec();
+
+          m_time_prev_control_execution = Clock::get();
 
           if (m_time_diff > 1*1E3)
             err("Overflow in task execution!");
