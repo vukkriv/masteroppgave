@@ -157,7 +157,7 @@ namespace Simulators
         .description("Initial longitude (deg) of the vehicle");
 
         param("Height", m_args.height)
-        .defaultValue("0.0")
+        .defaultValue("120.0")
         .units(Units::Meter)
         .description("Initial height (m) above the WGS-84 ellipsoid");
 
