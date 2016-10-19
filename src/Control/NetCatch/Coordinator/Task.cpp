@@ -91,6 +91,13 @@ namespace Control
         //! Maximum cross-track error net
         Matrix eps_ct_n;
 
+        //! Ref-model paramters
+        bool refmodel_use;
+        double refmodel_w0;
+        double refmodel_xi;
+        double refmodel_max_v;
+        double refmodel_max_a;
+
         std::string centroid_els_entity_label;
 
         float print_frequency;
@@ -136,6 +143,41 @@ namespace Control
       enum Vehicle
       {
         FIXEDWING = 0, CENTROID, INVALID = -1
+      };
+
+      class ReferenceModel
+      {
+      public:
+
+        ReferenceModel():
+          x(9,1, 0.0),
+          k1(0.0),k2(0.0),k3(0.0)
+      {
+          /* Intentionally Empty */
+      }
+        Matrix
+        getPos(void) { return x.get(0,2, 0,0); }
+
+        Matrix
+        getVel(void) { return x.get(3,5, 0,0); }
+
+        Matrix
+        getAcc(void) { return x.get(6,8, 0,0); }
+
+        void
+        setPos(Matrix& pos) { x.put(0,0, pos); }
+
+        void
+        setVel(Matrix& vel) { x.put(3,0, vel); }
+
+        void
+        setAcc(Matrix& acc) { x.put(6,0, acc); }
+
+
+
+      public:
+        Matrix x;
+        double k1,k2,k3;
       };
 
       static const char * NetRecoveryLevelEnumStrings[] =
@@ -254,6 +296,9 @@ namespace Control
 
         //! Time between executions of the main control-loop.
         double m_time_diff;
+
+        //! Reference model state
+        ReferenceModel m_refmodel;
 
         //centroid heading
         double m_centroid_heading;
@@ -401,6 +446,30 @@ namespace Control
           .defaultValue("Formation Centroid")
           .description("Entity label for the centroid EstimatedLocalState");
 
+          param("ReferenceModel -- Activate", m_args.refmodel_use)
+          .defaultValue("true")
+          .description("To use the refmodel for zy or not. ");
+
+          param("ReferenceModel -- Natural Frequency", m_args.refmodel_w0)
+          .defaultValue("1.0")
+          .units(Units::RadianPerSecond)
+          .description("Reference model natural frequency. ");
+
+          param("ReferenceModel -- Damping", m_args.refmodel_xi)
+          .defaultValue("1.1")
+          .units(Units::None)
+          .description("Damping factor of the reference model. ");
+
+          param("ReferenceModel -- Speed", m_args.refmodel_max_v)
+          .defaultValue("4.0")
+          .units(Units::MeterPerSecond)
+          .description("Nominal max speed of the reference model setpoint. ");
+
+          param("ReferenceModel -- Acceleration", m_args.refmodel_max_a)
+          .defaultValue("5.0")
+          .units(Units::MeterPerSquareSecond)
+          .description("Nominal maximum acceleration during reference model usage. ");
+
           param("Print Frequency", m_args.print_frequency)
           .defaultValue("0.0")
           .units(Units::Second)
@@ -453,6 +522,11 @@ namespace Control
           m_control.Kd(0,0) = m_args.Kd(0);
           m_control.Kd(1,1) = m_args.Kd(1);
           m_control.Kd(2,2) = m_args.Kd(2);
+
+          // Set reference model parameters
+          m_refmodel.k3 =  (2*m_args.refmodel_xi + 1) *     m_args.refmodel_w0;
+          m_refmodel.k2 = ((2*m_args.refmodel_xi + 1) * std::pow(m_args.refmodel_w0, 2)) /  m_refmodel.k3;
+          m_refmodel.k1 =                               std::pow(m_args.refmodel_w0, 3)  / (m_refmodel.k3 * m_refmodel.k2);
         }
 
         void
@@ -742,6 +816,114 @@ namespace Control
           m_curr_state = IMC::NetRecoveryState::NR_INIT;
           m_initializedCoord = true;
           inf("Coordinator initialized");
+        }
+
+        void
+        initRefModel()
+        {
+          // Initializes and zeros the refmodel state to the current centroid IN PATH FRAME
+
+          m_refmodel.x = Matrix(9, 1, 0.0);
+
+          // Check if we have valid centroid pos
+          if (m_connected[CENTROID])
+          {
+            Matrix p_net = getNetPosition(m_p_path);
+            m_refmodel.x(0) = p_net(0);
+            m_refmodel.x(1) = p_net(1);
+            m_refmodel.x(2) = p_net(2);
+
+            Matrix v_net = getNetVelocity(m_p_path);
+            m_refmodel.x(3) = v_net(0);
+            m_refmodel.x(4) = v_net(1);
+            m_refmodel.x(5) = v_net(2);
+          }
+          else
+          {
+            err("Setting reference model state to zero, not connected to vehicle. ");
+          }
+        }
+
+        //! Steps the reference model
+        //! NB: Since the controller works in path frame,
+        //!     the reference model expects the desiredPos to be in path-frame as well.
+        void
+        stepRefModel(Matrix desiredPos, double deltat)
+        {
+
+          if (desiredPos.size() < 3)
+          {
+            err("Invalid size of desiredPosition. ");
+            return;
+          }
+
+
+          Matrix x_d = Matrix(3, 1, 0.0);
+          x_d(0) = desiredPos(0);
+          x_d(1) = desiredPos(1);
+          x_d(2) = desiredPos(2);
+          trace("x_d:\t [%1.2f, %1.2f, %1.2f]",
+              x_d(0), x_d(1), x_d(2));
+
+          trace("Using parameters k[1-3]: %.4f, %.4f, %.4f", m_refmodel.k1, m_refmodel.k2, m_refmodel.k3 );
+
+          // Step 1: V-part
+          Matrix tau1 = m_refmodel.k1 * (x_d - m_refmodel.getPos());
+
+          // Set heave to 0 if not controlling altitude
+          if (m_args.disable_Z)
+            tau1(2) = 0.0;
+
+          if (tau1.norm_2() > m_args.refmodel_max_v)
+          {
+            tau1 = m_args.refmodel_max_v * tau1 / tau1.norm_2();
+          }
+
+          spew("Trying to reach speed: %.3f", m_args.refmodel_max_v);
+
+          // Step 2: A-part
+          Matrix tau2 = m_refmodel.k2 * (tau1 - m_refmodel.getVel());
+
+          // Set heave to 0 if not controlling altitude
+          if (m_args.disable_Z)
+            tau2(2) = 0.0;
+
+          if (tau2.norm_2() > m_args.refmodel_max_a)
+          {
+            tau2 = m_args.refmodel_max_a * tau2 / tau2.norm_2();
+          }
+
+          // Step 3: J-part
+          Matrix tau3 = m_refmodel.k3 * (tau2 - m_refmodel.getAcc());
+
+          // Set heave to 0 if not controlling altitude
+          if (m_args.disable_Z)
+            tau3(2) = 0.0;
+
+          // Integrate
+          m_refmodel.x += deltat * (m_refmodel.x.get(3,8,0,0).vertCat(tau3));
+
+
+
+          // Log
+          /*
+          m_setpoint_log.x = m_refmodel.x(0);
+          m_setpoint_log.y = m_refmodel.x(1);
+          m_setpoint_log.z = m_refmodel.x(2);
+          m_setpoint_log.vx = m_refmodel.x(3);
+          m_setpoint_log.vy = m_refmodel.x(4);
+          m_setpoint_log.vz = m_refmodel.x(5);
+          m_setpoint_log.ax = m_refmodel.x(6);
+          m_setpoint_log.ay = m_refmodel.x(7);
+          m_setpoint_log.az = m_refmodel.x(8);
+
+          */
+          // Print reference pos and vel
+          trace("x_r:\t [%1.2f, %1.2f, %1.2f]",
+              m_refmodel.x(0), m_refmodel.x(1), m_refmodel.x(2));
+          trace("v_r:\t [%1.2f, %1.2f, %1.2f]",
+              m_refmodel.x(3), m_refmodel.x(4), m_refmodel.x(5));
+
         }
 
         void
@@ -1127,7 +1309,7 @@ namespace Control
         //! NB: Remember that optional offsets to the aircraft position is already added in p_a_path.
         Matrix
         getDesiredPathVelocity(double u_d_along_path, Matrix p_a_path,
-            Matrix v_a_path, Matrix p_n_path, Matrix v_n_path)
+            Matrix v_a_path, Matrix p_n_path, Matrix v_n_path, bool& validAccReturn, Matrix& accOut)
         {
 
           // Resulting desired velocity
@@ -1176,11 +1358,20 @@ namespace Control
             m_v_ref_path(2) = 0;
 
             // Todo: Why is not m_p_ref_path(1,2) set here? Aka in Catch-state.
+            // For now, they are just what they were, which is reasonable.
           }
+
+          // Step reference model.
+          stepRefModel(m_p_ref_path, m_time_diff);
 
           // Error variables
           Matrix e_p_path = m_p_ref_path - p_n_path;
           Matrix e_v_path = m_v_ref_path - v_n_path;
+
+          if (m_args.refmodel_use)
+          {
+            e_p_path = m_refmodel.getPos() - p_n_path;
+          }
 
           // Integral effect of path error.
           m_p_int_value = m_p_int_value + e_p_path * m_time_diff;
@@ -1193,7 +1384,27 @@ namespace Control
           Matrix i = Matrix(3,1,0.0);
           Matrix d = Matrix(3,1,0.0);
 
-          if (   m_curr_state == IMC::NetRecoveryState::NR_STANDBY
+          // Separate handling when using reference model.
+          if (m_args.refmodel_use)
+          {
+            // Apply vel feedforward with p-coontroller on position error.
+            v_path = m_refmodel.getVel() + m_control.Kp * e_p_path;
+
+            // Set acc feed forward.
+            accOut = m_refmodel.getAcc();
+            validAccReturn = true;
+
+            // If catching, we are doing separate along-path thing.
+            if (m_curr_state == IMC::NetRecoveryState::NR_START
+                || m_curr_state == IMC::NetRecoveryState::NR_CATCH)
+            {
+              v_path(0) = u_d_along_path;
+              accOut(0) = 0;
+            }
+
+          }
+
+          else if (   m_curr_state == IMC::NetRecoveryState::NR_STANDBY
               || m_curr_state == IMC::NetRecoveryState::NR_APPROACH
               || m_curr_state == IMC::NetRecoveryState::NR_END)
           {
@@ -1349,6 +1560,7 @@ namespace Control
           m_ud = 0;
           getPathVelocity(0, m_u_ref, m_ad, true);
           //initCoordinator();
+          initRefModel();
         }
 
         virtual void
@@ -1416,18 +1628,31 @@ namespace Control
             p_n_path = getNetPosition(m_p_path);
             v_n_path = getNetVelocity(m_v_path);
 
+            // Acceleration ff
+            Matrix a_n_path = Matrix(3, 1, 0.0);
+            bool accIsSet = false;
+
 
             // Compute velocity setpoints for the net
             // using desired along-track speed, and the current position and velocity of the centroid (net) and aircraft
             Matrix v_path_d = getDesiredPathVelocity(m_ud, p_a_path, v_a_path,
-                                                     p_n_path, v_n_path);
+                                                     p_n_path, v_n_path,
+                                                     accIsSet, a_n_path);
 
 
-            // For now, assume zero acceleration.
-            m_a_des_path(0) = 0;
-            m_a_des_path(1) = 0;
-            m_a_des_path(2) = 0;
-
+            if (!accIsSet)
+            {
+              // For now, assume zero acceleration.
+              m_a_des_path(0) = 0;
+              m_a_des_path(1) = 0;
+              m_a_des_path(2) = 0;
+            }
+            else
+            {
+              m_a_des_path(0) = a_n_path(0);
+              m_a_des_path(1) = a_n_path(1);
+              m_a_des_path(2) = a_n_path(2);
+            }
             // Transform the LinearState values to centroid frame (from virtual runway path frame)
             Matrix v_d = RCentroidPath()*v_path_d;
             Matrix a_d = RCentroidPath()*m_a_des_path;
