@@ -756,6 +756,10 @@ namespace Control
               }
           }
           sendCurrentState();
+          reportCurrentPositionDifference();
+
+          if (last_state != m_curr_state && m_curr_state == IMC::NetRecoveryState::NR_STANDBY)
+            resetStates();
 
           if (last_state != m_curr_state)
             inf("Current state: %s",
@@ -1251,6 +1255,29 @@ namespace Control
         }
 
         void
+        reportCurrentPositionDifference(void)
+        {
+
+          if (!allConnected())
+            return;
+
+          IMC::GroupStreamVelocity diff;
+
+          // Set difference state
+          // z is calculated as height - z, go get a positive value upwards. (altitude).
+          // So, a reported positive z means the fixed-wing is OVER the net.
+          // For x,y, a positive value means the fixed-wing is on the North/east positive side of the net.
+          diff.x = m_p_path[FIXEDWING](0) -  m_p_path[CENTROID](0);
+          diff.y = m_p_path[FIXEDWING](1) -  m_p_path[CENTROID](1);
+
+          diff.z =  (m_estate[FIXEDWING].state->height - m_estate[FIXEDWING].state->z)
+                  - (m_estate[CENTROID].state->height  - m_estate[CENTROID].state->z);
+
+          dispatch(diff);
+
+        }
+
+        void
         sendCurrentState()
         {
           IMC::NetRecoveryState state;
@@ -1562,6 +1589,15 @@ namespace Control
           getPathVelocity(0, m_u_ref, m_ad, true);
           //initCoordinator();
           initRefModel();
+        }
+
+        // Resets states, done on entering standby.
+        void
+        resetStates(void)
+        {
+          initRefModel();
+          m_time_end = Clock::get();
+          m_time_diff = 0.0;
         }
 
         virtual void
