@@ -41,6 +41,8 @@ namespace Control
         struct Arguments
         {
           bool auto_enable;
+          //! True if trying to start on idle mode, after recieving a plan stop
+          bool idle_enable;
         };
 
         struct Task: public DUNE::Tasks::Task
@@ -55,6 +57,10 @@ namespace Control
           bool m_fr_is_running;
 
 
+          //! Time of last planStop
+          double m_time_prev_stop;
+          //! Time of last abort
+          double m_time_prev_abort;
 
           //! Constructor.
           //! @param[in] name task name.
@@ -69,9 +75,16 @@ namespace Control
             .visibility(Parameter::VISIBILITY_USER)
             .description("Automatically enable if entering guided and still in service mode. ");
 
+            param("Start on Idle after Plan Stop", m_args.idle_enable)
+            .defaultValue("false")
+            .visibility(Parameter::VISIBILITY_USER)
+            .description("Starts the rc coordinated plan if doing an idle parameter just after a plan stop, with no aborts. ");
+
             bind<IMC::PlanControlState>(this);
             bind<IMC::AutopilotMode>(this);
             bind<IMC::RemoteActions>(this);
+            bind<IMC::IdleManeuver>(this);
+            bind<IMC::Abort>(this);
 
             setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_IDLE);
           }
@@ -115,8 +128,27 @@ namespace Control
           }
 
           void
+          consume(const IMC::Abort* abort)
+          {
+            if (abort->getDestination() == getSystemId())
+              m_time_prev_abort = Clock::get();
+          }
+
+          void
           consume(const IMC::PlanControlState* pcs)
           {
+
+            // Check for switch from executing to service
+            if (m_pcs.state == IMC::PlanControlState::PCS_EXECUTING
+                && pcs->state == IMC::PlanControlState::PCS_READY
+                //&& pcs->last_outcome == IMC::PlanControlState::LPO_SUCCESS
+                )
+            {
+              m_time_prev_stop = Clock::get();
+              debug("Sensed a switch from PathControlState. ");
+            }
+
+
             m_pcs = *pcs;
 
             if (pcs->plan_id == "CoordinatedFollowReference" && pcs->state == IMC::PlanControlState::PCS_EXECUTING)
@@ -161,6 +193,26 @@ namespace Control
             }
 
             m_apmode = *apmode;
+          }
+
+          void
+          consume(const IMC::IdleManeuver* idle)
+          {
+            (void) idle;
+            inf("Got Idle maneuver. ");
+            if (m_args.idle_enable)
+            {
+              double now = Clock::get();
+              inf("Checking if executing RCCoordinated..");
+              // Start if not recieved any aborts the past 10 seconds, and only if just stopped a plan.
+              if (now > m_time_prev_abort + 10.0
+                  && now < m_time_prev_stop + 1.0)
+              {
+                inf("Starting Follow Reference based IdleManeuver. ");
+                generatePlan();
+              }
+
+            }
           }
 
           void
