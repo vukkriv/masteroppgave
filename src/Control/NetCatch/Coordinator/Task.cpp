@@ -863,6 +863,13 @@ namespace Control
             return;
           }
 
+          // Sanitycheck deltat
+          if (deltat < 0 || deltat > 0.2)
+          {
+            err("Invalid deltat for refmodel: %f", deltat);
+            return;
+          }
+
 
           Matrix x_d = Matrix(3, 1, 0.0);
           x_d(0) = desiredPos(0);
