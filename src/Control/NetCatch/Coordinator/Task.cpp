@@ -250,10 +250,10 @@ namespace Control
         uint32_t m_scope_ref;
 
         //! To print the control-loop frequency
-        uint64_t m_time_end;
+        double m_time_end;
 
         //! Time between executions of the main control-loop.
-        uint64_t m_time_diff;
+        double m_time_diff;
 
         //centroid heading
         double m_centroid_heading;
