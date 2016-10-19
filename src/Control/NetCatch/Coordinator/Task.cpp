@@ -294,60 +294,60 @@ namespace Control
           m_time_diff(0),
           m_centroid_heading(0)
         {
-          param("Path Controller", m_args.use_controller).visibility(
-              Tasks::Parameter::VISIBILITY_USER).scope(
-              Tasks::Parameter::SCOPE_MANEUVER).defaultValue("false").description(
-              "Enable Path Controller");
+          param("Path Controller", m_args.use_controller)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .defaultValue("false")
+          .description("Enable Path Controller");
 
-          param("Offset cross-track", m_args.m_crosstrack_offset).visibility(
-              Tasks::Parameter::VISIBILITY_USER)
-  //	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .defaultValue("0.0").description("Cross-track offset, subtract the offset from the y-position of the airplane in the path frame");
+          param("Offset cross-track", m_args.m_crosstrack_offset)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("0.0")
+          .description("Cross-track offset, subtract the offset from the y-position of the airplane in the path frame");
 
-          param("Stop at end-of-runway", m_args.enable_stop_endRunway).visibility(
-              Tasks::Parameter::VISIBILITY_USER)
-  //	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .defaultValue("false").description("Enable stop at end of runway");
+          param("Stop at end-of-runway", m_args.enable_stop_endRunway)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("false")
+          .description("Enable stop at end of runway");
 
-          param("Enable Mean Window Aircraft", m_args.use_mean_window_aircraft).visibility(
-              Tasks::Parameter::VISIBILITY_USER)
-  //	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .defaultValue("false").description(
-              "Use mean window on aircraft states");
+          param("Enable Mean Window Aircraft", m_args.use_mean_window_aircraft)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("false")
+          .description("Use mean window on aircraft states");
 
-          param("Disable Z flag", m_args.disable_Z).defaultValue("false").visibility(
-              Tasks::Parameter::VISIBILITY_USER).description(
-              "Choose whether to disable Z flag. In turn, this will utilize new rate controller on some targets");
+          param("Disable Z flag", m_args.disable_Z)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Choose whether to disable Z flag. In turn, this will utilize new rate controller on some targets");
 
-          param("Coordinated Catch", m_args.enable_coord).visibility(
-              Tasks::Parameter::VISIBILITY_USER)
-  //	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .defaultValue("false").description(
-              "Flag to enable net catch with two multicopters");
+          param("Coordinated Catch", m_args.enable_coord)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("false")
+          .description("Flag to enable net catch with two multicopters");
 
-          param("Enable Catch", m_args.enable_catch).visibility(
-              Tasks::Parameter::VISIBILITY_USER)
-  //	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .defaultValue("false").description(
-              "Flag to enable catch state of the state-machine");
+          param("Enable Catch", m_args.enable_catch)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("false")
+          .description("Flag to enable catch state of the state-machine");
 
-          param("Mean Window Size", m_args.mean_ws).visibility(
-              Tasks::Parameter::VISIBILITY_USER)
-  //	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .defaultValue("1.0").description(
-              "Number of samples in moving average window");
+          param("Mean Window Size", m_args.mean_ws)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("1.0")
+          .description("Number of samples in moving average window");
 
-          param("Maximum Cross-Track Error Aircraft", m_args.eps_ct_a).units(
-              Units::Meter);
+          param("Maximum Cross-Track Error Aircraft", m_args.eps_ct_a)
+          .units(Units::Meter);
 
-          param("Maximum Cross-Track Error Net", m_args.eps_ct_n).units(
-              Units::Meter);
+          param("Maximum Cross-Track Error Net", m_args.eps_ct_n)
+          .units(Units::Meter);
 
-          param("Max vel y approach", m_args.max_vy_app).visibility(
-              Tasks::Parameter::VISIBILITY_USER).defaultValue("1");
+          param("Max vel y approach", m_args.max_vy_app)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("1");
 
-          param("Max pos y approach", m_args.max_py_app).visibility(
-              Tasks::Parameter::VISIBILITY_USER).defaultValue("1");
+          param("Max pos y approach", m_args.max_py_app)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("1");
 
           param("Max pos x approach", m_args.max_px_app)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -362,31 +362,35 @@ namespace Control
           .units(Units::Meter)
           .description("Desired collision point measured along-track from the start point");
 
-          param("Radius at recovery", m_args.m_coll_eps).visibility(
-              Tasks::Parameter::VISIBILITY_USER)
-  //      .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .defaultValue("0.1").units(Units::Meter).description(
-              "Desired radius to confirm recovery");
+          param("Radius at recovery", m_args.m_coll_eps)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("0.1")
+          .units(Units::Meter)
+          .description("Desired radius to confirm recovery");
 
-          param("Desired switching radius", m_args.m_endCatch_radius).visibility(
-              Tasks::Parameter::VISIBILITY_USER)
-  //	    .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .defaultValue("10.0").units(Units::Meter);
+          param("Desired switching radius", m_args.m_endCatch_radius)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("10.0")
+          .units(Units::Meter);
 
-          param("Kp Position Control", m_args.Kp).visibility(
-              Tasks::Parameter::VISIBILITY_USER).defaultValue("1.0,1.0,1.0").description(
-              "Position Controller tuning parameter Kp");
+          param("Kp Position Control", m_args.Kp)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("1.0,1.0,1.0")
+          .description("Position Controller tuning parameter Kp");
 
-          param("Ki Position Control", m_args.Ki).visibility(
-              Tasks::Parameter::VISIBILITY_USER).defaultValue("0.0,0.0,0.0").description(
-              "Position Controller tuning parameter Ki");
+          param("Ki Position Control", m_args.Ki)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("0.0,0.0,0.0")
+          .description("Position Controller tuning parameter Ki");
 
-          param("Kd Position Control", m_args.Kd).visibility(
-              Tasks::Parameter::VISIBILITY_USER).defaultValue("0.0,0.0,0.0").description(
-              "Position Controller tuning parameter Kd");
+          param("Kd Position Control", m_args.Kd)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("0.0,0.0,0.0")
+          .description("Position Controller tuning parameter Kd");
 
-          param("Maximum Normalised Velocity", m_args.max_norm_v).defaultValue(
-              "5.0").description("Maximum Normalised Velocity of the Copter");
+          param("Maximum Normalised Velocity", m_args.max_norm_v)
+          .defaultValue("5.0")
+          .description("Maximum Normalised Velocity of the Copter");
 
           param("Max Integral", m_args.max_integral)
           .defaultValue("1.0")
