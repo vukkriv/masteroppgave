@@ -833,12 +833,13 @@ namespace Control
           // Check if we have valid centroid pos
           if (m_connected[CENTROID])
           {
+            inf("Reference model reset. ");
             Matrix p_net = getNetPosition(m_p_path);
             m_refmodel.x(0) = p_net(0);
             m_refmodel.x(1) = p_net(1);
             m_refmodel.x(2) = p_net(2);
 
-            Matrix v_net = getNetVelocity(m_p_path);
+            Matrix v_net = getNetVelocity(m_v_path);
             m_refmodel.x(3) = v_net(0);
             m_refmodel.x(4) = v_net(1);
             m_refmodel.x(5) = v_net(2);
