@@ -942,12 +942,13 @@ namespace Control
         void
         updateRunwayPath()
         {
-          WGS84::displacement(m_ref_lat, m_ref_lon, 0, m_runway.lat_start,
-                              m_runway.lon_start, 0, &m_runway.start_NED(0),
-                              &m_runway.start_NED(1));
-          WGS84::displacement(m_ref_lat, m_ref_lon, 0, m_runway.lat_end,
-                              m_runway.lon_end, 0, &m_runway.end_NED(0),
-                              &m_runway.end_NED(1));
+          WGS84::displacement(m_ref_lat, m_ref_lon, 0,
+                              m_runway.lat_start, m_runway.lon_start, 0,
+                              &m_runway.start_NED(0), &m_runway.start_NED(1));
+
+          WGS84::displacement(m_ref_lat, m_ref_lon, 0,
+                              m_runway.lat_end, m_runway.lon_end, 0,
+                              &m_runway.end_NED(0), &m_runway.end_NED(1));
 
 
           m_runway.end_NED(2)   = m_estate[CENTROID].state->height;
