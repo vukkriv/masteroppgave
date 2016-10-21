@@ -28,9 +28,6 @@
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 
-// USER headers.
-//#include <USER/DUNE.hpp>
-
 namespace Autonomy
 {
   namespace DropOnTarget
