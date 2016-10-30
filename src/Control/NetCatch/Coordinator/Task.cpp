@@ -1492,7 +1492,7 @@ namespace Control
           if (Clock::get() - startPrint > 0.3)
           {
             spew("Kp: [%f,%f,%f]", m_args.Kp(0), m_args.Kp(1), m_args.Kp(2));
-            spew("m_time_diff: %llu", m_time_diff);
+            spew("m_time_diff: %f", m_time_diff);
             spew("m_p_int_value: [%f,%f,%f]", m_p_int_value(0), m_p_int_value(1), m_p_int_value(2));
             spew("p_ref_path: [%f,%f,%f]", m_p_ref_path(0), m_p_ref_path(1), m_p_ref_path(2));
             spew("v_ref_path: [%f,%f,%f]", m_v_ref_path(0), m_v_ref_path(1), m_v_ref_path(2));
