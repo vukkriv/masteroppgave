@@ -645,6 +645,7 @@ namespace Control
           updateMeanValues(s);
           //spew("switch state");
 
+          // Set vehicle to initialized. Technically, no different than connected for now.
           m_initialized[s] = true;
 
           IMC::NetRecoveryState::NetRecoveryLevelEnum last_state = m_curr_state;
