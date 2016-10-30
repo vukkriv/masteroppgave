@@ -1636,6 +1636,24 @@ namespace Control
             //spew("isActive: %d",isActive());
             return;
 
+          // Update state
+          // Simplistic error handling, only on connected or not
+          switch (getEntityState())
+          {
+            default:
+              // Nop
+              break;
+            case IMC::EntityState::ESTA_ERROR:
+              if (allConnected())
+                setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
+              break;
+            case IMC::EntityState::ESTA_NORMAL:
+              if (!allConnected())
+                setEntityState(IMC::EntityState::ESTA_ERROR, Status::CODE_CONNECTING);
+              break;
+
+          }
+
           double now = Clock::get();
           m_time_diff = now - m_time_end;
           m_time_end = now;
