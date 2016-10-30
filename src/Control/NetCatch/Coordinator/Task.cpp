@@ -611,6 +611,7 @@ namespace Control
           m_v[s] = v;
 
           static double last_print = 0.0;
+          static double last_print_initialized = 0.0;
           double now = Clock::get();
 
           if (!allConnected())
@@ -664,8 +665,8 @@ namespace Control
                 }
                 else
                 {
-                  if (!m_args.print_frequency || !last_print
-                      || (now - last_print) > 1.0 / m_args.print_frequency)
+                  if (!m_args.print_frequency || !last_print_initialized
+                      || (now - last_print_initialized) > 1.0 / m_args.print_frequency)
                   {
 
                     if (!m_initialized[FIXEDWING])
@@ -674,7 +675,7 @@ namespace Control
                       war("Centroid not initialized");
                     else
                       war("FixedWing and Centroid is not initialized");
-                    last_print = now;
+                    last_print_initialized = now;
                   }
                 }
                 break;
