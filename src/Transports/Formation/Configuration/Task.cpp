@@ -152,52 +152,62 @@ namespace Transports
           param("Vehicle List", m_args.formation_systems)
           .defaultValue("")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_IDLE)
           .description("System name list of the formation vehicles.");
 
           param("Desired Formation", m_args.desired_formation)
           .defaultValue("0.0, 0.0, 0.0")
           .units(Units::Meter)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_IDLE)
           .description("Desired formation positions matrix, where the order of the position vectors corresponds to the order of the vehicle list.");
 
           param("Incidence Matrix", m_args.incidence_matrix)
           .defaultValue("0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_IDLE)
           .description("Incidence matrix.");
 
           param("Link Gains", m_args.link_gains)
           .defaultValue("1.0")
+          .scope(Tasks::Parameter::SCOPE_IDLE)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Gains assigned to formation links.");
 
           param("Gain Scheduling -- Enable", m_args.gain_scheduler.enable)
           .defaultValue("False")
+          .scope(Tasks::Parameter::SCOPE_IDLE)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Enable link gains scheduling.");
 
           param("Gain Scheduling -- Gain in-formation", m_args.gain_scheduler.gain_close)
           .defaultValue("False")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_IDLE)
           .description("Enable link gains scheduling.");
 
           param("Gain Scheduling -- Gain far", m_args.gain_scheduler.gain_far)
           .defaultValue("False")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_IDLE)
           .description("Enable link gains scheduling.");
 
           param("Gain Scheduling -- Switch distance", m_args.gain_scheduler.switch_distance)
           .defaultValue("False")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_IDLE)
           .description("Enable link gains scheduling.");
 
           param("Gain Scheduling -- Percent of gain", m_args.gain_scheduler.percent_gain_close)
           .defaultValue("90.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_IDLE)
           .description("Desired error link distance at percent of in-formation gain.");
 
           param("Gain Scheduling -- Distance at % gain", m_args.gain_scheduler.distance_percent_gain_close)
           .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_IDLE)
           .description("Desired error link distance at percent of in-formation gain.");
 
           param("Disable Formation Velocity", m_args.disable_formation_velocity)
