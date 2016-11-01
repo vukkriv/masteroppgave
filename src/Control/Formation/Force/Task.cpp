@@ -73,7 +73,7 @@ namespace Control
       class BaselineGains
       {
       public:
-        BaselineGains(): m_mass(1), m_bw(0.5), m_xi(1), m_int_freq_scaler(0.1)
+        BaselineGains(): m_bw(0.5), m_xi(1), m_mass(1), m_int_freq_scaler(0.1)
         {
           updateGains();
         }
