@@ -133,34 +133,36 @@ namespace Control
 
       };
 
-      struct Arguments
+      // Arguments comming from the configuration manager. (through the IMC::CoordConfig message)
+      struct CoordinatorArguments
       {
-        //! Use Formation Controller
-        bool use_controller;
-
-        //! Vehicle list
-        std::vector<std::string> formation_systems;
-
-        //! Desired formation
-        Matrix desired_formation;
-
-        //! Incidence matrix
-        Matrix incidence_matrix;
-
-        //! Link gains
-        Matrix link_gains;
-
         //! Disable formation velocity
         bool disable_formation_velocity;
 
         //! Disable mission velocity
         bool disable_mission_velocity;
 
-        //! (optional) Constant mission velocity
-        Matrix const_mission_velocity;
-
         //! Disable collision velocity
         bool disable_collision_velocity;
+
+        //! Hold current formation
+        bool hold_current_formation;
+
+        //! Hold current distance (x-y)
+        bool hold_current_distance;
+
+        // Baseline control parameters
+        double baseline_bw;
+        double baseline_damping;
+      };
+
+      struct Arguments
+      {
+        //! Use Formation Controller
+        bool use_controller;
+
+       //! (optional) Constant mission velocity
+        Matrix const_mission_velocity;
 
         //! Collision avoidance radius
         double collision_radius;
@@ -179,12 +181,6 @@ namespace Control
 
         //! Threshold for delay on positioning updates
         double delay_threshold;
-
-        //! Hold current formation
-        bool hold_current_formation;
-
-        //! Hold current distance (x-y)
-        bool hold_current_distance;
 
         //! Threshold for sending aborts
         double abort_resend_threshold;
@@ -209,10 +205,6 @@ namespace Control
         Matrix Ki;
         Matrix Kd;
         Matrix Ka;
-
-        // Baseline control parameters
-        double baseline_bw;
-        double baseline_damping;
 
         double max_norm_F;
 
@@ -290,6 +282,9 @@ namespace Control
       {
         //! Task arguments
         Arguments m_args;
+
+        //! Coordinated Arguments
+        CoordinatorArguments m_cargs;
 
         //! Vehicle IDs
         Systems m_uav_ID;
@@ -1001,14 +996,14 @@ namespace Control
           }
           // Update non-update parameters.
           //CoordConfig only contains new flags
-          m_args.disable_collision_velocity = config->disable_collision_vel;
-          m_args.disable_formation_velocity = config->disable_formation_vel;
-          m_args.disable_mission_velocity   = config->disable_mission_vel;
-          m_args.hold_current_formation     = config->formation;
-          m_args.hold_current_distance      = config->hold_startup_distance;
+          m_cargs.disable_collision_velocity = config->disable_collision_vel;
+          m_cargs.disable_formation_velocity = config->disable_formation_vel;
+          m_cargs.disable_mission_velocity   = config->disable_mission_vel;
+          m_cargs.hold_current_formation     = config->formation;
+          m_cargs.hold_current_distance      = config->hold_startup_distance;
 
-          m_args.baseline_bw                = config->baseline_bw;
-          m_args.baseline_damping           = config->baseline_damping;
+          m_cargs.baseline_bw                = config->baseline_bw;
+          m_cargs.baseline_damping           = config->baseline_damping;
 
           m_baseline_gains.setParametersAndUpdate(config->baseline_bw, config->baseline_damping);
 
@@ -1194,7 +1189,7 @@ namespace Control
           if (msg->type == IMC::FormCoord::FCT_REQUEST
               && msg->op == IMC::FormCoord::FCOP_START)
           {
-            if (m_args.hold_current_formation && !skipResetDueToRecentExecution())
+            if (m_cargs.hold_current_formation && !skipResetDueToRecentExecution())
             {
               inf("Using current vehicle positions as desired formation.");
               // Set desired formation to current positions
@@ -1219,7 +1214,7 @@ namespace Control
               printMatrix(m_z_d, DEBUG_LEVEL_NONE);
 
             }
-            else if (m_args.hold_current_formation)
+            else if (m_cargs.hold_current_formation)
             {
               inf("Skipped formation hold reset due to recent execution. Timediff: %f", Clock::get() - m_time_prev_control_execution);
             }
@@ -1514,7 +1509,7 @@ namespace Control
         formationVelocity(void)
         {
           Matrix u_form(3, 1, 0);
-          if (m_args.disable_formation_velocity)
+          if (m_cargs.disable_formation_velocity)
             return u_form;
 
           // Calculate z_tilde
@@ -1606,7 +1601,7 @@ namespace Control
         collAvoidVelocity(void)
         {
           Matrix u_coll(3, 1, 0);
-          if (m_args.disable_collision_velocity)
+          if (m_cargs.disable_collision_velocity)
             return u_coll;
 
           static double u_coll_max = 0;
@@ -1670,7 +1665,7 @@ namespace Control
         missionVelocity(void)
         {
           Matrix u_mission(3, 1, 0);
-          if (m_args.disable_mission_velocity)
+          if (m_cargs.disable_mission_velocity)
             return u_mission;
 
           // Use constant mission velocity if set non-zero
