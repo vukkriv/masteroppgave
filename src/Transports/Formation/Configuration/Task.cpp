@@ -92,6 +92,13 @@ namespace Transports
         //! Hold current formation
         bool hold_current_formation;
 
+        //! Hold current distance (xy. )
+        bool hold_current_distance;
+
+        //! Baseline control parameters
+        double baseline_bw;
+        double baseline_damping;
+
         //! Reference latitide
         double ref_lat;
         //! Reference longitude
@@ -229,6 +236,23 @@ namespace Transports
           .defaultValue("false")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Use current formation as desired formation.");
+
+          param("Hold Current XY Distance", m_args.hold_current_distance)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Use current xy distance as desired formation, but set relative Z to zero. ");
+
+          param("Baseline Control -- Bandwidth", m_args.baseline_bw)
+          .defaultValue("0.6")
+          .units(Units::RadianPerSecond)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Baseline controller bandwidth. The link gains is used to modify this on a per-link basis.");
+
+          param("Baseline Control -- Damping", m_args.baseline_damping)
+          .minimumValue("0.0")
+          .defaultValue("1.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Baseline controller relative damping factor.");
 
           param("Latitude", m_args.ref_lat)
           .defaultValue("-999.0")
@@ -493,7 +517,8 @@ namespace Transports
           if (paramChanged(m_args.disable_collision_velocity) ||
               paramChanged(m_args.disable_formation_velocity) ||
               paramChanged(m_args.disable_mission_velocity)   ||
-              paramChanged(m_args.hold_current_formation)
+              paramChanged(m_args.hold_current_formation)     ||
+              paramChanged(m_args.hold_current_distance)
              )
           {
             debug("m_config.update = false");
@@ -504,9 +529,26 @@ namespace Transports
             m_config.disable_formation_vel = m_args.disable_formation_velocity;
             m_config.disable_mission_vel   = m_args.disable_mission_velocity;
             m_config.formation  = m_args.hold_current_formation;
+            m_config.hold_startup_distance = m_args.hold_current_distance;
 
             dispatch(m_config);
             debug("CoordConfig dispatched from new flags");
+            setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
+          }
+
+          if (paramChanged(m_args.baseline_bw)                ||
+              paramChanged(m_args.baseline_damping)
+             )
+          {
+            debug("m_config.update = false");
+            m_config.update = false;
+            setEntityState(IMC::EntityState::ESTA_BOOT, Status::CODE_SYNCING);
+
+            m_config.baseline_bw = m_args.baseline_bw;
+            m_config.baseline_damping = m_args.baseline_damping;
+
+            dispatch(m_config);
+            debug("CoordConfig dispatched from new baseline control parameters.");
             setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
           }
         }
