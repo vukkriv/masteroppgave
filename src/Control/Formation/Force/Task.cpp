@@ -70,6 +70,69 @@ namespace Control
         double slope;
       };
 
+      class BaselineGains
+      {
+      public:
+        BaselineGains(): m_mass(1), m_bw(0.5), m_xi(1), m_int_freq_scaler(0.1)
+        {
+          updateGains();
+        }
+
+        void
+        setMassAndUpdate(double m)
+        {
+          m_mass = m;
+
+          updateGains();
+        }
+
+        void
+        setParametersAndUpdate(double bw, double xi)
+        {
+          m_bw = bw;
+          m_xi = xi;
+
+          updateGains();
+        }
+
+        // Getters for control parameters
+        double getKp(void) { return m_kp; };
+        double getKd(void) { return m_kd; };
+        double getKi(void) { return m_ki; };
+
+      private:
+          void
+          updateGains(void)
+          {
+
+            double xi_sq = std::pow(m_xi, 2);
+            double xi_qu = std::pow(m_xi, 4);
+
+            m_wn = m_bw / (std::sqrt( 1.0 - 2.0*xi_sq + std::sqrt( 4.0*xi_qu - 4.0*xi_sq + 2.0 ) ) );
+
+            m_kp = m_mass * std::pow(m_wn, 2);
+            m_kd = 2 * m_xi * m_wn * m_mass;
+            m_ki = m_int_freq_scaler * m_wn * m_kp;
+          }
+
+          // Input parameters for bandwidth, damping factor and mass
+          double m_bw;
+          double m_xi;
+          double m_mass;
+
+          // Integral frequency scaling
+          double m_int_freq_scaler;
+
+          // Computed natural frequency
+          double m_wn;
+
+          // Computed gains;
+          double m_kp;
+          double m_kd;
+          double m_ki;
+
+      };
+
       struct Arguments
       {
         //! Use Formation Controller
@@ -120,6 +183,9 @@ namespace Control
         //! Hold current formation
         bool hold_current_formation;
 
+        //! Hold current distance (x-y)
+        bool hold_current_distance;
+
         //! Threshold for sending aborts
         double abort_resend_threshold;
 
@@ -142,6 +208,11 @@ namespace Control
         Matrix Kp;
         Matrix Ki;
         Matrix Kd;
+        Matrix Ka;
+
+        // Baseline control parameters
+        double baseline_bw;
+        double baseline_damping;
 
         double max_norm_F;
 
@@ -324,6 +395,10 @@ namespace Control
         //! Current control profile
         IMC::ControlProfile m_cprofile;
 
+        //! State of baseline gains
+        BaselineGains m_baseline_gains;
+
+
 
         //! Constructor.
         //! @param[in] name task name.
@@ -436,6 +511,11 @@ namespace Control
           .defaultValue("0.0,0.0,0.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Velocity Controller tuning parameter Kd");
+
+          param("Ka Velocity Control", m_args.Ka)
+          .defaultValue("0.0, 0.0, 0.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Velocity Controller tuning parameter Ka");
 
           param("Maximum Normalized Force", m_args.max_norm_F)
           .defaultValue("5.0")
@@ -561,6 +641,11 @@ namespace Control
             m_args.Kd = checkGainMatrix(m_args.Kd);
           if (paramChanged(m_args.Ki))
             m_args.Ki = checkGainMatrix(m_args.Ki);
+          if (paramChanged(m_args.Ka))
+            m_args.Ka = checkGainMatrix(m_args.Ka);
+
+          if (paramChanged(m_args.mass))
+            m_baseline_gains.setMassAndUpdate(m_args.mass);
 
         }
 
@@ -914,14 +999,19 @@ namespace Control
               debug("Configured with IMC::CoordConfig");
             }
           }
-          else
-          {
-            //CoordConfig only contains new flags
-            m_args.disable_collision_velocity = config->disable_collision_vel;
-            m_args.disable_formation_velocity = config->disable_formation_vel;
-            m_args.disable_mission_velocity   = config->disable_mission_vel;
-            m_args.hold_current_formation     = config->formation;
-          }
+          // Update non-update parameters.
+          //CoordConfig only contains new flags
+          m_args.disable_collision_velocity = config->disable_collision_vel;
+          m_args.disable_formation_velocity = config->disable_formation_vel;
+          m_args.disable_mission_velocity   = config->disable_mission_vel;
+          m_args.hold_current_formation     = config->formation;
+          m_args.hold_current_distance      = config->hold_startup_distance;
+
+          m_args.baseline_bw                = config->baseline_bw;
+          m_args.baseline_damping           = config->baseline_damping;
+
+          m_baseline_gains.setParametersAndUpdate(config->baseline_bw, config->baseline_damping);
+
           debug("CoordConfig handled, m_configured=%d",m_configured);
         }
 
@@ -1447,44 +1537,47 @@ namespace Control
 
           Matrix link_errors_agent = Matrix(3,1, 0.0);
 
+          // To calculate link gain, the following steps are done:
+          // 1. Baseline gain based on desired bandwidth and damping
+          // 2a. Optional gain scheduler with sigmoid gian
+          // 2b. Alternatively, scale based on link gain.
+          // 3. Scale z-axis.
+
+          double baseline_gain = m_baseline_gains.getKp();
+
           if (m_gain_scheduler.enable)
           {
-            double gain = sigmoidGain(z_tilde);
+            double sigmoid_gain = sigmoidGain(z_tilde);
 
+            // Debug Print
             double now = Clock::getSinceEpoch();
             if (!m_args.print_frequency || !last_print
                 || (now - last_print) > 1.0 / m_args.print_frequency)
             {
-              trace("Link gain = %f",gain);
+              trace("Link gain = %f",sigmoid_gain);
               trace("Z_tilde_n = %f",z_tilde.norm_2());
               last_print = now;
             }
 
-            for (unsigned int link = 0; link < m_L; link++)
-            {
-              u_form -= m_D(m_i, link) * gain * z_tilde.column(link);
-
-              // Gain down the z-axis component
-              u_form(2) *= m_args.link_z_gain_multiplier;
-              link_errors_agent += m_D(m_i, link) * z_tilde.column(link);
-            }
+            // Update baseline gain.
+            baseline_gain *= sigmoid_gain;
           }
-          else
+
+          for (unsigned int link = 0; link < m_L; link++)
           {
-            for (unsigned int link = 0; link < m_L; link++)
-            {
-              double wb = m_delta(link);
-              double wn = wb/0.64;
+            double gain = baseline_gain;
 
-              double Kp = m_args.mass * std::pow(wn, 2);
+            if (!m_gain_scheduler.enable)
+              gain *= m_delta(link);
 
-              u_form -= m_D(m_i, link) * Kp * z_tilde.column(link);
+            u_form -= m_D(m_i, link) * gain * z_tilde.column(link);
 
-              u_form(2) *= m_args.link_z_gain_multiplier;
+            // Scale down z.
+            u_form(2) *= m_args.link_z_gain_multiplier;
 
-              link_errors_agent += m_D(m_i, link) * z_tilde.column(link);
-            }
+            link_errors_agent += m_D(m_i, link) * z_tilde.column(link);
           }
+
           //spew("u_form: [%1.1f, %1.1f, %1.1f]", u_form(0), u_form(1), u_form(2));
           // Store the logs
 
@@ -1640,7 +1733,7 @@ namespace Control
 
           // Calculate gains from desired damping and bandwidth.
           // TODO: Do more cleanly. Xi and wn should be sent from coordinator, just assume same gain for all members.
-
+          /*
           double wb = 1;
 
           if (m_L > 1)
@@ -1649,11 +1742,14 @@ namespace Control
             trace("Using default wb. ");
 
           double wn = wb/0.64;
+          */
 
           // Actually damping matrix..
-          Matrix Kp = 2*m_args.mass * wn * m_args.Kp;
+          //Matrix Kp = 2*m_args.mass * wn * m_args.Kp;
+          Matrix Kd = m_baseline_gains.getKd() * m_args.Kd;
 
-          Matrix Ki = m_args.mass * std::pow(wn, 3) * m_args.Ki / 10.0;
+          //Matrix Ki = m_args.mass * std::pow(wn, 3) * m_args.Ki / 10.0;
+          Matrix Ki = m_baseline_gains.getKi() * m_args.Ki;
 
 
           // Only add if not in passive mode
@@ -1662,14 +1758,14 @@ namespace Control
           if (isNotPassiveMode)
           {
             // F_i is transformed to NED before dispatch.
-            F_i(0) = Kp(0) * v_error_ned(0);
-            F_i(1) = Kp(1) * v_error_ned(1);
-            F_i(2) = Kp(2) * v_error_ned(2);
+            F_i(0) = Kd(0) * v_error_ned(0);
+            F_i(1) = Kd(1) * v_error_ned(1);
+            F_i(2) = Kd(2) * v_error_ned(2);
 
             // Add damping on acceleration. (Basically acceleration feed-forward. Will act as a mass-increaser, might make more robust to wind)
-            F_i(0) += m_args.Kd(0) * dv_error_ned(0);
-            F_i(1) += m_args.Kd(1) * dv_error_ned(1);
-            F_i(2) += m_args.Kd(2) * dv_error_ned(2);
+            F_i(0) += m_args.Ka(0) * dv_error_ned(0);
+            F_i(1) += m_args.Ka(1) * dv_error_ned(1);
+            F_i(2) += m_args.Ka(2) * dv_error_ned(2);
           }
           else
           {
@@ -1678,12 +1774,12 @@ namespace Control
 
 
             // Only acceleration damping
-            F_i(0) = m_args.Kd(0) * -m_a_ned(0);
-            F_i(1) = m_args.Kd(1) * -m_a_ned(1);
-            F_i(2) = m_args.Kd(2) * -m_a_ned(2);
+            F_i(0) = m_args.Ka(0) * -m_a_ned(0);
+            F_i(1) = m_args.Ka(1) * -m_a_ned(1);
+            F_i(2) = m_args.Ka(2) * -m_a_ned(2);
 
             // Still control altitude.
-            F_i(2) += Kp(2) * v_error_ned(2);
+            F_i(2) += Kd(2) * v_error_ned(2);
 
             // Set desired acc to zero to disable feed forward
             dv_des = Matrix(3, 1, 0.0);
