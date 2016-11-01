@@ -98,6 +98,9 @@ namespace Control
         double refmodel_max_v;
         double refmodel_max_a;
 
+        //! New p-controller frequency scaler
+        double kp_natural_freq_scale;
+
         std::string centroid_els_entity_label;
 
         float print_frequency;
@@ -110,6 +113,78 @@ namespace Control
         D_DESIRED = 1
       };
       static const int NUM_DESIRED = 2;
+
+
+      class BaselineGains
+      {
+      public:
+        BaselineGains(): m_bw(0.5), m_xi(1), m_mass(1), m_int_freq_scaler(0.1)
+        {
+          updateGains();
+        }
+
+        void
+        setMassAndUpdate(double m)
+        {
+          m_mass = m;
+
+          updateGains();
+        }
+
+        void
+        setParametersAndUpdate(double bw, double xi)
+        {
+          m_bw = bw;
+          m_xi = xi;
+
+          updateGains();
+        }
+
+        // Getters for control parameters
+        double getKp(void) { return m_kp; };
+        double getKd(void) { return m_kd; };
+        double getKi(void) { return m_ki; };
+        double getWn(void) { return m_wn; };
+
+        // Gets the Kp gain as when it is shifted through Kd
+        double getKpBar(double freq_scaler) {
+          return m_wn / (2.0 * m_xi * std::pow(freq_scaler, 2.0));
+        };
+
+
+
+      private:
+          void
+          updateGains(void)
+          {
+
+            double xi_sq = std::pow(m_xi, 2);
+            double xi_qu = std::pow(m_xi, 4);
+
+            m_wn = m_bw / (std::sqrt( 1.0 - 2.0*xi_sq + std::sqrt( 4.0*xi_qu - 4.0*xi_sq + 2.0 ) ) );
+
+            m_kp = m_mass * std::pow(m_wn, 2);
+            m_kd = 2 * m_xi * m_wn * m_mass;
+            m_ki = m_int_freq_scaler * m_wn * m_kp;
+          }
+
+          // Input parameters for bandwidth, damping factor and mass
+          double m_bw;
+          double m_xi;
+          double m_mass;
+
+          // Integral frequency scaling
+          double m_int_freq_scaler;
+
+          // Computed natural frequency
+          double m_wn;
+
+          // Computed gains;
+          double m_kp;
+          double m_kd;
+          double m_ki;
+
+      };
 
       struct VirtualRunway
       {
@@ -304,6 +379,9 @@ namespace Control
         //centroid heading
         double m_centroid_heading;
 
+        // Baseline controller as recieved from the CoordConfig
+        BaselineGains m_baselineGains;
+
         //! Controllable loops.
         static const uint32_t c_controllable = IMC::CL_PATH;
         //! Required loops.
@@ -471,6 +549,10 @@ namespace Control
           .units(Units::MeterPerSquareSecond)
           .description("Nominal maximum acceleration during reference model usage. ");
 
+          param("ReferenceModel -- Kp Frequency Scaler", m_args.kp_natural_freq_scale)
+          .defaultValue("0.5")
+          .description("Amount to scale natural frequency of the position controller to the output of the reference model. ");
+
           param("Print Frequency", m_args.print_frequency)
           .defaultValue("0.0")
           .units(Units::Second)
@@ -479,6 +561,7 @@ namespace Control
           // Bind incoming IMC messages
           bind<IMC::EstimatedLocalState>(this);
           bind<IMC::DesiredNetRecoveryPath>(this);
+          bind<IMC::CoordConfig>(this);
         }
 
         //! Reserve entity identifiers.
@@ -528,6 +611,14 @@ namespace Control
           m_refmodel.k3 =  (2*m_args.refmodel_xi + 1) *     m_args.refmodel_w0;
           m_refmodel.k2 = ((2*m_args.refmodel_xi + 1) * std::pow(m_args.refmodel_w0, 2)) /  m_refmodel.k3;
           m_refmodel.k1 =                               std::pow(m_args.refmodel_w0, 3)  / (m_refmodel.k3 * m_refmodel.k2);
+        }
+
+        void
+        consume(const IMC::CoordConfig *msg)
+        {
+          m_baselineGains.setParametersAndUpdate(msg->baseline_bw, msg->baseline_damping);
+
+          trace("Now using kp_bar gain: %f", m_baselineGains.getKpBar(m_args.kp_natural_freq_scale));
         }
 
         void
@@ -1427,7 +1518,10 @@ namespace Control
           if (m_args.refmodel_use)
           {
             // Apply vel feedforward with p-coontroller on position error.
-            v_path = m_refmodel.getVel() + m_control.Kp * e_p_path;
+            double kp = m_baselineGains.getKpBar(m_args.kp_natural_freq_scale);
+
+            // Kp is a dimensional scaler.
+            v_path = m_refmodel.getVel() + kp * m_control.Kp * e_p_path;
 
             // Set acc feed forward.
             accOut = m_refmodel.getAcc();
