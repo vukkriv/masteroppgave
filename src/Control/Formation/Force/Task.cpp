@@ -278,6 +278,28 @@ namespace Control
 
       static const int NUM_PARCELS = 13;
 
+      // Convencience data holder for the desired position
+      // To clarify the frames:
+      //  _relative means it is given as an unrotated relative position.
+      //  _ned is the actual ned-relative position to use.
+      //
+      struct DesiredFormation
+      {
+        //! Desired relative NED position as given by the coordination message
+        Matrix x_d_relative_configuration;
+
+        //! The relative NED position when the maneuver started
+        Matrix x_d_relative_start;
+
+        //! The relative NED position to use.
+        Matrix x_d_relative;
+
+        //! The rotated relative position to use
+        //! (this is x_d_relative rotated with m_curr_desired_heading)
+        //! and is actively updated by the controller.
+        Matrix x_d_ned;
+      };
+
       struct Task : public DUNE::Control::PeriodicUAVAutopilot
       {
         //! Task arguments
@@ -318,6 +340,8 @@ namespace Control
 
         //! Desired formation positions
         Matrix m_x_c_default;
+
+        DesiredFormation m_df;
 
         //! Vehicle positions
         Matrix m_x;
@@ -748,8 +772,11 @@ namespace Control
             m_curr_desired_heading = lowPassSmoothing(m_curr_desired_heading, m_desired_heading.value, diff, m_args.heading_smoothing_T);
           }
           m_x_c = Rzyx(0, 0, m_curr_desired_heading) * m_x_c_default;
+          m_df.x_d_ned = Rzyx(0, 0, m_curr_desired_heading) * m_df.x_d_relative;
+
 
           calcDiffVariable(&m_z_d, m_D, m_x_c);
+          calcDiffVariable(&m_z_d, m_D, m_df.x_d_ned);
 
           if (!m_args.print_frequency || !last_print
               || (now - last_print) > 1.0 / m_args.print_frequency)
@@ -787,6 +814,8 @@ namespace Control
             m_z_d.resizeAndFill(3, m_L, 0);
             // Update desired difference variables matrix
             calcDiffVariable(&m_z_d, m_D, m_x_c);
+            calcDiffVariable(&m_z_d, m_D, m_df.x_d_ned);
+
             printMatrix(m_z_d);
           }
 
@@ -807,6 +836,8 @@ namespace Control
           // Extract vehicle IDs
           m_uav_ID.clear();
 
+          Matrix x_d_configuration = Matrix(3, 1, 0.0);
+
           if (static_cast<unsigned int>(part->size()) == 0)
           {
             m_uav_ID.push_back(this->getSystemId());
@@ -821,6 +852,8 @@ namespace Control
 
             // Resize desired formation matrix to fit number of vehicles
             m_x_c_default.resizeAndFill(3, m_N, 0);
+            x_d_configuration.resizeAndFill(3, m_N, 0.0);
+
             for (p_itr = part->begin(); p_itr != part->end(); p_itr++)
             {
               //all participants
@@ -834,9 +867,14 @@ namespace Control
               m_x_c_default(0,uav) = (*p_itr)->off_x;
               m_x_c_default(1,uav) = (*p_itr)->off_y;
               m_x_c_default(2,uav) = (*p_itr)->off_z;
+
+              x_d_configuration(0,uav) = (*p_itr)->off_x;
+              x_d_configuration(1,uav) = (*p_itr)->off_y;
+              x_d_configuration(2,uav) = (*p_itr)->off_z;
+
               debug("UAV %u: [%1.1f, %1.1f, %1.1f]", uav,
-                    m_x_c_default(0, uav), m_x_c_default(1, uav),
-                    m_x_c_default(2, uav));
+                  x_d_configuration(0, uav), x_d_configuration(1, uav),
+                  x_d_configuration(2, uav));
               uav += 1;
             }
             if (!found_self)
@@ -850,7 +888,16 @@ namespace Control
             m_v_ned.resizeAndFill(3, 1, 0);
             m_a_ned.resizeAndFill(3, 1, 0);
 
+            m_df.x_d_relative_configuration = x_d_configuration;
+
+            // Use the new relative configuration
+            m_df.x_d_relative = m_df.x_d_relative_configuration;
+
+            // This call should not be nescessary?
             m_x_c = m_x_c_default;
+
+            // Well, it is to initialize everything with the right sizes..
+            m_df.x_d_ned = m_df.x_d_relative;
           }
           return true;
         }
@@ -1189,14 +1236,31 @@ namespace Control
           if (msg->type == IMC::FormCoord::FCT_REQUEST
               && msg->op == IMC::FormCoord::FCOP_START)
           {
-            if (m_cargs.hold_current_formation && !skipResetDueToRecentExecution())
+            if ((m_cargs.hold_current_formation || m_cargs.hold_current_distance) && !skipResetDueToRecentExecution())
             {
               inf("Using current vehicle positions as desired formation.");
               // Set desired formation to current positions
               m_x_c = m_x;
               m_x_c_default = transpose(RNedCentroid())*m_x;
+
+              m_df.x_d_relative_start = transpose(RNedCentroid())*m_x;
+
+              // Set the start relative as the current relative desired formation
+              m_df.x_d_relative = m_df.x_d_relative_start;
+
+              if (m_cargs.hold_current_distance)
+              {
+                // We only use the x-y information, set all z-components to zero.
+                m_df.x_d_relative.set(2,2, 0, m_N-1, Matrix(1, m_N, 0.0));
+              }
+
+              // Set the ned desired
+              m_df.x_d_ned = RNedCentroid()*m_df.x_d_relative;
+
+
               // Update desired difference variables matrix
               calcDiffVariable(&m_z_d, m_D, m_x_c);
+              calcDiffVariable(&m_z_d, m_D, m_df.x_d_ned);
               printMatrix(m_z_d);
 
               inf("Default desired formation:");
@@ -1214,9 +1278,19 @@ namespace Control
               printMatrix(m_z_d, DEBUG_LEVEL_NONE);
 
             }
-            else if (m_cargs.hold_current_formation)
+            else if (m_cargs.hold_current_formation || m_cargs.hold_current_distance)
             {
               inf("Skipped formation hold reset due to recent execution. Timediff: %f", Clock::get() - m_time_prev_control_execution);
+            }
+            else
+            {
+              // Set the relative to use as the configuration relative
+              m_df.x_d_relative = m_df.x_d_relative_configuration;
+
+              // Set the ned desired
+              m_df.x_d_ned = RNedCentroid()*m_df.x_d_relative;
+
+              inf("Starting formation based on the relative formation from coordinator message. ");
             }
           }
         }
