@@ -61,8 +61,10 @@ namespace Control
         double h_dot_i;
         double h_dot_p;
 
-        double Tref_z;
-        double zeta_z;
+        double Tref_z_ramp;
+        double zeta_z_ramp;
+        double Tref_z_step;
+        double zeta_z_step;
         double Tref_gamma;
         double zeta_gamma;
 
@@ -181,6 +183,8 @@ namespace Control
         double state_z_shifting;
         bool last_WP_loiter;
         double last_loiter_z;
+        double m_prev_unfiletered_height;
+        double m_last_filter_ramp;
         ReferenceModel m_refmodel_z;
         ReferenceModel m_refmodel_gamma;
 
@@ -200,7 +204,9 @@ namespace Control
           start_time(99999),
           last_start_z(9999),
           first_waypoint(true),
-          m_shifting_waypoint(false)
+          m_shifting_waypoint(false),
+          m_prev_unfiletered_height(0),
+          m_last_filter_ramp(false)
 
         {
           param("Height bandwidth", m_args.phi_h)
@@ -248,13 +254,21 @@ namespace Control
           .defaultValue("25.0")
           .description("Approach distance gain up");
 
-          param("Time constant refmodelZ", m_args.Tref_z)
+          param("Time constant refmodelZ (ramp)", m_args.Tref_z_ramp)
           .defaultValue("1.0")
-          .description("Time constant for reference model for desired Z");
+          .description("Time constant for reference model for desired Z ramp");
 
-          param("Dampening ratio refmodelZ", m_args.zeta_z)
+          param("Dampening ratio refmodelZ (ramp)", m_args.zeta_z_ramp)
           .defaultValue("1.0")
-          .description("Dampening ratio for reference model for desired Z");
+          .description("Dampening ratio for reference model for desired Z ramp");
+
+          param("Time constant refmodelZ (step)", m_args.Tref_z_step)
+          .defaultValue("1.0")
+          .description("Time constant for reference model for desired Z step");
+
+          param("Dampening ratio refmodelZ (step)", m_args.zeta_z_step)
+          .defaultValue("1.0")
+          .description("Dampening ratio for reference model for desired Z step");
 
           param("Time constant refmodelGamma", m_args.Tref_gamma)
           .defaultValue("1.0")
@@ -299,24 +313,22 @@ namespace Control
           // Adjust internal ref model state so that ref is constant on param change,
           // z1 = C1*x1 = z2 = C2*x2
           // x = C2/C1*xbefore
-          double w_new = 1/m_args.Tref_z;
+          //double w_new = 1/m_args.Tref_z;
           //Matrix x_old = Matrix(3,1,0.0);
           Matrix x_old = m_refmodel_z.x;
-          m_refmodel_z.x(0,0) = m_refmodel_z.C(0,0)/(w_new*w_new*w_new)*x_old(0,0);
-          m_refmodel_z.x(1,0) = m_refmodel_z.C(0,1)/((2*m_args.zeta_z + 1)*w_new)*x_old(1,0);
-          m_refmodel_z.x(2,0) = 0.0;
+          //m_refmodel_z.x(0,0) = m_refmodel_z.C(0,0)/(w_new*w_new*w_new)*x_old(0,0);
+          //m_refmodel_z.x(1,0) = m_refmodel_z.C(0,1)/((2*m_args.zeta_z + 1)*w_new)*x_old(1,0);
+          //m_refmodel_z.x(2,0) = 0.0;
 
           
-          w_new = 1/m_args.Tref_gamma;
+          double w_new = 1/m_args.Tref_gamma;
           x_old = m_refmodel_gamma.x;
           m_refmodel_gamma.x(0,0) = m_refmodel_gamma.C(0,0)/(w_new*w_new*w_new)*x_old(0,0);
           m_refmodel_gamma.x(1,0) = m_refmodel_gamma.C(0,1)/((2*m_args.zeta_gamma + 1)*w_new)*x_old(1,0);
           m_refmodel_gamma.x(2,0) = 0.0;
 
 
-          m_refmodel_z.setTimeconstant(m_args.Tref_z);
           m_refmodel_gamma.setTimeconstant(m_args.Tref_gamma);
-          m_refmodel_z.setDampeningRatio(m_args.zeta_z);
           m_refmodel_gamma.setDampeningRatio(m_args.zeta_gamma);
         }
         
@@ -470,6 +482,40 @@ namespace Control
 
           if(m_args.use_refmodel)
           {
+            double height_ref_derivative = (zref.value - m_prev_unfiletered_height)/ts.delta;
+            spew("Height ref derivative: %f", height_ref_derivative);
+            spew("Last filter ramp?: %f", m_last_filter_ramp);
+            if (height_ref_derivative == 0 && m_last_filter_ramp)
+            {
+              //Step
+              spew("Filter: Step");
+              double w_new = 1/m_args.Tref_z_step;
+              Matrix x_old = m_refmodel_z.x;
+              m_refmodel_z.x(0,0) = m_refmodel_z.C(0,0)/(w_new*w_new*w_new)*x_old(0,0);
+              m_refmodel_z.x(1,0) = m_refmodel_z.C(0,1)/((2*m_args.zeta_z_step + 1)*w_new)*x_old(1,0);
+              m_refmodel_z.x(2,0) = 0.0;
+
+              m_last_filter_ramp = false;
+
+              m_refmodel_z.setTimeconstant(m_args.Tref_z_step);
+              m_refmodel_z.setDampeningRatio(m_args.zeta_z_step);
+            }
+            else if (height_ref_derivative != 0 && !m_last_filter_ramp)
+            {
+              //Ramp
+              spew("Filter: Ramp");
+              double w_new = 1/m_args.Tref_z_ramp;
+              Matrix x_old = m_refmodel_z.x;
+              m_refmodel_z.x(0,0) = m_refmodel_z.C(0,0)/(w_new*w_new*w_new)*x_old(0,0);
+              m_refmodel_z.x(1,0) = m_refmodel_z.C(0,1)/((2*m_args.zeta_z_ramp + 1)*w_new)*x_old(1,0);
+              m_refmodel_z.x(2,0) = 0.0;
+
+              m_last_filter_ramp = true;
+
+              m_refmodel_z.setTimeconstant(m_args.Tref_z_ramp);
+              m_refmodel_z.setDampeningRatio(m_args.zeta_z_ramp);
+            }
+
             debug("Z-ref before filter: %f",zref.value);
             m_refmodel_z.x = (m_refmodel_z.I + (ts.delta*m_refmodel_z.A))*m_refmodel_z.x + (ts.delta*m_refmodel_z.B) * zref.value;
             zref.value = m_refmodel_z.C(0,0)*m_refmodel_z.x(0,0) + m_refmodel_z.C(0,1)*m_refmodel_z.x(1,0) + m_refmodel_z.C(0,2)*m_refmodel_z.x(2,0);
@@ -536,6 +582,8 @@ namespace Control
           //m_vrate.value= h_dot_desired;
 
           m_hdiff.err_z = (state.height - state.z) - zref.value;
+
+          m_prev_unfiletered_height = ref_nofilter.z;
 
           dispatch(m_vrate);
           zref.z_units=Z_HEIGHT;
