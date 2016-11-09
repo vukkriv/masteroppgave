@@ -513,7 +513,7 @@ namespace Control
             debug("glideslope before filter: %f",glideslope_angle);
 
             m_refmodel_gamma.x = (m_refmodel_gamma.I + (ts.delta*m_refmodel_gamma.A))*m_refmodel_gamma.x + (ts.delta*m_refmodel_gamma.B) * glideslope_angle;
-            glideslope_angle = m_refmodel_gamma.C(0,0)*m_refmodel_gamma.x(0,0) + m_refmodel_gamma.C(0,1)*m_refmodel_gamma.x(1,0) + m_refmodel_gamma.C(0,2)*m_refmodel_gamma.x(2,0);
+            glideslope_angle = m_refmodel_gamma.C(0,0)*m_refmodel_gamma.x(0,0); //Uses C = [omega^3 0 0] because of unfiltered bahaviour is only a series of steps
             ref_nofilter.vy = glideslope_angle;
           }
 
