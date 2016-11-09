@@ -322,7 +322,14 @@ namespace Control
         {
           PathController::onUpdateParameters();
 
-          Matrix x_old = m_refmodel_z.x;
+          if (m_last_filter_ramp)
+          {
+            m_refmodel_z.updateFilter(m_args.Tref_z_ramp, m_args.zeta_z_ramp);
+          }
+          else if (!m_last_filter_ramp)
+          {
+            m_refmodel_z.updateFilter(m_args.Tref_z_step, m_args.zeta_z_step);
+          }
 
           m_refmodel_gamma.updateFilter(m_args.Tref_gamma, m_args.zeta_gamma);
 
