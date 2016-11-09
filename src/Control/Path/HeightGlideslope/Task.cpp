@@ -470,8 +470,10 @@ namespace Control
           {
             double height_ref_derivative = (zref.value - m_prev_unfiltered_height)/ts.delta;
             spew("Height ref derivative: %f", height_ref_derivative);
-            spew("Last filter ramp?: %f", m_last_filter_ramp);
-            if (height_ref_derivative == 0 && m_last_filter_ramp)
+            spew("Last filter ramp?: %d", m_last_filter_ramp);
+
+            //Checking what state the unfiltered reference is in and filtering accordingly
+            if (height_ref_derivative <= 0.0001 && height_ref_derivative >= -0.0001 && m_last_filter_ramp)
             {
               //Step
               spew("Filter: Step");
@@ -487,7 +489,7 @@ namespace Control
               m_refmodel_z.setTimeconstant(m_args.Tref_z_step);
               m_refmodel_z.setDampeningRatio(m_args.zeta_z_step);
             }
-            else if (height_ref_derivative != 0 && !m_last_filter_ramp)
+            else if ((height_ref_derivative > 0.0001 || height_ref_derivative < -0.0001) && !m_last_filter_ramp)
             {
               //Ramp
               spew("Filter: Ramp");
