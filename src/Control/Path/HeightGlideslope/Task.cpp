@@ -183,8 +183,8 @@ namespace Control
         double state_z_shifting;
         bool last_WP_loiter;
         double last_loiter_z;
-        double m_prev_unfiletered_height;
-        double m_last_filter_ramp;
+        double m_prev_unfiltered_height;
+        bool m_last_filter_ramp;
         ReferenceModel m_refmodel_z;
         ReferenceModel m_refmodel_gamma;
 
@@ -205,7 +205,7 @@ namespace Control
           last_start_z(9999),
           first_waypoint(true),
           m_shifting_waypoint(false),
-          m_prev_unfiletered_height(0),
+          m_prev_unfiltered_height(0),
           m_last_filter_ramp(false)
 
         {
@@ -308,25 +308,14 @@ namespace Control
         {
           PathController::onUpdateParameters();
 
-          //m_first_run = true; //Updates parameters in a later if-statement
-
-          // Adjust internal ref model state so that ref is constant on param change,
-          // z1 = C1*x1 = z2 = C2*x2
-          // x = C2/C1*xbefore
-          //double w_new = 1/m_args.Tref_z;
-          //Matrix x_old = Matrix(3,1,0.0);
           Matrix x_old = m_refmodel_z.x;
-          //m_refmodel_z.x(0,0) = m_refmodel_z.C(0,0)/(w_new*w_new*w_new)*x_old(0,0);
-          //m_refmodel_z.x(1,0) = m_refmodel_z.C(0,1)/((2*m_args.zeta_z + 1)*w_new)*x_old(1,0);
-          //m_refmodel_z.x(2,0) = 0.0;
 
-          
           double w_new = 1/m_args.Tref_gamma;
           x_old = m_refmodel_gamma.x;
+          //Need to calculate the new x vector because of the change to the C matrix (y_new = C_new*x_new = C_old*x_old = y_old)
           m_refmodel_gamma.x(0,0) = m_refmodel_gamma.C(0,0)/(w_new*w_new*w_new)*x_old(0,0);
           m_refmodel_gamma.x(1,0) = m_refmodel_gamma.C(0,1)/((2*m_args.zeta_gamma + 1)*w_new)*x_old(1,0);
           m_refmodel_gamma.x(2,0) = 0.0;
-
 
           m_refmodel_gamma.setTimeconstant(m_args.Tref_gamma);
           m_refmodel_gamma.setDampeningRatio(m_args.zeta_gamma);
@@ -444,15 +433,12 @@ namespace Control
             // Avoid large jumps in the desired height when 
             // going to first WP (since initial x(0,0) = 0)
             // or when updating filter parameters
-            
+
             // initialize model so that z = C*x is true, assuming x(1,0) = 0
-            m_refmodel_z.x(0,0) = (state.height - state.z)/m_refmodel_z.C(0,0);// /(m_refmodel_z.w*m_refmodel_z.w*m_refmodel_z.w);
+            m_refmodel_z.x(0,0) = (state.height - state.z)/m_refmodel_z.C(0,0);
             m_refmodel_z.x(1,0) = 0.0;
             m_refmodel_z.x(2,0) = 0.0;
-            
-            //Technically this should also be implemented 
-            //m_refmodel_z.x(1,0) = "VERTICAL_RATE_IN_NED"/((2*m_refmodel_gamma.zeta+1)*m_refmodel_gamma.w);
-            
+
             // initialize model so that z = C*x is true, assuming x(1,0) = 0
             m_refmodel_gamma.x(0,0) = glideslope_angle/m_refmodel_gamma.C(0,0);
             m_refmodel_gamma.x(1,0) = 0.0;
@@ -482,7 +468,7 @@ namespace Control
 
           if(m_args.use_refmodel)
           {
-            double height_ref_derivative = (zref.value - m_prev_unfiletered_height)/ts.delta;
+            double height_ref_derivative = (zref.value - m_prev_unfiltered_height)/ts.delta;
             spew("Height ref derivative: %f", height_ref_derivative);
             spew("Last filter ramp?: %f", m_last_filter_ramp);
             if (height_ref_derivative == 0 && m_last_filter_ramp)
@@ -491,6 +477,7 @@ namespace Control
               spew("Filter: Step");
               double w_new = 1/m_args.Tref_z_step;
               Matrix x_old = m_refmodel_z.x;
+              //Need to calculate the new x vector because of the change to the C matrix (y_new = C_new*x_new = C_old*x_old = y_old)
               m_refmodel_z.x(0,0) = m_refmodel_z.C(0,0)/(w_new*w_new*w_new)*x_old(0,0);
               m_refmodel_z.x(1,0) = m_refmodel_z.C(0,1)/((2*m_args.zeta_z_step + 1)*w_new)*x_old(1,0);
               m_refmodel_z.x(2,0) = 0.0;
@@ -506,6 +493,7 @@ namespace Control
               spew("Filter: Ramp");
               double w_new = 1/m_args.Tref_z_ramp;
               Matrix x_old = m_refmodel_z.x;
+              //Need to calculate the new x vector because of the change to the C matrix (y_new = C_new*x_new = C_old*x_old = y_old)
               m_refmodel_z.x(0,0) = m_refmodel_z.C(0,0)/(w_new*w_new*w_new)*x_old(0,0);
               m_refmodel_z.x(1,0) = m_refmodel_z.C(0,1)/((2*m_args.zeta_z_ramp + 1)*w_new)*x_old(1,0);
               m_refmodel_z.x(2,0) = 0.0;
@@ -583,7 +571,7 @@ namespace Control
 
           m_hdiff.err_z = (state.height - state.z) - zref.value;
 
-          m_prev_unfiletered_height = ref_nofilter.z;
+          m_prev_unfiltered_height = ref_nofilter.z;
 
           dispatch(m_vrate);
           zref.z_units=Z_HEIGHT;
