@@ -133,6 +133,20 @@ namespace Control
           updateRefmodel();
         }
 
+        void updateFilter(double Tref_z, double zeta_z)
+        {
+          double w_new = 1/Tref_z;
+          Matrix x_old = x;
+          //Need to calculate the new x vector because of the change to the C matrix (y_new = C_new*x_new = C_old*x_old = y_old)
+
+          x(0,0) = C(0,0)/(w_new*w_new*w_new)*x_old(0,0);
+          x(1,0) = C(0,1)/((2*zeta_z + 1)*w_new)*x_old(1,0);
+          x(2,0) = 0.0;
+
+          setTimeconstant(Tref_z);
+          setDampeningRatio(zeta_z);
+        }
+
 
       public:
         Matrix A;
@@ -310,15 +324,8 @@ namespace Control
 
           Matrix x_old = m_refmodel_z.x;
 
-          double w_new = 1/m_args.Tref_gamma;
-          x_old = m_refmodel_gamma.x;
-          //Need to calculate the new x vector because of the change to the C matrix (y_new = C_new*x_new = C_old*x_old = y_old)
-          m_refmodel_gamma.x(0,0) = m_refmodel_gamma.C(0,0)/(w_new*w_new*w_new)*x_old(0,0);
-          m_refmodel_gamma.x(1,0) = m_refmodel_gamma.C(0,1)/((2*m_args.zeta_gamma + 1)*w_new)*x_old(1,0);
-          m_refmodel_gamma.x(2,0) = 0.0;
+          m_refmodel_gamma.updateFilter(m_args.Tref_gamma, m_args.zeta_gamma);
 
-          m_refmodel_gamma.setTimeconstant(m_args.Tref_gamma);
-          m_refmodel_gamma.setDampeningRatio(m_args.zeta_gamma);
         }
         
 
@@ -477,33 +484,15 @@ namespace Control
             {
               //Step
               spew("Filter: Step");
-              double w_new = 1/m_args.Tref_z_step;
-              Matrix x_old = m_refmodel_z.x;
-              //Need to calculate the new x vector because of the change to the C matrix (y_new = C_new*x_new = C_old*x_old = y_old)
-              m_refmodel_z.x(0,0) = m_refmodel_z.C(0,0)/(w_new*w_new*w_new)*x_old(0,0);
-              m_refmodel_z.x(1,0) = m_refmodel_z.C(0,1)/((2*m_args.zeta_z_step + 1)*w_new)*x_old(1,0);
-              m_refmodel_z.x(2,0) = 0.0;
-
+              m_refmodel_z.updateFilter(m_args.Tref_z_step, m_args.zeta_z_step);
               m_last_filter_ramp = false;
-
-              m_refmodel_z.setTimeconstant(m_args.Tref_z_step);
-              m_refmodel_z.setDampeningRatio(m_args.zeta_z_step);
             }
             else if ((height_ref_derivative > 0.0001 || height_ref_derivative < -0.0001) && !m_last_filter_ramp)
             {
               //Ramp
               spew("Filter: Ramp");
-              double w_new = 1/m_args.Tref_z_ramp;
-              Matrix x_old = m_refmodel_z.x;
-              //Need to calculate the new x vector because of the change to the C matrix (y_new = C_new*x_new = C_old*x_old = y_old)
-              m_refmodel_z.x(0,0) = m_refmodel_z.C(0,0)/(w_new*w_new*w_new)*x_old(0,0);
-              m_refmodel_z.x(1,0) = m_refmodel_z.C(0,1)/((2*m_args.zeta_z_ramp + 1)*w_new)*x_old(1,0);
-              m_refmodel_z.x(2,0) = 0.0;
-
+              m_refmodel_z.updateFilter(m_args.Tref_z_ramp, m_args.zeta_z_ramp);
               m_last_filter_ramp = true;
-
-              m_refmodel_z.setTimeconstant(m_args.Tref_z_ramp);
-              m_refmodel_z.setDampeningRatio(m_args.zeta_z_ramp);
             }
 
             debug("Z-ref before filter: %f",zref.value);
