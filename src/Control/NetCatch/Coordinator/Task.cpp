@@ -44,12 +44,8 @@ namespace Control
       //! %Task arguments.
       struct Arguments
       {
-        //! Enable coordinated catch
-        bool enable_coord;
         //! Enable catch-state
         bool enable_catch;
-        //! Stop and hold at end of runway
-        bool enable_stop_endRunway;
         //! Enable this path controller or not
         bool use_controller;
         //! Enable mean window for aircraft states
@@ -418,66 +414,54 @@ namespace Control
           m_time_diff(0),
           m_centroid_heading(0)
         {
-          param("Path Controller", m_args.use_controller)
+          param("Enable Netcatch", m_args.use_controller)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .defaultValue("false")
-          .description("Enable Path Controller");
-
-          param("Offset cross-track", m_args.m_crosstrack_offset)
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .defaultValue("0.0")
-          .description("Cross-track offset, subtract the offset from the y-position of the airplane in the path frame");
-
-          param("Stop at end-of-runway", m_args.enable_stop_endRunway)
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .defaultValue("false")
-          .description("Enable stop at end of runway");
-
-          param("Enable Mean Window Aircraft", m_args.use_mean_window_aircraft)
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .defaultValue("false")
-          .description("Use mean window on aircraft states");
-
-          param("Disable Z flag", m_args.disable_Z)
-          .defaultValue("false")
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .description("Choose whether to disable Z flag. In turn, this will utilize new rate controller on some targets");
-
-          param("Coordinated Catch", m_args.enable_coord)
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .defaultValue("false")
-          .description("Flag to enable net catch with two multicopters");
+          .description("Enable NetCatch Controller");
 
           param("Enable Catch", m_args.enable_catch)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("false")
           .description("Flag to enable catch state of the state-machine");
 
-          param("Mean Window Size", m_args.mean_ws)
+          param("Offset cross-track", m_args.m_crosstrack_offset)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("0.0")
+          .description("Cross-track offset, subtract the offset from the y-position of the airplane in the path frame");
+
+          param("Mean Window Aircraft -- Enable", m_args.use_mean_window_aircraft)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("false")
+          .description("Use mean window on aircraft states");
+
+          param("Mean Window Aircraft -- Size", m_args.mean_ws)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("1.0")
           .description("Number of samples in moving average window");
 
-          param("Maximum Cross-Track Error Aircraft", m_args.eps_ct_a)
-          .units(Units::Meter);
 
-          param("Maximum Cross-Track Error Net", m_args.eps_ct_n)
-          .units(Units::Meter);
 
-          param("Max vel y approach", m_args.max_vy_app)
+
+          param("Approach -- Max vel y", m_args.max_vy_app)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("1");
 
-          param("Max pos y approach", m_args.max_py_app)
+          param("Approach -- Max pos y", m_args.max_py_app)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("1");
 
-          param("Max pos x approach", m_args.max_px_app)
+          param("Approach -- Max pos x", m_args.max_px_app)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("100.0")
           .units(Units::Meter)
-          .description("Desired fixed-wing point to start approach measured along-track from the start point");
+          .description("Desired fixed-wing point to start approach measured along-track from the start point. Is overridden by factor. ");
+
+          param("Safety -- Maximum Cross-Track Error Aircraft", m_args.eps_ct_a)
+          .units(Units::Meter);
+
+          param("Safety -- Maximum Cross-Track Error Net", m_args.eps_ct_n)
+          .units(Units::Meter);
 
           param("Desired collision radius", m_args.m_coll_r)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -512,11 +496,11 @@ namespace Control
           .defaultValue("0.0,0.0,0.0")
           .description("Position Controller tuning parameter Kd");
 
-          param("Maximum Normalised Velocity", m_args.max_norm_v)
+          param("Ctrl Misc -- Maximum Normalised Velocity", m_args.max_norm_v)
           .defaultValue("5.0")
           .description("Maximum Normalised Velocity of the Copter");
 
-          param("Max Integral", m_args.max_integral)
+          param("Ctrl Misc -- Max Integral", m_args.max_integral)
           .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Max integral value");
@@ -525,11 +509,18 @@ namespace Control
           .defaultValue("Formation Centroid")
           .description("Entity label for the centroid EstimatedLocalState");
 
+          param("Ctrl Misc -- Disable Z flag", m_args.disable_Z)
+          .defaultValue("false")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Choose whether to disable Z flag. In turn, this will utilize new rate controller on some targets");
+
           param("ReferenceModel -- Activate", m_args.refmodel_use)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("true")
           .description("To use the refmodel for zy or not. ");
 
           param("ReferenceModel -- Natural Frequency", m_args.refmodel_w0)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("1.0")
           .units(Units::RadianPerSecond)
           .description("Reference model natural frequency. ");
@@ -540,6 +531,7 @@ namespace Control
           .description("Damping factor of the reference model. ");
 
           param("ReferenceModel -- Speed", m_args.refmodel_max_v)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("4.0")
           .units(Units::MeterPerSecond)
           .description("Nominal max speed of the reference model setpoint. ");
@@ -550,7 +542,7 @@ namespace Control
           .description("Nominal maximum acceleration during reference model usage. ");
 
           param("ReferenceModel -- Kp Frequency Scaler", m_args.kp_natural_freq_scale)
-          .defaultValue("0.5")
+          .defaultValue("3")
           .description("Amount to scale natural frequency of the position controller to the output of the reference model. ");
 
           param("Print Frequency", m_args.print_frequency)
