@@ -91,6 +91,8 @@ namespace Control
 
         //! Ref-model paramters
         bool refmodel_use;
+        bool refmodel_enable_vel_ff;
+        bool refmodel_use_for_alongtrack;
         double refmodel_w0;
         double refmodel_xi;
         double refmodel_max_v;
@@ -527,6 +529,16 @@ namespace Control
           .defaultValue("true")
           .description("To use the refmodel for zy or not. ");
 
+          param("ReferenceModel -- Velocity FF", m_args.refmodel_enable_vel_ff)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("true")
+          .description("To enable velocity feed-forward. ");
+
+          param("ReferenceModel -- Use For Alongtrack", m_args.refmodel_use_for_alongtrack)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("true")
+          .description("To enable use of the reference model for along-track distance as well.  ");
+
           param("ReferenceModel -- Natural Frequency", m_args.refmodel_w0)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("1.0")
@@ -950,7 +962,7 @@ namespace Control
         //! NB: Since the controller works in path frame,
         //!     the reference model expects the desiredPos to be in path-frame as well.
         void
-        stepRefModel(Matrix desiredPos, double deltat)
+        stepRefModel(Matrix desiredPos, Matrix desiredVel, double deltat)
         {
 
           if (desiredPos.size() < 3)
@@ -976,8 +988,13 @@ namespace Control
 
           trace("Using parameters k[1-3]: %.4f, %.4f, %.4f", m_refmodel.k1, m_refmodel.k2, m_refmodel.k3 );
 
+          Matrix v_d = Matrix(3, 1, 0.0);
+          v_d(0) = desiredVel(0);
+          v_d(1) = desiredVel(1);
+          v_d(2) = desiredVel(2);
+
           // Step 1: V-part
-          Matrix tau1 = m_refmodel.k1 * (x_d - m_refmodel.getPos());
+          Matrix tau1 = m_refmodel.k1 * (x_d - m_refmodel.getPos()) + v_d;
 
           // Set heave to 0 if not controlling altitude
           if (m_args.disable_Z)
@@ -1526,8 +1543,30 @@ namespace Control
             // For now, they are just what they were, which is reasonable.
           }
 
+          // Check desired velocity
+          Matrix desiredVel = Matrix(3,1, 0.0);
+          if (m_args.refmodel_enable_vel_ff)
+          {
+            desiredVel(0) = 0.0;
+            desiredVel(1) = m_v_ref_path(1);
+            desiredVel(2) = m_v_ref_path(2);
+
+            if (m_args.refmodel_use_for_alongtrack)
+            {
+              if (m_curr_state == IMC::NetRecoveryState::NR_START
+                  || m_curr_state == IMC::NetRecoveryState::NR_CATCH)
+              {
+                desiredVel(0) = u_d_along_path;
+
+                // Set current position as desired position.
+                Matrix p_ref = m_refmodel.getPos();
+                m_p_ref_path(0) = p_ref(0);
+              }
+            }
+          }
+
           // Step reference model.
-          stepRefModel(m_p_ref_path, m_time_diff);
+          stepRefModel(m_p_ref_path, desiredVel, m_time_diff);
 
           // Error variables
           Matrix e_p_path = m_p_ref_path - p_n_path;
@@ -1563,8 +1602,11 @@ namespace Control
             validAccReturn = true;
 
             // If catching, we are doing separate along-path thing.
-            if (m_curr_state == IMC::NetRecoveryState::NR_START
-                || m_curr_state == IMC::NetRecoveryState::NR_CATCH)
+            // Only if also not doing it in vel_ff
+            if (
+                !(m_args.refmodel_enable_vel_ff && m_args.refmodel_use_for_alongtrack)
+                && (    m_curr_state == IMC::NetRecoveryState::NR_START
+                     || m_curr_state == IMC::NetRecoveryState::NR_CATCH))
             {
               v_path(0) = u_d_along_path;
               accOut(0) = 0;
@@ -1729,6 +1771,10 @@ namespace Control
           getPathVelocity(0, m_u_ref, m_ad, true);
           //initCoordinator();
           initRefModel();
+
+
+          double kp = m_baselineGains.getKpBar(m_args.kp_natural_freq_scale);
+          inf("In reset, the kp is: %f", kp);
         }
 
         // Resets states, done on entering standby.
@@ -1743,7 +1789,7 @@ namespace Control
         virtual void
         onAutopilotActivation(void)
         {
-          inf("AutopilotActivating");
+          inf("Autopilot Activating");
           if (!m_args.use_controller)
           {
             debug("Path activated, but not active: Requesting deactivation");
