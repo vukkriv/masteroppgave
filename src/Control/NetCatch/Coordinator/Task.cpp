@@ -1316,6 +1316,13 @@ namespace Control
           return vel;
         }
 
+
+        //! Calculates the point -x1, such that at x2=r_impact, using the acceleratin a_n to reach v_ref_n from v0_n, at the same time as the aircraft with speed v_a at -x1
+        //! @param v_a: Speed of aircraft
+        //! @param v0_0: Initial speed of net
+        //! @param v_ref_n: Final desired speed of net
+        //! @param a_n: Desired (max) acceleration of the net during the ramp
+        //! @param r_impact: The position along x at which the impact should take place.
         double
         calcStartRadius(double v_a, double v0_n, double v_ref_n, double a_n,
             double r_impact)
@@ -1325,9 +1332,15 @@ namespace Control
           if (a_n == 0.0)
             return -1;
 
+          // Time it takes to accelerate from v0_n to v_ref_n
           double deltaT_n = (v_ref_n - v0_n) / a_n;
-          double r_n_delta_t = (std::pow(v_ref_n, 2), std::pow(v0_n, 2))
-              / (2 * a_n);
+
+          // BUG: (comma operator..)
+          // Intent: find distance you travel while accelerating from v0_n to v_ref_n.?
+          // s = (v^2 - v0^2)/(2a)
+          double r_n_delta_t = (std::pow(v_ref_n, 2) - std::pow(v0_n, 2)) / (2.0 * a_n);
+
+          // Rest distance that will be covered by constant velocity
           double Delta_r_impact = r_impact - r_n_delta_t;
           //inf("Delta_r_impact=%f",Delta_r_impact);
           if (Delta_r_impact < 0)
@@ -1336,8 +1349,21 @@ namespace Control
                 r_n_delta_t);
             Delta_r_impact = 0;
           }
-          double r_start = std::abs(
-              r_impact - v_a * (deltaT_n + Delta_r_impact / v_ref_n));
+
+          // The equation we want to solve is:
+          // Aircraft travels at v_a for t seconds. We travel at constant vel v_ref_n for t2 seconds, and accelerate for deltaT_n seconds
+          // In t seconds, we have then traveled
+          // rn_delta_t + v_ref_n( t - deltaT_n)
+          // We want this to be equal to r_impact => r_impact = rn_delta_t + v_ref_n (t - deltaT_n)
+          // t = deltaT_n + (r_impact - rn_delta_t) / v_ref
+          // By that time, the aircraft has traveled
+          // v_a*t. => (r_impact - s0) = v_a*t
+          // => s0 = r_impact - v_a * t
+          // => s0 = r_impact - v_a * (deltaT_n - (r_impact - rn_delta_t) / v_ref
+          // => s0 = r_impact - v_a * (deltaT_n - (Delta_r_impact       ) / v_ref
+
+          // We want to find the position
+          double r_start = std::abs(r_impact - v_a * (deltaT_n + Delta_r_impact / v_ref_n));
 
           static double startPrint = 0;
           if (Clock::get() - startPrint > 1)
