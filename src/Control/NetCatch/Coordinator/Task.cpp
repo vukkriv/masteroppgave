@@ -787,6 +787,9 @@ namespace Control
                   {
                     war("Not able to recover, plane to close");
                     m_curr_state = IMC::NetRecoveryState::NR_STOP;
+
+                    war("BUT DOING IT ANYWAY!");
+                    m_curr_state = IMC::NetRecoveryState::NR_APPROACH;
                   }
                 }
                 break;
