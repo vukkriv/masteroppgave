@@ -59,6 +59,8 @@ namespace Control
         double max_py_app;
         // Max pos along-track approach
         double max_px_app;
+        // Factor for when to enter approach. Factor ==1 means it will go directly to start.
+        double approach_start_factor;
         //! Moving mean window size
         double mean_ws;
         //! Desired velocity of net at impact
@@ -443,6 +445,12 @@ namespace Control
 
 
 
+          param("Approach -- Factor pos x", m_args.approach_start_factor)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("1.1")
+          .units(Units::None)
+          .description("Desired fixed-wing point to start approach calculated as a factor of when to switch to start. Set negative to use absoulte value from max pos.  ");
+
           param("Approach -- Max vel y", m_args.max_vy_app)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("1");
@@ -767,9 +775,9 @@ namespace Control
             case IMC::NetRecoveryState::NR_STANDBY:
               {
                 updateMeanValues(s);
+                updateStartRadius();
                 if (aircraftApproaching() && m_args.enable_catch)
                 {
-                  updateStartRadius();
                   if (!startNetRecovery()) //aircraft should not be too close when starting approach
                   {
                     inf("Aircraft approaching");
@@ -1193,9 +1201,15 @@ namespace Control
         bool
         aircraftApproaching()
         {
+          double max_px_approach = m_args.max_px_app;
+
+          if (m_args.approach_start_factor > 0)
+            max_px_approach = m_args.approach_start_factor * m_startCatch_radius;
+
+
           if (   m_v_path[FIXEDWING](0) > 0
               && m_p_path[FIXEDWING](0) < 0
-              && m_p_path[FIXEDWING](0) > -m_args.max_px_app
+              && m_p_path[FIXEDWING](0) > -max_px_approach
               && std::abs(m_p_path[FIXEDWING](1)) < m_args.max_py_app
               && std::abs(m_v_path[FIXEDWING](1)) < m_args.max_vy_app)
             return true;
