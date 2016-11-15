@@ -98,6 +98,11 @@ namespace Control
         double refmodel_max_v;
         double refmodel_max_a;
 
+        //! YZ Tracking mode
+        std::string yz_tracking_mode;
+        //! Optional timing variable. (e.g., start to track x seconds before impact)
+        double yz_tracking_mode_time;
+
         //! New p-controller frequency scaler
         double kp_natural_freq_scale;
 
@@ -113,6 +118,19 @@ namespace Control
         D_DESIRED = 1
       };
       static const int NUM_DESIRED = 2;
+
+
+      static const std::string c_yztrackoptions_names[] = {"Approach", "Start", "Pre Impact Time"};
+      static const std::string c_yztrackoptions_values = "Approach,Start,Pre Impact Time";
+      enum YZTrackOptions
+      {
+        //! Track in approach
+        YZTO_APPROACH = 0,
+        //! Track in start
+        YZTO_START = 1,
+        //! Track in start max x seconds before collision
+        YZTO_PRE_IMPACT_TIME = 2
+      };
 
 
       class BaselineGains
@@ -382,6 +400,9 @@ namespace Control
         // Baseline controller as recieved from the CoordConfig
         BaselineGains m_baselineGains;
 
+        // yz tracking mode
+        YZTrackOptions m_yztrackingOption;
+
         //! Controllable loops.
         static const uint32_t c_controllable = IMC::CL_PATH;
         //! Required loops.
@@ -416,7 +437,8 @@ namespace Control
           m_scope_ref(0),
           m_time_end(Clock::get()),
           m_time_diff(0),
-          m_centroid_heading(0)
+          m_centroid_heading(0),
+          m_yztrackingOption(YZTO_APPROACH)
         {
           param("Enable Netcatch", m_args.use_controller)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -565,6 +587,18 @@ namespace Control
           .defaultValue("3")
           .description("Amount to scale natural frequency of the position controller to the output of the reference model. ");
 
+          param("YZTrack -- Mode", m_args.yz_tracking_mode)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .values(c_yztrackoptions_values)
+          .defaultValue("Approach")
+          .description("Mode to use for YZ Tracking");
+
+          param("YZTrack -- Time", m_args.yz_tracking_mode_time)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .units(Units::Second)
+          .defaultValue("4")
+          .description("Paramater for the time-mode of yz tracking. ");
+
           param("Print Frequency", m_args.print_frequency)
           .defaultValue("0.0")
           .units(Units::Second)
@@ -623,6 +657,21 @@ namespace Control
           m_refmodel.k3 =  (2*m_args.refmodel_xi + 1) *     m_args.refmodel_w0;
           m_refmodel.k2 = ((2*m_args.refmodel_xi + 1) * std::pow(m_args.refmodel_w0, 2)) /  m_refmodel.k3;
           m_refmodel.k1 =                               std::pow(m_args.refmodel_w0, 3)  / (m_refmodel.k3 * m_refmodel.k2);
+
+          if (paramChanged(m_args.yz_tracking_mode))
+          {
+            if (m_args.yz_tracking_mode == c_yztrackoptions_names[YZTO_APPROACH])
+              m_yztrackingOption = YZTO_APPROACH;
+            else if (m_args.yz_tracking_mode == c_yztrackoptions_names[YZTO_START])
+              m_yztrackingOption = YZTO_START;
+            else if (m_args.yz_tracking_mode == c_yztrackoptions_names[YZTO_PRE_IMPACT_TIME])
+              m_yztrackingOption = YZTO_PRE_IMPACT_TIME;
+            else
+            {
+              war("Invalid parameter for mode: %s, setting to Approach. ", m_args.yz_tracking_mode.c_str());
+              m_yztrackingOption = YZTO_APPROACH;
+            }
+          }
         }
 
         void
@@ -1503,6 +1552,52 @@ namespace Control
           p_max_path(1) = m_runway.box_width / 2;
           p_max_path(2) = m_runway.box_height / 2;
 
+          // Check if we are actually doing the yz-tracking
+          // Todo: Add temporal information to check for transitions.
+          bool doingYZTrack = true;
+
+          switch (m_yztrackingOption)
+          {
+            case YZTO_APPROACH:
+              // Default, always true
+              break;
+            case YZTO_START:
+              // Only track in start
+              doingYZTrack = false;
+              if (m_curr_state == IMC::NetRecoveryState::NR_START)
+                doingYZTrack = true;
+              break;
+            case YZTO_PRE_IMPACT_TIME:
+              // Try to calculate time to impact. Only applies in approach or start mode:
+              if (m_curr_state == IMC::NetRecoveryState::NR_APPROACH
+                  || m_curr_state == IMC::NetRecoveryState::NR_START)
+              {
+                // Remember, other logic sets us to start, and actually moves along the runway.
+                // So, we only need to check when the plane reaches m_collision_point
+                if (v_a_path(0) < 1)
+                {
+                  // Invalid velocity, set to false
+                  doingYZTrack = false;
+                }
+                else
+                {
+                  double time_to_impact = (m_args.m_coll_r - p_a_path(0))/v_a_path(0);
+
+                  // Check if time is less than specified.
+                  if (time_to_impact < m_args.yz_tracking_mode_time)
+                    doingYZTrack = true;
+                  else
+                    doingYZTrack = false;
+                }
+
+              }
+              else
+              {
+                // Tecnically, other logic handles this case. It is ok to set to true.
+              }
+          }
+
+
           // Set along-track (x) reference position.
           if (m_curr_state == IMC::NetRecoveryState::NR_CATCH
               || m_curr_state == IMC::NetRecoveryState::NR_END)
@@ -1541,6 +1636,15 @@ namespace Control
 
             // Todo: Why is not m_p_ref_path(1,2) set here? Aka in Catch-state.
             // For now, they are just what they were, which is reasonable.
+          }
+
+          if (!doingYZTrack)
+          {
+            m_p_ref_path(1) = 0.0;
+            m_p_ref_path(2) = 0.0;
+
+            m_v_ref_path(1) = 0.0;
+            m_v_ref_path(2) = 0.0;
           }
 
           // Check desired velocity
