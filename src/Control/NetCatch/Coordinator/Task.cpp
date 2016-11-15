@@ -514,17 +514,14 @@ namespace Control
           .units(Units::Meter);
 
           param("Kp Position Control", m_args.Kp)
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("1.0,1.0,1.0")
           .description("Position Controller tuning parameter Kp");
 
           param("Ki Position Control", m_args.Ki)
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("0.0,0.0,0.0")
           .description("Position Controller tuning parameter Ki");
 
           param("Kd Position Control", m_args.Kd)
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("0.0,0.0,0.0")
           .description("Position Controller tuning parameter Kd");
 
@@ -558,7 +555,7 @@ namespace Control
 
           param("ReferenceModel -- Use For Alongtrack", m_args.refmodel_use_for_alongtrack)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .defaultValue("true")
+          .defaultValue("false")
           .description("To enable use of the reference model for along-track distance as well.  ");
 
           param("ReferenceModel -- Natural Frequency", m_args.refmodel_w0)
@@ -584,6 +581,7 @@ namespace Control
           .description("Nominal maximum acceleration during reference model usage. ");
 
           param("ReferenceModel -- Kp Frequency Scaler", m_args.kp_natural_freq_scale)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("3")
           .description("Amount to scale natural frequency of the position controller to the output of the reference model. ");
 
@@ -1495,14 +1493,33 @@ namespace Control
           state.vy_n = v_n(1);
           state.vz_n = v_n(2);
 
-          state.vx_n_d = m_ud;
-          state.vy_n_d = m_v_ref_path(1);
-          state.vz_n_d = m_v_ref_path(2);
+          if (m_args.refmodel_use)
+          {
+            Matrix dv = m_refmodel.getVel();
+            Matrix dp = m_refmodel.getPos();
 
-          state.x_n_d = m_p_ref_path(0);
-          state.y_n_d = m_p_ref_path(1);
-          state.z_n_d = m_p_ref_path(2);
+            if (m_args.refmodel_use_for_alongtrack)
+              state.vx_n_d = dv(0);
+            else
+              state.vx_n_d = m_ud;
 
+            state.vy_n_d = dv(1);
+            state.vz_n_d = dv(2);
+
+            state.x_n_d = dp(0);
+            state.y_n_d = dp(1);
+            state.z_n_d = dp(2);
+          }
+          else
+          {
+            state.vx_n_d = m_ud;
+            state.vy_n_d = m_v_ref_path(1);
+            state.vz_n_d = m_v_ref_path(2);
+
+            state.x_n_d = m_p_ref_path(0);
+            state.y_n_d = m_p_ref_path(1);
+            state.z_n_d = m_p_ref_path(2);
+          }
           state.x_a = m_p_path[FIXEDWING](0);
           state.y_a = m_p_path[FIXEDWING](1);
           state.z_a = m_p_path[FIXEDWING](2);
@@ -1679,6 +1696,7 @@ namespace Control
           if (m_args.refmodel_use)
           {
             e_p_path = m_refmodel.getPos() - p_n_path;
+            e_v_path = m_refmodel.getVel() - v_n_path;
           }
 
           // Integral effect of path error.
