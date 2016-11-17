@@ -111,6 +111,51 @@ namespace Control
         float print_frequency;
       };
 
+      struct ProfileDependendArguments
+      {
+        Matrix refmodel_w0_mat;
+        Matrix refmodel_max_v_mat;
+        Matrix refmodel_max_a_mat;
+        Matrix kp_natural_freq_scale_mat;
+      };
+
+
+
+      struct FixedSizeMatrix
+      {
+      public:
+        FixedSizeMatrix(): mat(3, 1, 0.0) {};
+        FixedSizeMatrix(Matrix mat_in): mat(3, 1, 0.0)
+        {
+          if (mat_in.size() >= 3)
+          {
+            mat(0) = mat_in(0);
+            mat(1) = mat_in(1);
+            mat(2) = mat_in(2);
+          }
+          else if (mat_in.size() == 2)
+          {
+            mat(0) = mat_in(0);
+            mat(1) = mat_in(1);
+            mat(2) = mat_in(1);
+          }
+          else if (mat_in.size() == 1)
+          {
+            mat(0) = mat_in(0);
+            mat(1) = mat_in(0);
+            mat(2) = mat_in(0);
+          }
+
+        }
+
+        Matrix get(void) { return mat; };
+
+
+      private:
+        Matrix mat;
+      };
+
+
       static const std::string c_desired_names[] = {"Reference","Desired"};
       enum DesiredEntites
       {
@@ -303,6 +348,9 @@ namespace Control
         //! Task arguments.
         Arguments m_args;
 
+        //! Profile-dependent arguments
+        ProfileDependendArguments m_pargs;
+
         //! Current state
         IMC::NetRecoveryState::NetRecoveryLevelEnum m_curr_state;
 
@@ -403,6 +451,12 @@ namespace Control
         // yz tracking mode
         YZTrackOptions m_yztrackingOption;
 
+        // If we are actually currently doing yz-tracking
+        bool m_yztrackingEnabled;
+
+        //! Current control profile
+        IMC::ControlProfile m_cprofile;
+
         //! Controllable loops.
         static const uint32_t c_controllable = IMC::CL_PATH;
         //! Required loops.
@@ -438,7 +492,8 @@ namespace Control
           m_time_end(Clock::get()),
           m_time_diff(0),
           m_centroid_heading(0),
-          m_yztrackingOption(YZTO_APPROACH)
+          m_yztrackingOption(YZTO_APPROACH),
+          m_yztrackingEnabled(true)
         {
           param("Enable Netcatch", m_args.use_controller)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -558,7 +613,7 @@ namespace Control
           .defaultValue("false")
           .description("To enable use of the reference model for along-track distance as well.  ");
 
-          param("ReferenceModel -- Natural Frequency", m_args.refmodel_w0)
+          param("ReferenceModel -- Natural Frequency", m_pargs.refmodel_w0_mat)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("1.0")
           .units(Units::RadianPerSecond)
@@ -569,18 +624,19 @@ namespace Control
           .units(Units::None)
           .description("Damping factor of the reference model. ");
 
-          param("ReferenceModel -- Speed", m_args.refmodel_max_v)
+          param("ReferenceModel -- Speed", m_pargs.refmodel_max_v_mat)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("4.0")
           .units(Units::MeterPerSecond)
           .description("Nominal max speed of the reference model setpoint. ");
 
-          param("ReferenceModel -- Acceleration", m_args.refmodel_max_a)
+          param("ReferenceModel -- Acceleration", m_pargs.refmodel_max_a_mat)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("5.0")
           .units(Units::MeterPerSquareSecond)
           .description("Nominal maximum acceleration during reference model usage. ");
 
-          param("ReferenceModel -- Kp Frequency Scaler", m_args.kp_natural_freq_scale)
+          param("ReferenceModel -- Kp Frequency Scaler", m_pargs.kp_natural_freq_scale_mat)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("3")
           .description("Amount to scale natural frequency of the position controller to the output of the reference model. ");
@@ -601,6 +657,8 @@ namespace Control
           .defaultValue("0.0")
           .units(Units::Second)
           .description("Frequency of pos.data prints. Zero => Print on every update.");
+
+          m_cprofile.profile = IMC::ControlProfile::CPP_NORMAL;
 
           // Bind incoming IMC messages
           bind<IMC::EstimatedLocalState>(this);
@@ -651,10 +709,17 @@ namespace Control
           m_control.Kd(1,1) = m_args.Kd(1);
           m_control.Kd(2,2) = m_args.Kd(2);
 
-          // Set reference model parameters
-          m_refmodel.k3 =  (2*m_args.refmodel_xi + 1) *     m_args.refmodel_w0;
-          m_refmodel.k2 = ((2*m_args.refmodel_xi + 1) * std::pow(m_args.refmodel_w0, 2)) /  m_refmodel.k3;
-          m_refmodel.k1 =                               std::pow(m_args.refmodel_w0, 3)  / (m_refmodel.k3 * m_refmodel.k2);
+          if (paramChanged(m_pargs.kp_natural_freq_scale_mat))
+            m_pargs.kp_natural_freq_scale_mat = checkCPMatrix(m_pargs.kp_natural_freq_scale_mat);
+          if (paramChanged(m_pargs.refmodel_max_a_mat))
+            m_pargs.refmodel_max_a_mat        = checkCPMatrix(m_pargs.refmodel_max_a_mat);
+          if (paramChanged(m_pargs.refmodel_max_v_mat))
+            m_pargs.refmodel_max_v_mat        = checkCPMatrix(m_pargs.refmodel_max_v_mat);
+          if (paramChanged(m_pargs.refmodel_w0_mat))
+            m_pargs.refmodel_w0_mat           = checkCPMatrix(m_pargs.refmodel_w0_mat);
+
+          // Makes sure to set default gains as well.
+          setGainsFromControlProfile();
 
           if (paramChanged(m_args.yz_tracking_mode))
           {
@@ -670,6 +735,70 @@ namespace Control
               m_yztrackingOption = YZTO_APPROACH;
             }
           }
+
+        }
+
+        Matrix
+        checkCPMatrix(Matrix mat_in)
+        {
+          Matrix mat = Matrix(3,1, 0.0);
+
+          if (mat_in.size() >= 3)
+          {
+            mat(0) = mat_in(0);
+            mat(1) = mat_in(1);
+            mat(2) = mat_in(2);
+          }
+          else if (mat_in.size() == 2)
+          {
+            mat(0) = mat_in(0);
+            mat(1) = mat_in(1);
+            mat(2) = mat_in(1);
+          }
+          else if (mat_in.size() == 1)
+          {
+            mat(0) = mat_in(0);
+            mat(1) = mat_in(0);
+            mat(2) = mat_in(0);
+          }
+
+          return mat;
+        }
+
+        void
+        setGainsFromControlProfile(void)
+        {
+          switch(m_cprofile.profile)
+          {
+            case IMC::ControlProfile::CPP_CRUISE:
+              updateCArgsWithIndex(0);
+              break;
+            case IMC::ControlProfile::CPP_HIGH_GAIN:
+              updateCArgsWithIndex(2);
+              break;
+            default:
+              updateCArgsWithIndex(1);
+              break;
+          }
+
+          inf("Now using gains: w0: %f, max_v: %f, max_a: %f, kp_scale: %f", m_args.refmodel_w0, m_args.refmodel_max_v, m_args.refmodel_max_a, m_args.kp_natural_freq_scale);
+
+          // Set reference model parameters
+          m_refmodel.k3 =  (2*m_args.refmodel_xi + 1) *     m_args.refmodel_w0;
+          m_refmodel.k2 = ((2*m_args.refmodel_xi + 1) * std::pow(m_args.refmodel_w0, 2)) /  m_refmodel.k3;
+          m_refmodel.k1 =                               std::pow(m_args.refmodel_w0, 3)  / (m_refmodel.k3 * m_refmodel.k2);
+        }
+
+        void
+        updateCArgsWithIndex(int i)
+        {
+          if (i >= m_pargs.kp_natural_freq_scale_mat.size())
+            i = 0;
+
+          m_args.kp_natural_freq_scale = m_pargs.kp_natural_freq_scale_mat(i);
+          m_args.refmodel_max_a        = m_pargs.refmodel_max_a_mat(i);
+          m_args.refmodel_max_v        = m_pargs.refmodel_max_v_mat(i);
+          m_args.refmodel_w0           = m_pargs.refmodel_w0_mat(i);
         }
 
         void
@@ -795,6 +924,9 @@ namespace Control
           updateMeanValues(s);
           //spew("switch state");
 
+          // Check and update control profile.
+          updateControlProfile();
+
           // Set vehicle to initialized. Technically, no different than connected for now.
           m_initialized[s] = true;
 
@@ -919,6 +1051,85 @@ namespace Control
           if (last_state != m_curr_state)
             inf("Current state: %s",
                 NetRecoveryLevelEnumStrings[static_cast<NetRecoveryState::NetRecoveryLevelEnum>(m_curr_state)]);
+        }
+
+        void
+        updateControlProfile()
+        {
+          // Uses the current state to set the correct control profile.
+
+          bool changed = false;
+
+          if (m_curr_state == IMC::NetRecoveryState::NR_STANDBY)
+          {
+            changed = setControlProfile(IMC::ControlProfile::CPP_CRUISE);
+          }
+          else if (m_curr_state == IMC::NetRecoveryState::NR_APPROACH)
+          {
+            changed = setControlProfile(IMC::ControlProfile::CPP_NORMAL);
+          }
+          else if (m_curr_state == IMC::NetRecoveryState::NR_START)
+          {
+            // First, check if we are withing the start-bounds:
+            bool inFinalStage = false;
+            Matrix p_a_path = m_p_path[FIXEDWING];
+            Matrix v_a_path = m_v_path[FIXEDWING];
+            if (v_a_path(0) < 1)
+            {
+              inFinalStage = false;
+            }
+            else
+            {
+              double time_to_impact = (m_args.m_coll_r - p_a_path(0))/v_a_path(0);
+
+              // Check if time is less than specified.
+              if (time_to_impact < m_args.yz_tracking_mode_time)
+                inFinalStage = true;
+
+            }
+
+            switch(m_yztrackingOption)
+            {
+              case YZTO_START:
+              case YZTO_APPROACH:
+                if (inFinalStage)
+                  changed = setControlProfile(IMC::ControlProfile::CPP_HIGH_GAIN);
+                else
+                  changed = setControlProfile(IMC::ControlProfile::CPP_NORMAL);
+                break;
+              default:
+                changed = setControlProfile(IMC::ControlProfile::CPP_HIGH_GAIN);
+                break;
+            }
+          }
+          else
+          {
+            changed = setControlProfile(IMC::ControlProfile::CPP_NORMAL);
+          }
+
+          if (changed)
+            setGainsFromControlProfile();
+
+        }
+
+        bool
+        setControlProfile(IMC::ControlProfile::ProfileEnum profile)
+        {
+          if (profile != m_cprofile.profile)
+          {
+            m_cprofile.profile = profile;
+            if (profile == IMC::ControlProfile::CPP_NORMAL)
+              inf("Changed profile to Normal");
+            else if (profile == IMC::ControlProfile::CPP_HIGH_GAIN)
+              inf("Changed profile to High Gain");
+            else if (profile == IMC::ControlProfile::CPP_CRUISE)
+              inf("Changed profile to Cruise");
+            else
+              war("Changed to unknown profile: %d", profile);
+
+            return true;
+          }
+          return false;
         }
 
         void
@@ -1571,7 +1782,7 @@ namespace Control
 
           // Check if we are actually doing the yz-tracking
           // Todo: Add temporal information to check for transitions.
-          bool doingYZTrack = true;
+          m_yztrackingEnabled = true;
 
           switch (m_yztrackingOption)
           {
@@ -1580,9 +1791,9 @@ namespace Control
               break;
             case YZTO_START:
               // Only track in start
-              doingYZTrack = false;
+              m_yztrackingEnabled = false;
               if (m_curr_state == IMC::NetRecoveryState::NR_START)
-                doingYZTrack = true;
+                m_yztrackingEnabled = true;
               break;
             case YZTO_PRE_IMPACT_TIME:
               // Try to calculate time to impact. Only applies in approach or start mode:
@@ -1594,7 +1805,7 @@ namespace Control
                 if (v_a_path(0) < 1)
                 {
                   // Invalid velocity, set to false
-                  doingYZTrack = false;
+                  m_yztrackingEnabled = false;
                 }
                 else
                 {
@@ -1602,9 +1813,9 @@ namespace Control
 
                   // Check if time is less than specified.
                   if (time_to_impact < m_args.yz_tracking_mode_time)
-                    doingYZTrack = true;
+                    m_yztrackingEnabled = true;
                   else
-                    doingYZTrack = false;
+                    m_yztrackingEnabled = false;
                 }
 
               }
@@ -1655,7 +1866,7 @@ namespace Control
             // For now, they are just what they were, which is reasonable.
           }
 
-          if (!doingYZTrack)
+          if (!m_yztrackingEnabled)
           {
             m_p_ref_path(1) = 0.0;
             m_p_ref_path(2) = 0.0;
