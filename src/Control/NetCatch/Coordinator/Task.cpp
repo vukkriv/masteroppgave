@@ -113,10 +113,10 @@ namespace Control
 
       struct ProfileDependendArguments
       {
-        Matrix refmodel_w0;
-        Matrix refmodel_max_v;
-        Matrix refmodel_max_a;
-        Matrix kp_natural_freq_scale;
+        Matrix refmodel_w0_mat;
+        Matrix refmodel_max_v_mat;
+        Matrix refmodel_max_a_mat;
+        Matrix kp_natural_freq_scale_mat;
       };
 
 
@@ -347,6 +347,9 @@ namespace Control
       {
         //! Task arguments.
         Arguments m_args;
+
+        //! Profile-dependent arguments
+        ProfileDependendArguments m_pargs;
 
         //! Current state
         IMC::NetRecoveryState::NetRecoveryLevelEnum m_curr_state;
@@ -610,7 +613,7 @@ namespace Control
           .defaultValue("false")
           .description("To enable use of the reference model for along-track distance as well.  ");
 
-          param("ReferenceModel -- Natural Frequency", m_args.refmodel_w0)
+          param("ReferenceModel -- Natural Frequency", m_pargs.refmodel_w0_mat)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("1.0")
           .units(Units::RadianPerSecond)
@@ -621,18 +624,18 @@ namespace Control
           .units(Units::None)
           .description("Damping factor of the reference model. ");
 
-          param("ReferenceModel -- Speed", m_args.refmodel_max_v)
+          param("ReferenceModel -- Speed", m_pargs.refmodel_max_v_mat)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("4.0")
           .units(Units::MeterPerSecond)
           .description("Nominal max speed of the reference model setpoint. ");
 
-          param("ReferenceModel -- Acceleration", m_args.refmodel_max_a)
+          param("ReferenceModel -- Acceleration", m_pargs.refmodel_max_a_mat)
           .defaultValue("5.0")
           .units(Units::MeterPerSquareSecond)
           .description("Nominal maximum acceleration during reference model usage. ");
 
-          param("ReferenceModel -- Kp Frequency Scaler", m_args.kp_natural_freq_scale)
+          param("ReferenceModel -- Kp Frequency Scaler", m_pargs.kp_natural_freq_scale_mat)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("3")
           .description("Amount to scale natural frequency of the position controller to the output of the reference model. ");
@@ -705,10 +708,17 @@ namespace Control
           m_control.Kd(1,1) = m_args.Kd(1);
           m_control.Kd(2,2) = m_args.Kd(2);
 
-          // Set reference model parameters
-          m_refmodel.k3 =  (2*m_args.refmodel_xi + 1) *     m_args.refmodel_w0;
-          m_refmodel.k2 = ((2*m_args.refmodel_xi + 1) * std::pow(m_args.refmodel_w0, 2)) /  m_refmodel.k3;
-          m_refmodel.k1 =                               std::pow(m_args.refmodel_w0, 3)  / (m_refmodel.k3 * m_refmodel.k2);
+          if (paramChanged(m_pargs.kp_natural_freq_scale_mat))
+            m_pargs.kp_natural_freq_scale_mat = checkCPMatrix(m_pargs.kp_natural_freq_scale_mat);
+          if (paramChanged(m_pargs.refmodel_max_a_mat))
+            m_pargs.refmodel_max_a_mat        = checkCPMatrix(m_pargs.refmodel_max_a_mat);
+          if (paramChanged(m_pargs.refmodel_max_v_mat))
+            m_pargs.refmodel_max_v_mat        = checkCPMatrix(m_pargs.refmodel_max_v_mat);
+          if (paramChanged(m_pargs.refmodel_w0_mat))
+            m_pargs.refmodel_w0_mat           = checkCPMatrix(m_pargs.refmodel_w0_mat);
+
+          // Makes sure to set default gains as well.
+          setGainsFromControlProfile();
 
           if (paramChanged(m_args.yz_tracking_mode))
           {
@@ -724,6 +734,70 @@ namespace Control
               m_yztrackingOption = YZTO_APPROACH;
             }
           }
+
+        }
+
+        Matrix
+        checkCPMatrix(Matrix mat_in)
+        {
+          Matrix mat = Matrix(3,1, 0.0);
+
+          if (mat_in.size() >= 3)
+          {
+            mat(0) = mat_in(0);
+            mat(1) = mat_in(1);
+            mat(2) = mat_in(2);
+          }
+          else if (mat_in.size() == 2)
+          {
+            mat(0) = mat_in(0);
+            mat(1) = mat_in(1);
+            mat(2) = mat_in(1);
+          }
+          else if (mat_in.size() == 1)
+          {
+            mat(0) = mat_in(0);
+            mat(1) = mat_in(0);
+            mat(2) = mat_in(0);
+          }
+
+          return mat;
+        }
+
+        void
+        setGainsFromControlProfile(void)
+        {
+          switch(m_cprofile.profile)
+          {
+            case IMC::ControlProfile::CPP_CRUISE:
+              updateCArgsWithIndex(0);
+              break;
+            case IMC::ControlProfile::CPP_HIGH_GAIN:
+              updateCArgsWithIndex(2);
+              break;
+            default:
+              updateCArgsWithIndex(1);
+              break;
+          }
+
+
+
+          // Set reference model parameters
+          m_refmodel.k3 =  (2*m_args.refmodel_xi + 1) *     m_args.refmodel_w0;
+          m_refmodel.k2 = ((2*m_args.refmodel_xi + 1) * std::pow(m_args.refmodel_w0, 2)) /  m_refmodel.k3;
+          m_refmodel.k1 =                               std::pow(m_args.refmodel_w0, 3)  / (m_refmodel.k3 * m_refmodel.k2);
+        }
+
+        void
+        updateCArgsWithIndex(int i)
+        {
+          if (i >= m_pargs.kp_natural_freq_scale_mat.size())
+            i = 0;
+
+          m_args.kp_natural_freq_scale = m_pargs.kp_natural_freq_scale_mat(i);
+          m_args.refmodel_max_a        = m_pargs.refmodel_max_a_mat(i);
+          m_args.refmodel_max_v        = m_pargs.refmodel_max_v_mat(i);
+          m_args.refmodel_w0           = m_pargs.refmodel_w0_mat(i);
         }
 
         void
@@ -980,13 +1054,15 @@ namespace Control
         {
           // Uses the current state to set the correct control profile.
 
+          bool changed = false;
+
           if (m_curr_state == IMC::NetRecoveryState::NR_STANDBY)
           {
-            setControlProfile(IMC::ControlProfile::CPP_CRUISE);
+            changed = setControlProfile(IMC::ControlProfile::CPP_CRUISE);
           }
           else if (m_curr_state == IMC::NetRecoveryState::NR_APPROACH)
           {
-            setControlProfile(IMC::ControlProfile::CPP_NORMAL);
+            changed = setControlProfile(IMC::ControlProfile::CPP_NORMAL);
           }
           else if (m_curr_state == IMC::NetRecoveryState::NR_START)
           {
@@ -997,7 +1073,7 @@ namespace Control
               Matrix v_a_path = m_v_path[FIXEDWING];
               if (v_a_path(0) < 1)
               {
-                setControlProfile(IMC::ControlProfile::CPP_NORMAL);
+                changed = setControlProfile(IMC::ControlProfile::CPP_NORMAL);
               }
               else
               {
@@ -1005,26 +1081,34 @@ namespace Control
 
                 // Check if time is less than specified.
                 if (time_to_impact < m_args.yz_tracking_mode_time)
-                  setControlProfile(IMC::ControlProfile::CPP_HIGH_GAIN);
+                  changed = setControlProfile(IMC::ControlProfile::CPP_HIGH_GAIN);
                 else
-                  setControlProfile(IMC::ControlProfile::CPP_NORMAL);
+                  changed = setControlProfile(IMC::ControlProfile::CPP_NORMAL);
               }
             }
             else
             {
-              setControlProfile(IMC::ControlProfile::CPP_HIGH_GAIN);
+              changed = setControlProfile(IMC::ControlProfile::CPP_HIGH_GAIN);
             }
           }
           else
           {
-            setControlProfile(IMC::ControlProfile::CPP_NORMAL);
+            changed = setControlProfile(IMC::ControlProfile::CPP_NORMAL);
           }
+
+          if (changed)
+            setGainsFromControlProfile();
 
         }
 
         bool
-        setControlProfile(IMC::ControlProfile::ProfileEnum)
+        setControlProfile(IMC::ControlProfile::ProfileEnum profile)
         {
+          if (profile != m_cprofile.profile)
+          {
+            m_cprofile.profile = profile;
+            return true;
+          }
           return false;
         }
 
