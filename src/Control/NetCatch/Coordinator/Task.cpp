@@ -631,6 +631,7 @@ namespace Control
           .description("Nominal max speed of the reference model setpoint. ");
 
           param("ReferenceModel -- Acceleration", m_pargs.refmodel_max_a_mat)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("5.0")
           .units(Units::MeterPerSquareSecond)
           .description("Nominal maximum acceleration during reference model usage. ");
@@ -780,7 +781,7 @@ namespace Control
               break;
           }
 
-
+          inf("Now using gains: w0: %f, max_v: %f, max_a: %f, kp_scale: %f", m_args.refmodel_w0, m_args.refmodel_max_v, m_args.refmodel_max_a, m_args.kp_natural_freq_scale);
 
           // Set reference model parameters
           m_refmodel.k3 =  (2*m_args.refmodel_xi + 1) *     m_args.refmodel_w0;
@@ -922,6 +923,9 @@ namespace Control
           //spew("updateMean");
           updateMeanValues(s);
           //spew("switch state");
+
+          // Check and update control profile.
+          updateControlProfile();
 
           // Set vehicle to initialized. Technically, no different than connected for now.
           m_initialized[s] = true;
@@ -1066,29 +1070,36 @@ namespace Control
           }
           else if (m_curr_state == IMC::NetRecoveryState::NR_START)
           {
-            if (m_yztrackingOption == YZTO_START)
+            // First, check if we are withing the start-bounds:
+            bool inFinalStage = false;
+            Matrix p_a_path = m_p_path[FIXEDWING];
+            Matrix v_a_path = m_v_path[FIXEDWING];
+            if (v_a_path(0) < 1)
             {
-              // Only apply high-gain at the closeing-time:
-              Matrix p_a_path = m_p_path[FIXEDWING];
-              Matrix v_a_path = m_v_path[FIXEDWING];
-              if (v_a_path(0) < 1)
-              {
-                changed = setControlProfile(IMC::ControlProfile::CPP_NORMAL);
-              }
-              else
-              {
-                double time_to_impact = (m_args.m_coll_r - p_a_path(0))/v_a_path(0);
-
-                // Check if time is less than specified.
-                if (time_to_impact < m_args.yz_tracking_mode_time)
-                  changed = setControlProfile(IMC::ControlProfile::CPP_HIGH_GAIN);
-                else
-                  changed = setControlProfile(IMC::ControlProfile::CPP_NORMAL);
-              }
+              inFinalStage = false;
             }
             else
             {
-              changed = setControlProfile(IMC::ControlProfile::CPP_HIGH_GAIN);
+              double time_to_impact = (m_args.m_coll_r - p_a_path(0))/v_a_path(0);
+
+              // Check if time is less than specified.
+              if (time_to_impact < m_args.yz_tracking_mode_time)
+                inFinalStage = true;
+
+            }
+
+            switch(m_yztrackingOption)
+            {
+              case YZTO_START:
+              case YZTO_APPROACH:
+                if (inFinalStage)
+                  changed = setControlProfile(IMC::ControlProfile::CPP_HIGH_GAIN);
+                else
+                  changed = setControlProfile(IMC::ControlProfile::CPP_NORMAL);
+                break;
+              default:
+                changed = setControlProfile(IMC::ControlProfile::CPP_HIGH_GAIN);
+                break;
             }
           }
           else
@@ -1107,6 +1118,15 @@ namespace Control
           if (profile != m_cprofile.profile)
           {
             m_cprofile.profile = profile;
+            if (profile == IMC::ControlProfile::CPP_NORMAL)
+              inf("Changed profile to Normal");
+            else if (profile == IMC::ControlProfile::CPP_HIGH_GAIN)
+              inf("Changed profile to High Gain");
+            else if (profile == IMC::ControlProfile::CPP_CRUISE)
+              inf("Changed profile to Cruise");
+            else
+              war("Changed to unknown profile: %d", profile);
+
             return true;
           }
           return false;
