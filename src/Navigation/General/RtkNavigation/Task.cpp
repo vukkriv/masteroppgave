@@ -47,6 +47,8 @@ namespace Navigation
         IMC::GpsFix m_gps;
         //! Last received RTK Fix message
         IMC::GpsFixRtk m_rtk;
+        //! Last recieved ExternalNavData message.
+        IMC::ExternalNavData m_extnav;
 
         //! Constructor.
         //! @param[in] name task name.
@@ -55,6 +57,16 @@ namespace Navigation
           DUNE::Tasks::Task(name, ctx)
         {
           bind<IMC::GpsFixRtk>(this);
+          bind<IMC::ExternalNavData>(this);
+        }
+
+        void
+        consume(const IMC::ExternalNavData* extnav)
+        {
+          if (extnav->getSource() != getSystemId())
+            return;
+
+          m_extnav = *extnav;
         }
 
         void
@@ -112,6 +124,46 @@ namespace Navigation
             m_estate.vy = m_rtk.v_e;
             m_estate.vz = m_rtk.v_d;
           }
+          else
+          {
+            m_estate.vx = 0.0;
+            m_estate.vy = 0.0;
+            m_estate.vz = 0.0;
+          }
+
+          if (m_extnav.state.get() != NULL
+              && Clock::get() < m_extnav.getTimeStamp() + 1)
+          {
+            m_estate.phi    = m_extnav.state->phi;
+            m_estate.theta  = m_extnav.state->theta;
+            m_estate.psi    = m_extnav.state->psi;
+
+            m_estate.p = m_extnav.state->p;
+            m_estate.q = m_extnav.state->q;
+            m_estate.r = m_extnav.state->r;
+
+
+            // Note: the following will yield body-fixed *ground* velocity
+            BodyFixedFrame::toBodyFrame(m_estate.phi, m_estate.theta, m_estate.psi,
+                                        m_estate.vx, m_estate.vy, m_estate.vz,
+                                        &m_estate.u, &m_estate.v, &m_estate.w);
+
+          }
+          else
+          {
+            m_estate.phi    = 0.0;
+            m_estate.theta  = 0.0;
+            m_estate.psi    = 0.0;
+
+            m_estate.p = 0.0;
+            m_estate.q = 0.0;
+            m_estate.r = 0.0;
+
+            m_estate.u = 0.0;
+            m_estate.v = 0.0;
+            m_estate.w = 0.0;
+          }
+
         }
 
         //! Update internal state with new parameter values.
