@@ -134,12 +134,13 @@ namespace Navigation
 
 
         if(hasEstate){
-          double r_bn[] = {-m_estate.phi, -m_estate.theta, -m_estate.psi};
+          double r_bn[] = {m_estate.phi, m_estate.theta, m_estate.psi};
           double vb[] = {m_estate.u, m_estate.v, m_estate.w};
           double vn[] ={m_estate.vx, m_estate.vy, m_estate.vz};
-          m_R_bn = Matrix(r_bn, 3, 1).toQuaternion().toDCM();
-          m_vb = Matrix(vb, 3, 1);
-          m_vn = Matrix(vn,3,1);
+          // Body to NED rotation matrix
+          m_R_bn =  Matrix(r_bn,3, 1).toQuaternion().toDCM();
+          m_vb =    Matrix(vb,  3, 1);
+          m_vn =    Matrix(vn,  3, 1);
 
           double tas[] = {m_air_speed};
 //          m_C = horseCat(m_d * transpose(m_R_bn), Matrix(tas,1,1));
@@ -156,31 +157,33 @@ namespace Navigation
 
           m_w = m_w + (m_K * m_e);
 
-          m_vr = m_vb - transpose(m_R_bn) * m_w.get(0, 2, 0, 0);
+          m_vr = m_vb - m_R_bn * m_w.get(0, 2, 0, 0);
 
           //Find normalized observability gramian
           m_G = m_G + m_dt * transpose(m_C) * m_C / m_n_samples;
 
           double temp[] = {m_air_speed,0,0};
 
-          m_wind_at_the_moment.x = (m_vn - (transpose(m_R_bn) * Matrix(temp,3,1))).element(0,0);
-          m_wind_at_the_moment.y = (m_vn - (transpose(m_R_bn) * Matrix(temp,3,1))).element(1,0);
-          m_wind_at_the_moment.z = (m_vn - (transpose(m_R_bn) * Matrix(temp,3,1))).element(2,0);
+//          // Measured wind velocity
+//          m_wind_at_the_moment.x = (m_vn - (transpose(m_R_bn) * Matrix(temp,3,1))).element(0,0);
+//          m_wind_at_the_moment.y = (m_vn - (transpose(m_R_bn) * Matrix(temp,3,1))).element(1,0);
+//          m_wind_at_the_moment.z = (m_vn - (transpose(m_R_bn) * Matrix(temp,3,1))).element(2,0);
 
           m_wind_estimated.x = +m_w.element(0,0);
           m_wind_estimated.y = +m_w.element(1,0);
+//          m_wind_estimated.y = -m_wind_estimated.y;
           m_wind_estimated.z = +m_w.element(2,0);
 
-          dispatch(m_wind_at_the_moment);
+//          dispatch(m_wind_at_the_moment);
           dispatch(m_wind_estimated);
 
           if((m_G.detr() > m_args.trustedlim) and !measurementsIstrusted){
             measurementsIstrusted = true;
-            war("Measurement trusted with a graminan of %f", m_G.detr());
+            war("Measurement trusted with a gramian of %f", m_G.detr());
           }
           else if(!(m_G.detr() > m_args.trustedlim) and measurementsIstrusted){
             measurementsIstrusted = false;
-            war("Measurement not trusted with a graminan of %f", m_G.detr());
+            war("Measurement not trusted with a gramian of %f", m_G.detr());
           }
 
           //Find AoA and SSA
