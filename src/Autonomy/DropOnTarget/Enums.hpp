@@ -10,8 +10,10 @@
 
 using DUNE_NAMESPACES;
 
-enum Modes {LONG_STRETCH = 0, INCREMENTED_LONG_STRETCH, OPTIMAL_LONG_STRETCH, OWSI};
+// The enums used to choose which approach method will be used to calculate the CARP.
+enum Modes {LONG_STRETCH = 0, OPTIMAL_LONG_STRETCH, OWSI};
 
+// The enums for the state machine that controls the drop maneuvre.
 enum States {IDLE=-1, GOING_TO_START_POINT, GOING_TO_DROP_POINT, GOING_TO_SAFE_HEIGHT, GLIDE_MODE, LAST_STATE};
 
 

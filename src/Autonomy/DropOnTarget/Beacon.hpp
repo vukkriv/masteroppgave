@@ -10,6 +10,7 @@
 
 #include <DUNE/DUNE.hpp>
 #include "Point.hpp"
+#include "Dryden.hpp"
 #include <limits.h>
 
 class Beacon
@@ -17,7 +18,9 @@ class Beacon
 
 private:
   DUNE::IMC::Target target;
+  Dryden WindSimulator;
   Point CARP;
+  Point estimated_hitpoint;
   fp32_t mass;
   fp32_t b;
   fp32_t g;
@@ -25,22 +28,68 @@ private:
 
 public:
   Beacon()
-{   //THESE CONSTANTS MUST BE CHANGABLE IN INI FILE
-    //fp32_t rho = 1.341; // air density at -10 degrees celsius, according to Simen Fuglaas
-    fp32_t rho = 1.246; // air density at 10 degrees celsius, according to wikipedia
-    fp32_t C_D = 0.39;   // drag coefficient of our cone
-    fp32_t r = 0.045;    // 0.045 meters in radius.
-    fp32_t A = M_PI*r*r;
-    b = 0.5*C_D*rho*A;  //damping constant
-    mass = 0.104;         // mass
-    g = 9.81;           //gravity constant
-    CARP = Point();
-    t = 0;
-};
+  {   //THESE CONSTANTS MUST BE CHANGABLE IN INI FILE
+      //fp32_t rho = 1.341; // air density at -10 degrees celsius, according to Simen Fuglaas
+      fp32_t rho = 1.246; // air density at 10 degrees celsius, according to wikipedia
+      fp32_t C_D = 0.39;   // drag coefficient of our cone
+      fp32_t r = 0.045;    // 0.045 meters in radius.
+      fp32_t A = M_PI*r*r;
+      b = 0.5*C_D*rho*A;  //damping constant
+      mass = 0.104;         // mass
+      g = 9.81;           //gravity constant
+      CARP = Point();
+      WindSimulator = Dryden();
+      t = 0;
+  };
+
+  // Used to calculate the error of the dropped target, through simulation from the actual drop point.
+  // Needs proper simulation with more realistic wind, e.g. turbulence.
+  fp64_t calculate_target_deviation(DUNE::IMC::EstimatedState state, fp32_t dt, int counter_max)
+  {
+    double r_bn[] = {state.phi, state.theta, state.psi};
+    // Body to NED rotation matrix
+    DUNE::Math::Matrix R_bn =  DUNE::Math::Matrix(r_bn,3, 1).toQuaternion().toDCM();
+    // NED to body Rotation matrix
+    DUNE::Math::Matrix R_nb = transpose(R_bn);
+    // Prepare body wind in NED frame
+//    WindSimulator.setSteadyWind( steady_wind );
+    double steady_wind[] = {3.0,-2.0,0.0};
+    double gust_wind[] = {0.0,0.0,0.0};
+    double wind[] = {0.0, 0.0, 0.0};
+    DUNE::Math::Matrix steady_wind_matrix = DUNE::Math::Matrix(steady_wind,3,1);
+    DUNE::Math::Matrix gust_wind_matrix = DUNE::Math::Matrix(gust_wind,3,1);
+    DUNE::Math::Matrix wind_matrix = steady_wind_matrix + R_bn*gust_wind_matrix;
+    WindSimulator.initialize(steady_wind_matrix,gust_wind_matrix,R_bn);
+
+    fp64_t x = state.x, y=state.y, z=state.height - state.z, vx=state.vx, vy=state.vy, vz = state.vz;
+    int counter = 0;
+    while(z > target.z and counter < counter_max)
+    {
+      counter ++;
+      double speed = sqrt(vx*vx+vy*vy+vz*vz);
+      wind_matrix = WindSimulator.update(z,speed,dt);
+      fp32_t v_rel_abs = sqrt(((vx - wind[0]) * (vx - wind[0])) + ((vy - wind[1]) * (vy - wind[1])) + ((vz - wind[2]) * (vz-wind[2])));
+      x += vx*dt;
+      y += vy*dt;
+      z -= vz*dt;
+      vx += -b / mass * (vx - wind_matrix(0)) * v_rel_abs * dt;
+      vy += -b / mass * (vy - wind_matrix(1)) * v_rel_abs * dt;
+      vz += (-b / mass * (vz - wind_matrix(2)) * v_rel_abs + g) * dt;
+    }
+    //time to reach ground
+    estimated_hitpoint.lat = state.lat;
+    estimated_hitpoint.lon = state.lon;
+    estimated_hitpoint.z = target.z;
+    WGS84::displace(x, y, &estimated_hitpoint.lat, &estimated_hitpoint.lon);
+
+    fp64_t target_deviation = WGS84::distance(target.lat,target.lon,target.z,estimated_hitpoint.lat,estimated_hitpoint.lon,estimated_hitpoint.z);
+
+    return target_deviation;
+  }
 
   void calculate_CARP_speed(double speed, double release_height, DUNE::IMC::EstimatedStreamVelocity wind, fp32_t dt, int counter_max)
   {
-    fp64_t x = 0, y = 0, z = 0, d = 0, vx = 0, vy = 0, vz = 0, x_copy = 0, y_copy = 0;
+    fp64_t x = 0, y = 0, z = 0, vx = 0, vy = 0, vz = 0, x_copy = 0, y_copy = 0;
     fp32_t wind_speed = sqrt(wind.x * wind.x + wind.y * wind.y);
     vx = -wind.x / wind_speed * speed;
     vy = -wind.y / wind_speed * speed;
@@ -84,7 +133,7 @@ public:
     CARP.vy = vy;
     CARP.vz = 0;
 
-    fp64_t x = 0, y = 0, z = 0, d = 0, x_copy = 0, y_copy = 0;
+    fp64_t x = 0, y = 0, z = 0, x_copy = 0, y_copy = 0;
     z = release_height;
 
     int counter = 0;
@@ -178,6 +227,18 @@ public:
   {
     this->target = target_;
   };
+
+  fp64_t get_velocity_size_deviation(fp64_t speed)
+  {
+    printf("Speed: %f, Carp speed: %f\n", speed, CARP.speed);
+    return (speed - CARP.speed);
+  }
+  fp64_t get_2D_velocity_angle_deviation(DUNE::IMC::EstimatedState state)
+  {
+    fp64_t ideal_angle = atan2(CARP.vy,CARP.vx);
+    fp64_t real_angle = atan2(state.vy,state.vx);
+    return ideal_angle - real_angle;
+  }
 };
 
 
