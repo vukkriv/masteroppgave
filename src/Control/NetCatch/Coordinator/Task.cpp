@@ -95,6 +95,7 @@ namespace Control
         bool refmodel_use_for_alongtrack;
         double refmodel_w0;
         double refmodel_xi;
+        int refmodel_order;
         double refmodel_max_v;
         double refmodel_max_a;
 
@@ -114,6 +115,8 @@ namespace Control
       struct ProfileDependendArguments
       {
         Matrix refmodel_w0_mat;
+        Matrix refmodel_xi_mat;
+        std::vector<int> refmodel_order_vec;
         Matrix refmodel_max_v_mat;
         Matrix refmodel_max_a_mat;
         Matrix kp_natural_freq_scale_mat;
@@ -619,10 +622,17 @@ namespace Control
           .units(Units::RadianPerSecond)
           .description("Reference model natural frequency. ");
 
-          param("ReferenceModel -- Damping", m_args.refmodel_xi)
+          param("ReferenceModel -- Damping", m_pargs.refmodel_xi_mat)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("1.1")
           .units(Units::None)
           .description("Damping factor of the reference model. ");
+
+          param("ReferenceModel -- Order", m_pargs.refmodel_order_vec)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .defaultValue("3")
+          .units(Units::None)
+          .description("Order of the reference model. Higher order is smoother, but potentially slower. ");
 
           param("ReferenceModel -- Speed", m_pargs.refmodel_max_v_mat)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -717,6 +727,10 @@ namespace Control
             m_pargs.refmodel_max_v_mat        = checkCPMatrix(m_pargs.refmodel_max_v_mat);
           if (paramChanged(m_pargs.refmodel_w0_mat))
             m_pargs.refmodel_w0_mat           = checkCPMatrix(m_pargs.refmodel_w0_mat);
+          if (paramChanged(m_pargs.refmodel_xi_mat))
+            m_pargs.refmodel_xi_mat           = checkCPMatrix(m_pargs.refmodel_w0_mat);
+          if (paramChanged(m_pargs.refmodel_order_vec))
+            m_pargs.refmodel_order_vec        = checkCPVector(m_pargs.refmodel_order_vec);
 
           // Makes sure to set default gains as well.
           setGainsFromControlProfile();
@@ -765,6 +779,37 @@ namespace Control
           return mat;
         }
 
+        std::vector<int>
+        checkCPVector(std::vector<int> vec_in)
+        {
+          std::vector<int> vec;
+          vec.push_back(3);
+          vec.push_back(3);
+          vec.push_back(3);
+
+          if (vec_in.size() >= 3)
+          {
+            vec[0] = vec_in[0];
+            vec[1] = vec_in[1];
+            vec[2] = vec_in[2];
+          }
+          else if (vec_in.size() == 2)
+          {
+            vec[0] = vec_in[0];
+            vec[1] = vec_in[1];
+            vec[2] = vec_in[1];
+          }
+          else if (vec_in.size() == 1)
+          {
+            vec[0] = vec_in[0];
+            vec[1] = vec_in[0];
+            vec[2] = vec_in[0];
+          }
+
+
+          return vec;
+        }
+
         void
         setGainsFromControlProfile(void)
         {
@@ -781,12 +826,22 @@ namespace Control
               break;
           }
 
-          inf("Now using gains: w0: %f, max_v: %f, max_a: %f, kp_scale: %f", m_args.refmodel_w0, m_args.refmodel_max_v, m_args.refmodel_max_a, m_args.kp_natural_freq_scale);
+          inf("Now using gains: Order: %d, w0: %.2f, xi:%.1f max_v: %.1f, max_a: %.1f, kp: %.2f, kp_scale: %.2f",
+                                           m_args.refmodel_order, m_args.refmodel_w0, m_args.refmodel_xi,
+                                           m_args.refmodel_max_v, m_args.refmodel_max_a, m_baselineGains.getKpBar(m_args.kp_natural_freq_scale), m_args.kp_natural_freq_scale);
 
           // Set reference model parameters
           m_refmodel.k3 =  (2*m_args.refmodel_xi + 1) *     m_args.refmodel_w0;
           m_refmodel.k2 = ((2*m_args.refmodel_xi + 1) * std::pow(m_args.refmodel_w0, 2)) /  m_refmodel.k3;
           m_refmodel.k1 =                               std::pow(m_args.refmodel_w0, 3)  / (m_refmodel.k3 * m_refmodel.k2);
+
+
+          if (m_args.refmodel_order == 2)
+          {
+            m_refmodel.k3 = 0.0;
+            m_refmodel.k2 = 2*m_args.refmodel_xi*m_args.refmodel_w0;
+            m_refmodel.k1 = std::pow(m_args.refmodel_w0, 2) / m_refmodel.k2;
+          }
         }
 
         void
@@ -799,6 +854,8 @@ namespace Control
           m_args.refmodel_max_a        = m_pargs.refmodel_max_a_mat(i);
           m_args.refmodel_max_v        = m_pargs.refmodel_max_v_mat(i);
           m_args.refmodel_w0           = m_pargs.refmodel_w0_mat(i);
+          m_args.refmodel_xi           = m_pargs.refmodel_xi_mat(i);
+          m_args.refmodel_order        = m_pargs.refmodel_order_vec[i];
         }
 
         void
@@ -1277,16 +1334,28 @@ namespace Control
             tau2 = m_args.refmodel_max_a * tau2 / tau2.norm_2();
           }
 
-          // Step 3: J-part
-          Matrix tau3 = m_refmodel.k3 * (tau2 - m_refmodel.getAcc());
+          // Check order
+          if (m_args.refmodel_order == 2)
+          {
+            // Integrate
+            m_refmodel.x += deltat * (m_refmodel.x.get(3, 5, 0, 0).vertCat(tau2).vertCat(Matrix(3,1, 0.0)));
 
-          // Set heave to 0 if not controlling altitude
-          if (m_args.disable_Z)
-            tau3(2) = 0.0;
+            // Set acceleration to tau2
+            m_refmodel.setAcc(tau2);
+          }
+          else
+          {
 
-          // Integrate
-          m_refmodel.x += deltat * (m_refmodel.x.get(3,8,0,0).vertCat(tau3));
+            // Step 3: J-part
+            Matrix tau3 = m_refmodel.k3 * (tau2 - m_refmodel.getAcc());
 
+            // Set heave to 0 if not controlling altitude
+            if (m_args.disable_Z)
+              tau3(2) = 0.0;
+
+            // Integrate
+            m_refmodel.x += deltat * (m_refmodel.x.get(3,8,0,0).vertCat(tau3));
+          }
 
 
           // Log
