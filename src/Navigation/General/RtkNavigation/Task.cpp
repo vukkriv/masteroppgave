@@ -131,7 +131,7 @@ namespace Navigation
             m_estate.vz = 0.0;
           }
 
-          if (m_extnav.state.get() != NULL
+          if (!m_extnav.state.isNull()
               && Clock::get() < m_extnav.getTimeStamp() + 1)
           {
             m_estate.phi    = m_extnav.state->phi;
