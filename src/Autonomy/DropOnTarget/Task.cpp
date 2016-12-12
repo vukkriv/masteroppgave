@@ -210,7 +210,7 @@ namespace Autonomy
         param("OWSI Min Distance", m_args.OWSI_min_distance)
         .defaultValue("5")
         .units(Units::Meter)
-        .description("Closest distance to CARP for optimation with OWSI");
+        .description("Closest distance to CARP for optimization with OWSI");
 
         param("Direct To Optimal", m_args.direct_to_opt)
         .defaultValue("10")
@@ -519,7 +519,7 @@ namespace Autonomy
 
             distance_to_point = distanceByTime(lat, lon, height, m_args.glide_time + m_args.drop_time);
 
-            if((distance_to_point < m_args.drop_error && distance_to_point > m_previous_distance) || distance_to_point < 1)
+            if((distance_to_point < m_args.drop_error && distance_to_point > m_previous_distance) || distance_to_point < 0.5)
             {
               startGlide();
             }
@@ -1046,12 +1046,18 @@ namespace Autonomy
       void
       oldDrop(double distance_to_point)
       {
+        fp64_t lat, lon, height;
+        getCurrentLatLonHeight(&lat, &lon, &height);
+        fp64_t time_to_drop = m_args.drop_time;
+
         war("This is a simple drop!");
         fp64_t speed =  sqrt(m_estate.vx*m_estate.vx + m_estate.vy*m_estate.vy + m_estate.vz*m_estate.vz);
         inf("Velocity: %f, %f, %f", m_estate.vx,m_estate.vy,m_estate.vz);
         inf("Speed: %f",speed);
         inf("Wind: %f, %f, %f", m_ewind.x,m_ewind.y,m_ewind.z);
-        fp64_t target_deviation = m_beacon.calculate_target_deviation(m_estate,m_args.dt, m_args.counter_max);
+        fp64_t target_dev[3];
+        fp64_t carp_dev[3];
+        fp64_t target_deviation = m_beacon.calculate_target_deviation(m_ewind,m_estate,time_to_drop,m_args.dt, m_args.counter_max, target_dev, carp_dev);
         fp64_t speed_size_deviation = m_beacon.get_velocity_size_deviation(speed);
         fp64_t speed_angle_deviation = m_beacon.get_2D_velocity_angle_deviation(m_estate);
         inf("Estimated Target Deviation: %f", target_deviation);
@@ -1063,8 +1069,11 @@ namespace Autonomy
         myfile << m_ewind.x << "\t" << m_ewind.y << "\t" << m_ewind.z << "\t";
         myfile << m_estate.vx << "\t" << m_estate.vy << "\t" << m_estate.vz << "\t";
         myfile << target_deviation << "\t";
+        myfile << target_dev[0] << "\t" << target_dev[1] << "\t" << target_dev[2] << "\t";
         myfile << speed_size_deviation << "\t" << speed_angle_deviation << "\t";
-        myfile << distance_to_point << "\t" << "\n\n";
+        myfile << m_estate.vx << "\t" << m_estate.vy << "\t" << m_estate.vz << "\t";
+        myfile << distance_to_point << "\t";
+        myfile << carp_dev[0] << "\t" << carp_dev[1] << "\t" << carp_dev[2] << "\t"  << "\n\n";
         myfile.close();
 
         m_pcc.op = 1;

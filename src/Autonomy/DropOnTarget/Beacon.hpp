@@ -44,7 +44,7 @@ public:
 
   // Used to calculate the error of the dropped target, through simulation from the actual drop point.
   // Needs proper simulation with more realistic wind, e.g. turbulence.
-  fp64_t calculate_target_deviation(DUNE::IMC::EstimatedState state, fp32_t dt, int counter_max)
+  fp64_t calculate_target_deviation(DUNE::IMC::EstimatedStreamVelocity wind_in, DUNE::IMC::EstimatedState state, fp64_t time_to_drop, fp32_t dt, int counter_max, fp64_t target_dev[], fp64_t carp_dev[])
   {
     double r_bn[] = {state.phi, state.theta, state.psi};
     // Body to NED rotation matrix
@@ -52,23 +52,47 @@ public:
     // NED to body Rotation matrix
     DUNE::Math::Matrix R_nb = transpose(R_bn);
     // Prepare body wind in NED frame
-//    WindSimulator.setSteadyWind( steady_wind );
-    double steady_wind[] = {3.0,-2.0,0.0};
+    double steady_wind[3];
+    steady_wind[0] = wind_in.x;
+    steady_wind[1] = wind_in.y;
+    steady_wind[2] = wind_in.z;
     double gust_wind[] = {0.0,0.0,0.0};
-    double wind[] = {0.0, 0.0, 0.0};
     DUNE::Math::Matrix steady_wind_matrix = DUNE::Math::Matrix(steady_wind,3,1);
     DUNE::Math::Matrix gust_wind_matrix = DUNE::Math::Matrix(gust_wind,3,1);
     DUNE::Math::Matrix wind_matrix = steady_wind_matrix + R_bn*gust_wind_matrix;
     WindSimulator.initialize(steady_wind_matrix,gust_wind_matrix,R_bn);
 
-    fp64_t x = state.x, y=state.y, z=state.height - state.z, vx=state.vx, vy=state.vy, vz = state.vz;
+    fp64_t present_lat = state.lat;
+    fp64_t present_lon = state.lon;
+    fp32_t present_height = state.height;
+    WGS84::displace(state.x,state.y,state.z, &present_lat,&present_lon,&present_height);
+
+    Point drop_position;
+    drop_position.lat = state.lat;
+    drop_position.lon = state.lon;
+    drop_position.z = state.height;
+    WGS84::displace(state.x, state.y, state.z, &drop_position.lat, &drop_position.lon, &drop_position.z);
+
+    WGS84::displace( //Displacing forward (drop time) times speed because of delay
+        state.vx * (time_to_drop),
+        state.vy * (time_to_drop),
+        state.vz * (time_to_drop),
+        &drop_position.lat, &drop_position.lon, &drop_position.z);
+    drop_position.vx = state.vx;
+    drop_position.vy = state.vy;
+    drop_position.vz = state.vz;
+
+    fp64_t x = 0.0, y=0.0, z=drop_position.z, vx=drop_position.vx, vy=drop_position.vy, vz = drop_position.vz;
     int counter = 0;
+    double speed = sqrt(vx*vx+vy*vy+vz*vz);
+    wind_matrix = WindSimulator.update(z,speed,dt);
+
     while(z > target.z and counter < counter_max)
     {
       counter ++;
-      double speed = sqrt(vx*vx+vy*vy+vz*vz);
+      speed = sqrt(vx*vx+vy*vy+vz*vz);
       wind_matrix = WindSimulator.update(z,speed,dt);
-      fp32_t v_rel_abs = sqrt(((vx - wind[0]) * (vx - wind[0])) + ((vy - wind[1]) * (vy - wind[1])) + ((vz - wind[2]) * (vz-wind[2])));
+      fp32_t v_rel_abs = sqrt(((vx - wind_matrix(0)) * (vx - wind_matrix(0))) + ((vy - wind_matrix(1)) * (vy - wind_matrix(1))) + ((vz - wind_matrix(2)) * (vz-wind_matrix(2))));
       x += vx*dt;
       y += vy*dt;
       z -= vz*dt;
@@ -77,10 +101,13 @@ public:
       vz += (-b / mass * (vz - wind_matrix(2)) * v_rel_abs + g) * dt;
     }
     //time to reach ground
-    estimated_hitpoint.lat = state.lat;
-    estimated_hitpoint.lon = state.lon;
+    estimated_hitpoint.lat = drop_position.lat;
+    estimated_hitpoint.lon = drop_position.lon;
     estimated_hitpoint.z = target.z;
+
     WGS84::displace(x, y, &estimated_hitpoint.lat, &estimated_hitpoint.lon);
+    WGS84::displacement(target.lat, target.lon,target.z,estimated_hitpoint.lat,estimated_hitpoint.lon,estimated_hitpoint.z,&target_dev[0],&target_dev[1],&target_dev[2]);
+    WGS84::displacement(CARP.lat, CARP.lon,CARP.z,drop_position.lat,drop_position.lon,drop_position.z,&carp_dev[0],&carp_dev[1],&carp_dev[2]);
 
     fp64_t target_deviation = WGS84::distance(target.lat,target.lon,target.z,estimated_hitpoint.lat,estimated_hitpoint.lon,estimated_hitpoint.z);
 
@@ -174,7 +201,7 @@ public:
     Matrix V_now = Matrix(v_now, 3, 1);
     double speed = sqrt(estate.vx * estate.vx + estate.vy * estate.vy);
     //Speed minus speed lost while gliding (t*C_d*A*rho)
-    double v_tot[] = {speed - glide_time * .1 * (2 * .10 * 3.14 + .80 * 2 * 2) * 1.225 , 0, 0};
+    double v_tot[] = {speed - glide_time*b , 0, 0};
     Matrix V_tot = Matrix(v_tot, 3, 1);
 
     double angle;
