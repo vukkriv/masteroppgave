@@ -1169,9 +1169,9 @@ namespace Autonomy
       double
       distanceByTime(double lat, double lon, double height, double time){
         WGS84::displace( //Displacing forward (drop time) times speed because of delay
-            m_estate.vx * (time),
-            m_estate.vy * (time),
-            m_estate.vz * (time),    //m_estate can be replaced with m_beacon.get_CARP.vx etc.
+            (m_estate.vx - m_ewind.x) * (time),
+            (m_estate.vy - m_ewind.y)* (time),
+            (m_estate.vz - m_ewind.z)* (time),    //m_estate can be replaced with m_beacon.get_CARP.vx etc.
             &lat, &lon, &height);
 
         return WGS84::distance(m_beacon.get_CARP().lat, m_beacon.get_CARP().lon, (double)m_beacon.get_CARP().z, lat,  lon, height);

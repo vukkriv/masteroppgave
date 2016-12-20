@@ -46,6 +46,10 @@ public:
   // Needs proper simulation with more realistic wind, e.g. turbulence.
   fp64_t calculate_target_deviation(DUNE::IMC::EstimatedStreamVelocity wind_in, DUNE::IMC::EstimatedState state, fp64_t time_to_drop, fp32_t dt, int counter_max, fp64_t target_dev[], fp64_t carp_dev[])
   {
+
+    std::ofstream ofs;
+    ofs.open("/home/siri/uavlab/results/wind.txt", std::ofstream::out | std::ofstream::trunc);
+    ofs.close();
     double r_bn[] = {state.phi, state.theta, state.psi};
     // Body to NED rotation matrix
     DUNE::Math::Matrix R_bn =  DUNE::Math::Matrix(r_bn,3, 1).toQuaternion().toDCM();
@@ -56,11 +60,8 @@ public:
     steady_wind[0] = wind_in.x;
     steady_wind[1] = wind_in.y;
     steady_wind[2] = wind_in.z;
-    double gust_wind[] = {0.0,0.0,0.0};
     DUNE::Math::Matrix steady_wind_matrix = DUNE::Math::Matrix(steady_wind,3,1);
-    DUNE::Math::Matrix gust_wind_matrix = DUNE::Math::Matrix(gust_wind,3,1);
-    DUNE::Math::Matrix wind_matrix = steady_wind_matrix + R_bn*gust_wind_matrix;
-    WindSimulator.initialize(steady_wind_matrix,gust_wind_matrix,R_bn);
+    DUNE::Math::Matrix wind_matrix;
 
     fp64_t present_lat = state.lat;
     fp64_t present_lon = state.lon;
@@ -74,9 +75,9 @@ public:
     WGS84::displace(state.x, state.y, state.z, &drop_position.lat, &drop_position.lon, &drop_position.z);
 
     WGS84::displace( //Displacing forward (drop time) times speed because of delay
-        state.vx * (time_to_drop),
-        state.vy * (time_to_drop),
-        state.vz * (time_to_drop),
+        (state.vx - wind_in.x) * (time_to_drop),
+        (state.vy - wind_in.y) * (time_to_drop),
+        (state.vz - wind_in.z) * (time_to_drop),
         &drop_position.lat, &drop_position.lon, &drop_position.z);
     drop_position.vx = state.vx;
     drop_position.vy = state.vy;
@@ -85,13 +86,14 @@ public:
     fp64_t x = 0.0, y=0.0, z=drop_position.z, vx=drop_position.vx, vy=drop_position.vy, vz = drop_position.vz;
     int counter = 0;
     double speed = sqrt(vx*vx+vy*vy+vz*vz);
-    wind_matrix = WindSimulator.update(z,speed,dt);
+
+    WindSimulator.initialize(steady_wind_matrix,R_bn,z-target.z);
+    wind_matrix = WindSimulator.update(z-target.z,speed,dt);
 
     while(z > target.z and counter < counter_max)
     {
       counter ++;
       speed = sqrt(vx*vx+vy*vy+vz*vz);
-      wind_matrix = WindSimulator.update(z,speed,dt);
       fp32_t v_rel_abs = sqrt(((vx - wind_matrix(0)) * (vx - wind_matrix(0))) + ((vy - wind_matrix(1)) * (vy - wind_matrix(1))) + ((vz - wind_matrix(2)) * (vz-wind_matrix(2))));
       x += vx*dt;
       y += vy*dt;
@@ -99,6 +101,9 @@ public:
       vx += -b / mass * (vx - wind_matrix(0)) * v_rel_abs * dt;
       vy += -b / mass * (vy - wind_matrix(1)) * v_rel_abs * dt;
       vz += (-b / mass * (vz - wind_matrix(2)) * v_rel_abs + g) * dt;
+      if (counter < 100000)
+        printf("Z: %f Target.z: %f Height for Wind: %f\n",z,target.z,z-target.z);
+      wind_matrix = WindSimulator.update(z-target.z,speed,dt);
     }
     //time to reach ground
     estimated_hitpoint.lat = drop_position.lat;
@@ -118,6 +123,14 @@ public:
   {
     fp64_t x = 0, y = 0, z = 0, vx = 0, vy = 0, vz = 0, x_copy = 0, y_copy = 0;
     fp32_t wind_speed = sqrt(wind.x * wind.x + wind.y * wind.y);
+
+    fp32_t wind_speed_release = sqrt(pow(wind.x,2)+pow(wind.y,2)+pow(wind.z,2));
+    fp32_t wind_speed_height;// = m_windspeed_20_feet*pow((height_in*m_convertMeters2Feet)/20,(1/7));
+    fp32_t wind_height[3];
+    wind_height[0] = wind.x;
+    wind_height[1] = wind.y;
+    wind_height[2] = wind.z;
+
     vx = -wind.x / wind_speed * speed;
     vy = -wind.y / wind_speed * speed;
     vz = 0;
@@ -128,13 +141,17 @@ public:
     while(z > target.z and counter < counter_max)
     {
       counter ++;
-      fp32_t v_rel_abs = sqrt(((vx - wind.x) * (vx - wind.x)) + ((vy - wind.y) * (vy - wind.y)) + ((vz - wind.z) * (vz-wind.z)));
+      wind_speed_height = wind_speed_release*pow(z/release_height,1/7);
+      wind_height[0] = wind_speed_height/wind_speed_release*wind.x;
+      wind_height[1] = wind_speed_height/wind_speed_release*wind.y;
+      wind_height[2] = wind_speed_height/wind_speed_release*wind.z;
+      fp32_t v_rel_abs = sqrt(((vx - wind_height[0]) * (vx - wind_height[0])) + ((vy - wind_height[1]) * (vy - wind_height[1])) + ((vz - wind_height[2]) * (vz-wind_height[2])));
       x += vx*dt;
       y += vy*dt;
       z -= vz*dt;
-      vx += -b / mass * (vx - wind.x) * v_rel_abs * dt;
-      vy += -b / mass * (vy - wind.y) * v_rel_abs * dt;
-      vz += (-b / mass * (vz - wind.z) * v_rel_abs + g) * dt;
+      vx += -b / mass * (vx - wind_height[0]) * v_rel_abs * dt;
+      vy += -b / mass * (vy - wind_height[1]) * v_rel_abs * dt;
+      vz += (-b / mass * (vz - wind_height[2]) * v_rel_abs + g) * dt;
     }
     //time to reach ground
     t = counter * dt;
@@ -160,6 +177,13 @@ public:
     CARP.vy = vy;
     CARP.vz = 0;
 
+    fp32_t wind_speed_release = sqrt(pow(wind.x,2)+pow(wind.y,2)+pow(wind.z,2));
+    fp32_t wind_speed_height;// = m_windspeed_20_feet*pow((height_in*m_convertMeters2Feet)/20,(1/7));
+    fp32_t wind_height[3];
+    wind_height[0] = wind.x;
+    wind_height[1] = wind.y;
+    wind_height[2] = wind.z;
+
     fp64_t x = 0, y = 0, z = 0, x_copy = 0, y_copy = 0;
     z = release_height;
 
@@ -167,13 +191,17 @@ public:
     while(z > target.z and counter < counter_max)
     {
       counter ++;
-      fp32_t v_rel_abs = sqrt(((vx - wind.x) * (vx - wind.x)) + ((vy - wind.y) * (vy - wind.y)) + ((vz - wind.z) * (vz - wind.z)));
-      x += vx * dt;
-      y += vy * dt;
-      z -= vz * dt;
-      vx += -b / mass * (vx - wind.x) * v_rel_abs* dt;
-      vy += -b / mass * (vy - wind.y) * v_rel_abs * dt;
-      vz += (-b / mass * (vz - wind.z) * v_rel_abs + g) * dt;
+      wind_speed_height = wind_speed_release*pow(z/release_height,1/7);
+      wind_height[0] = wind_speed_height/wind_speed_release*wind.x;
+      wind_height[1] = wind_speed_height/wind_speed_release*wind.y;
+      wind_height[2] = wind_speed_height/wind_speed_release*wind.z;
+      fp32_t v_rel_abs = sqrt(((vx - wind_height[0]) * (vx - wind_height[0])) + ((vy - wind_height[1]) * (vy - wind_height[1])) + ((vz - wind_height[2]) * (vz-wind_height[2])));
+      x += vx*dt;
+      y += vy*dt;
+      z -= vz*dt;
+      vx += -b / mass * (vx - wind_height[0]) * v_rel_abs * dt;
+      vy += -b / mass * (vy - wind_height[1]) * v_rel_abs * dt;
+      vz += (-b / mass * (vz - wind_height[2]) * v_rel_abs + g) * dt;
     }
 
     //time to reach ground
