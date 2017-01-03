@@ -30,149 +30,191 @@
 
 namespace Sensors
 {
-  namespace UM100
-  {
-    using DUNE_NAMESPACES;
+namespace UM100
+{
+using DUNE_NAMESPACES;
 
 
-    struct Arguments
-    {
-      // Serial port device.
-      std::string uart_dev;
-      // Serial port baud rate.
-      unsigned uart_baud; //921600 for bespoon ekv boards
+struct Arguments
+{
+	// Serial port device.
+	std::string uart_dev;
+	// Serial port baud rate.
+	unsigned uart_baud; //921600 for bespoon ekv boards
 
-    };
+};
 
-    struct Task: public DUNE::Tasks::Task
+struct Task: public DUNE::Tasks::Task
+{
+	// Device protocol handler.
+	SerialPort* m_uart;
+	// Task Arguments.
+	Arguments m_args;
+
+
+	std::string m_msg;
+
+	// I/O Multiplexer.
+	Poll m_poll;
+
+	//! Constructor.
+	//! @param[in] name task name.
+	//! @param[in] ctx context.
+	Task(const std::string& name, Tasks::Context& ctx):
+		DUNE::Tasks::Task(name, ctx),
+		m_uart(NULL)
 	{
-      // Device protocol handler.
-      SerialPort* m_uart;
-      // Task Arguments.
-      Arguments m_args;
+		param("Serial Port - Device", m_args.uart_dev)
+        		.defaultValue("/dev/ttyUSB0")
+				.description("Serial port device (used to communicate with the actuator)");
 
-      // I/O Multiplexer.
-      Poll m_poll;
+		param("Serial Port - Baud Rate", m_args.uart_baud)
+		.defaultValue("921600")
+		.description("Serial port baud rate");
+	}
 
-      //! Constructor.
-      //! @param[in] name task name.
-      //! @param[in] ctx context.
-      Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Task(name, ctx),
-        m_uart(NULL)
-      {
-        param("Serial Port - Device", m_args.uart_dev)
-        .defaultValue("/dev/ttyUSB0")
-        .description("Serial port device (used to communicate with the actuator)");
+	//! Update internal state with new parameter values.
+	void
+	onUpdateParameters(void)
+	{
+	}
 
-        param("Serial Port - Baud Rate", m_args.uart_baud)
-        .defaultValue("921600")
-        .description("Serial port baud rate");
-      }
+	//! Reserve entity identifiers.
+	void
+	onEntityReservation(void)
+	{
+	}
 
-      //! Update internal state with new parameter values.
-      void
-      onUpdateParameters(void)
-      {
-      }
+	//! Resolve entity names.
+	void
+	onEntityResolution(void)
+	{
+	}
 
-      //! Reserve entity identifiers.
-      void
-      onEntityReservation(void)
-      {
-      }
+	//! Acquire resources.
+	void
+	onResourceAcquisition(void)
+	{
+		m_uart = new SerialPort(m_args.uart_dev, m_args.uart_baud);
 
-      //! Resolve entity names.
-      void
-      onEntityResolution(void)
-      {
-      }
+	}
 
-      //! Acquire resources.
-      void
-      onResourceAcquisition(void)
-      {
-        m_uart = new SerialPort(m_args.uart_dev, m_args.uart_baud);
+	//! Initialize resources.
+	void
+	onResourceInitialization(void)
+	{
+        setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
 
-      }
+		m_poll.add(*m_uart);
+	}
 
-      //! Initialize resources.
-      void
-      onResourceInitialization(void)
-      {
-        m_poll.add(*m_uart);
-      }
-
-      //! Release resources.
-      void
-      onResourceRelease(void)
-      {
-        if (m_uart != NULL)
-        {
-          m_poll.remove(*m_uart);
-          delete m_uart;
-          m_uart = NULL;
-        }
-      }
+	//! Release resources.
+	void
+	onResourceRelease(void)
+	{
+		if (m_uart != NULL)
+		{
+			m_poll.remove(*m_uart);
+			delete m_uart;
+		}
+	}
 
 
-      void
-      process(const char* bfr)
-      {
+	void
+	process(const char* bfr)
+	{
 
-    	IMC::BeaconDistance msg;
+		IMC::BeaconDistance msg;
 
-    	float dist = 0;
-    	unsigned short int lqi = 0;
-    	unsigned short int src = 0;
-    	unsigned long int dlt = 0;
+		float dist = 0;
+		unsigned short int lqi = 0;
+		unsigned short int src = 0;
+		unsigned long int dlt = 0;
 
-        std::string data = bfr;
-        std::size_t foundBegin = data.find("DLT");
-        std::size_t foundEnd = data.find("\n");
-        if ((foundBegin != std::string::npos)&&(foundEnd != std::string::npos)){
-          data = data.substr(foundBegin, foundEnd-foundBegin);
+		// std::string data = bfr;
 
-          spew("|%s|", data.c_str());
-          //example data: DLT 54688 SRC 3007  LQI 99%  DIST 1.03m
-          //sscanf(data.c_str(), "$%lu %hu %hu %f", &ts, &src, &lqi, &dist_origin);
-          sscanf(data.c_str(), "DLT %lu SRC %hu LQI %hu%% DIST %f", &dlt, &src, &lqi, &dist);
+		//  spew("BFR|%s|", bfr);
+		std::string data(bfr);
+		std::size_t foundBegin = data.find("DLT");
+		std::size_t foundEnd = data.find("\n");
+		if ((foundBegin != std::string::npos)&&(foundEnd != std::string::npos)){
+			data = data.substr(foundBegin, foundEnd-foundBegin);
 
-          //dist_imc=dist*100; //dist_imc[cm]=dist_orign[m]*100
-          msg.dist = dist;
-          msg.dqf = lqi;
-          msg.dlt = dlt;
-          msg.sender = src;
-          dispatch(msg);
-          debug("dlt: %lu src: %hu lqi: %hu dist[m]: %.2f", dlt, src, lqi, dist);
-        }
-      }
+			// spew("|%s|", data.c_str());
+			//example data: DLT 54688 SRC 3007  LQI 99%  DIST 1.03m
+			//sscanf(data.c_str(), "$%lu %hu %hu %f", &ts, &src, &lqi, &dist_origin);
+			sscanf(data.c_str(), "DLT %lu SRC %hu LQI %hu%% DIST %f", &dlt, &src, &lqi, &dist);
 
-      void
-      checkSerialPort(void)
-      {
-        if (m_poll.wasTriggered(*m_uart))
-        {
-          char bfr[1024];
-          int rv = m_uart->read(bfr, sizeof(bfr));
-          if(rv > 0){
-            process(bfr);
-          }
-        }
-      }
+			//dist_imc=dist*100; //dist_imc[cm]=dist_orign[m]*100
+			msg.dist = dist;
+			msg.dqf = lqi;
+			msg.dlt = dlt;
+			msg.sender = src;
+			dispatch(msg);
 
-      //! Main loop.
-      void
-      onMain(void)
-      {
-        if (m_poll.poll(0.1))
-        {
-          checkSerialPort();
+            IMC::DevDataText raw;
+            raw.value = data;
+            dispatch(raw);
 
-        }
-      }
-    };
-  }
+			debug("dlt: %lu src: %hu lqi: %hu dist[m]: %.2f", dlt, src, lqi, dist);
+		}
+	}
+
+	char m_bfr[1024];
+
+	void
+	checkSerialPort(void)
+	{
+		if (m_poll.wasTriggered(*m_uart))
+		{
+			int rv = m_uart->readString(m_bfr, sizeof(m_bfr));
+
+			if(rv > 0){
+				if(joinMessage(m_bfr, &m_msg))
+				{
+					spew("BFRS|%s|", m_msg.c_str());
+					process(m_msg.c_str());
+
+					m_msg.clear();
+				}
+			}
+		}
+	}
+
+
+	bool
+	joinMessage(char* part, std::string* msg)
+	{
+		std::string data(part);
+
+		if(data.find('\n') != std::string::npos)
+		{
+			msg->append(data);
+			//debug(DTR("full msg: %s"), msg->c_str());
+			return true;
+		}
+		else
+		{
+			msg->append(data);
+		}
+
+		return false;
+	}
+
+	//! Main loop.
+	void
+	onMain(void)
+	{
+		while(!stopping()){
+			if (m_poll.poll(1.0))
+			{
+				checkSerialPort();
+
+			}
+		}
+	}
+};
+}
 }
 
 DUNE_TASK
