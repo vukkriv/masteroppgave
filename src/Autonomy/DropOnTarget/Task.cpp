@@ -446,9 +446,10 @@ namespace Autonomy
               updateOpt(height);
             }
             distance_to_point = distanceByTime(lat, lon, height, m_args.glide_time + m_args.drop_time);
-
+            war("Distance to point: %f. Limit: %f", distance_to_point, m_args.drop_error);
             if((distance_to_point < m_args.drop_error && distance_to_point > m_previous_distance) || distance_to_point < 1)
             {
+              war("GOING TO START GLIDE!");
               startGlide();
             }
             else
@@ -491,7 +492,7 @@ namespace Autonomy
         m_beacon.optimal_CARP(height, m_ewind, m_estate, m_args.dt,
                               m_args.counter_max, m_args.opt_circle, m_args.opt_points, m_W_vel, m_args.w_pos, m_args.glide_time);
         dt = timer.getMsec() - start_temp;
-        war("TIME FOR OPT: %f sec", dt);
+//        war("TIME FOR OPT: %f sec", dt);
 
         double vx_unit = m_beacon.get_CARP().vx / sqrt(m_beacon.get_CARP().vx * m_beacon.get_CARP().vx + m_beacon.get_CARP().vy * m_beacon.get_CARP().vy);
         double vy_unit = m_beacon.get_CARP().vy / sqrt(m_beacon.get_CARP().vx * m_beacon.get_CARP().vx + m_beacon.get_CARP().vy * m_beacon.get_CARP().vy);
