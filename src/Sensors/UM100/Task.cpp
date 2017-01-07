@@ -28,12 +28,17 @@
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 
+// ISO Headers
+#include <map>
+#include <sstream>
+
 namespace Sensors
 {
   namespace UM100
   {
     using DUNE_NAMESPACES;
 
+    static const unsigned int c_max_num_tags = 6;
 
     struct Arguments
     {
@@ -59,6 +64,15 @@ namespace Sensors
       // Buffer
       char m_bfr[1024];
 
+      // Address book map
+      // sender id <-> output ID
+      std::map<unsigned int, unsigned int> m_device_addressbook;
+
+      // Array of outgoing messages
+      IMC::BeaconDistance m_bdistance[c_max_num_tags];
+
+
+
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
@@ -73,6 +87,12 @@ namespace Sensors
         param("Serial Port - Baud Rate", m_args.uart_baud)
         .defaultValue("921600")
         .description("Serial port baud rate");
+
+        // Fill the address book with the first initial values
+        // these will have the same outgoing ID every run.
+        m_device_addressbook[2008] = 0;
+        m_device_addressbook[3007] = 1;
+        m_device_addressbook[3202] = 2;
       }
 
       //! Update internal state with new parameter values.
@@ -85,6 +105,13 @@ namespace Sensors
       void
       onEntityReservation(void)
       {
+
+        for( unsigned int i = 0; i < c_max_num_tags; ++i)
+        {
+          std::ostringstream ostr;
+          ostr << "BeSpoon-" << i;
+          m_bdistance[i].setSourceEntity(reserveEntity(ostr.str()));
+        }
       }
 
       //! Resolve entity names.
@@ -125,7 +152,7 @@ namespace Sensors
       process(const char* bfr)
       {
 
-        IMC::BeaconDistance msg;
+
 
         float dist = 0;
         unsigned short int lqi = 0;
@@ -148,11 +175,54 @@ namespace Sensors
           sscanf(data.c_str(), "DLT %lu SRC %hu LQI %hu%% DIST %f", &dlt, &src, &lqi, &dist);
 
           //dist_imc=dist*100; //dist_imc[cm]=dist_orign[m]*100
+
+          // Check if the sender is not in the address book
+
+          bool deviceInAddreessBook = false;
+
+          // if cannot find the source in the map.
+          if (m_device_addressbook.find(src) ==  m_device_addressbook.end())
+          {
+            // Try to add
+            if (m_device_addressbook.size() < c_max_num_tags)
+            {
+              // Add
+              unsigned int newId = m_device_addressbook.size();
+              m_device_addressbook[src] = newId;
+              deviceInAddreessBook = true;
+              inf("Added new device: %d at id %d", src,m_device_addressbook[src] );
+            }
+            else
+            {
+              // We are full, do not use the address book
+              deviceInAddreessBook = false;
+            }
+          }
+          else
+          {
+            deviceInAddreessBook = true;
+          }
+
+          if (deviceInAddreessBook)
+          {
+            unsigned int id = m_device_addressbook[src];
+
+            m_bdistance[id].dist = dist;
+            m_bdistance[id].dqf = lqi;
+            m_bdistance[id].dlt = dlt;
+            m_bdistance[id].sender = src;
+            dispatch(m_bdistance[id]);
+          }
+
+          // Send it on the global entity always anyway.
+          IMC::BeaconDistance msg;
           msg.dist = dist;
           msg.dqf = lqi;
           msg.dlt = dlt;
           msg.sender = src;
           dispatch(msg);
+
+
 
           IMC::DevDataText raw;
           raw.value = data;
