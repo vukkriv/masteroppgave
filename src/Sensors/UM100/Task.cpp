@@ -51,11 +51,13 @@ struct Task: public DUNE::Tasks::Task
 	// Task Arguments.
 	Arguments m_args;
 
-
 	std::string m_msg;
 
 	// I/O Multiplexer.
 	Poll m_poll;
+
+      // Buffer
+      char m_bfr[1024];
 
 	//! Constructor.
 	//! @param[in] name task name.
@@ -96,7 +98,6 @@ struct Task: public DUNE::Tasks::Task
 	onResourceAcquisition(void)
 	{
 		m_uart = new SerialPort(m_args.uart_dev, m_args.uart_baud);
-
 	}
 
 	//! Initialize resources.
@@ -137,7 +138,8 @@ struct Task: public DUNE::Tasks::Task
 		std::string data(bfr);
 		std::size_t foundBegin = data.find("DLT");
 		std::size_t foundEnd = data.find("\n");
-		if ((foundBegin != std::string::npos)&&(foundEnd != std::string::npos)){
+        if ((foundBegin != std::string::npos)&&(foundEnd != std::string::npos))
+        {
 			data = data.substr(foundBegin, foundEnd-foundBegin);
 
 			// spew("|%s|", data.c_str());
@@ -160,7 +162,7 @@ struct Task: public DUNE::Tasks::Task
 		}
 	}
 
-	char m_bfr[1024];
+
 
 	void
 	checkSerialPort(void)
@@ -169,7 +171,8 @@ struct Task: public DUNE::Tasks::Task
 		{
 			int rv = m_uart->readString(m_bfr, sizeof(m_bfr));
 
-			if(rv > 0){
+          if(rv > 0)
+          {
 				if(joinMessage(m_bfr, &m_msg))
 				{
 					spew("BFRS|%s|", m_msg.c_str());
