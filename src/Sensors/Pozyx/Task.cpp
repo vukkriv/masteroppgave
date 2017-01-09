@@ -87,10 +87,10 @@ namespace Sensors
 
         // Fill the address book with the first initial values
         // these will have the same outgoing ID every run.
-        m_device_addressbook[0x600C] = 0;
-        m_device_addressbook[0x603C] = 1;
-        m_device_addressbook[0x6036] = 2;
-        m_device_addressbook[0x6057] = 3;
+        m_device_addressbook[0x600C] = 3; // 0 -> 3
+        m_device_addressbook[0x603C] = 2; // 1 -> 2
+        m_device_addressbook[0x6036] = 1; // 2 -> 1
+        m_device_addressbook[0x6057] = 0; // 3 -> 0
       }
 
       //! Update internal state with new parameter values.
