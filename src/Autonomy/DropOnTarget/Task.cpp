@@ -169,6 +169,7 @@ namespace Autonomy
       IMC::Distance m_drop_error_lat;
       IMC::Distance m_drop_error_lon;
       IMC::Distance m_drop_error_height;
+      IMC::DesiredSpeed m_d_speed;
 
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Task(name, ctx)
@@ -310,7 +311,6 @@ namespace Autonomy
         .defaultValue("false")
         .description("Test repeatedly on same target");
 
-
         param("Optimation Rate Inverse", m_args.opt_rate_inverse)
         .defaultValue("1")
         .description("Inverse of the optimation rate");
@@ -406,418 +406,6 @@ namespace Autonomy
       {
       }
 
-      //Stopping motor and starting glide
-      void
-      startGlide()
-      {
-        m_break.op=IMC::Brake::OP_START;
-        dispatch(m_break);
-        m_isGliding = true;
-        inf("GLIDING");
-        m_previous_distance = INT_MAX;
-        m_t_start_glide = timer.getMsec();
-      }
-
-      //Starting glide mode
-      void
-      goToGlideMode()
-      {
-        m_t_start_glide = timer.getMsec();
-        m_hasPoint = false;
-        //IMPLEMENT LATER: m_stop_type = IMC::PlanControl::PC_SUCCESS;
-        m_current_state = GLIDE_MODE;
-        m_previous_distance = INT_MAX;
-      }
-
-      //Guidance strategy consisting of going to a start point and then turn against the wind towards the CARP
-      void
-      guidanceLongStretch(void)
-      {
-        if(m_new_EstimatedState)
-        {
-          m_new_EstimatedState = false;
-          double lat, lon, height, distance_to_point = INT_MAX;
-          getCurrentLatLonHeight(&lat, &lon, &height);
-
-          if(!m_isGliding)
-          {
-            if(!m_hasOptimized)
-            {
-              updateOpt(height);
-            }
-            distance_to_point = distanceByTime(lat, lon, height, m_args.glide_time + m_args.drop_time);
-            war("Distance to point: %f. Limit: %f", distance_to_point, m_args.drop_error);
-            if((distance_to_point < m_args.drop_error && distance_to_point > m_previous_distance) || distance_to_point < 1)
-            {
-              war("GOING TO START GLIDE!");
-              startGlide();
-            }
-            else
-            {
-              m_previous_distance = distance_to_point;
-            }
-          }
-
-          else
-          {
-            war("is gliding");
-            distance_to_point = distanceByTime(lat, lon, height, m_args.drop_time);
-
-            if(isCloseToPoint(distance_to_point) && motorShutDownTimeHasRun())
-            {
-              war("is close to point");
-//              drop(distance_to_point,lat, lon, height);
-              oldDrop(distance_to_point);
-              goToGlideMode();
-            }
-            m_previous_distance = distance_to_point;
-          }
-
-          if(distance_to_point < m_smallest_distance && m_isGliding)
-          {
-            m_smallest_distance = distance_to_point;
-          }
-        }
-        checkForFailure();
-      }
-
-      void
-      updateOpt(double height)
-      {
-        war("Optimizes Carp");
-        m_opt_wind = m_ewind;
-        m_hasPoint = true;
-        double dt;
-        uint64_t start_temp = timer.getMsec();
-        m_beacon.optimal_CARP(height, m_ewind, m_estate, m_args.dt,
-                              m_args.counter_max, m_args.opt_circle, m_args.opt_points, m_W_vel, m_args.w_pos, m_args.glide_time);
-        dt = timer.getMsec() - start_temp;
-//        war("TIME FOR OPT: %f sec", dt);
-
-        double vx_unit = m_beacon.get_CARP().vx / sqrt(m_beacon.get_CARP().vx * m_beacon.get_CARP().vx + m_beacon.get_CARP().vy * m_beacon.get_CARP().vy);
-        double vy_unit = m_beacon.get_CARP().vy / sqrt(m_beacon.get_CARP().vx * m_beacon.get_CARP().vx + m_beacon.get_CARP().vy * m_beacon.get_CARP().vy);
-
-        makeStraightLineOverCarp(vx_unit,  vy_unit);
-        m_hasOptimized = true;
-      }
-
-      //Guidance strategy consisting of repeatedly optimizing the CARP and the straight line above it
-      void
-      guidanceOptLongStretch(void)
-      {
-        if(m_new_EstimatedState)
-        {
-          m_new_EstimatedState = false;
-          double lat, lon, height, distance_to_point = INT_MAX;
-          getCurrentLatLonHeight(&lat, &lon, &height);
-
-          if(!m_isGliding)
-          {
-            if((!m_hasPoint || !m_args.optimize_once) && (counter%m_args.opt_rate_inverse == 0))
-            {
-              updateOpt(height);
-            }
-
-            distance_to_point = distanceByTime(lat, lon, height, m_args.glide_time + m_args.drop_time);
-
-            if((distance_to_point < m_args.drop_error && distance_to_point > m_previous_distance) || distance_to_point < 0.5)
-            {
-              startGlide();
-            }
-            else
-            {
-              m_previous_distance = distance_to_point;
-            }
-          }
-          else
-          {
-            distance_to_point = distanceByTime(lat, lon, height, m_args.drop_time);
-
-            if(isCloseToPoint(distance_to_point) && motorShutDownTimeHasRun())
-            {
-//              drop(distance_to_point,lat, lon, height);
-              oldDrop(distance_to_point);
-              goToGlideMode();
-            }
-            m_previous_distance = distance_to_point;
-          }
-
-          if(distance_to_point < m_smallest_distance && m_isGliding)
-          {
-            m_smallest_distance = distance_to_point;
-          }
-        }
-        counter++;
-        checkForFailure();
-      }
-
-      //To check whether success is improbable
-      bool
-      OWSI_update(double distance, double height, double speed){
-        return (distance > m_args.OWSI_min_distance) && (sqrt(abs((m_ewind.x - m_opt_wind.x) * (m_ewind.x - m_opt_wind.x) + (m_ewind.y - m_opt_wind.y) * (m_ewind.y - m_opt_wind.y) + (m_ewind.z - m_opt_wind.z) * (m_ewind.z - m_opt_wind.z))) > m_args.accepted_wind_difference
-            || (abs(m_ct_error) / distance > m_args.accepted_path_const_horizontal)
-            || (abs(height - m_opt_height) / distance > m_args.accepted_path_const_vertical)
-            || (abs(speed - m_opt_speed) / distance > m_args.accepted_speed_const)
-            || (abs(m_course_error) / distance > m_args.accepted_course_const));//ENDRE DETTE I RAPPORTEN
-      }
-
-      //Guidance strategy consisting of optimizing the CARP and the straight line above it if success is improbable
-      void
-      guidanceOWSI(void)
-      {
-        if(m_new_EstimatedState)
-        {
-          m_new_EstimatedState = false;
-          double lat, lon, height, distance_to_point = INT_MAX, speed = sqrt(m_estate.vy * m_estate.vy + m_estate.vx * m_estate.vx);
-          getCurrentLatLonHeight(&lat, &lon, &height);
-
-          if(!m_isGliding)
-          {
-            if(OWSI_update(WGS84::distance(m_beacon.get_CARP().lat, m_beacon.get_CARP().lon, 0, lat,  lon, 0), height, speed))
-            {
-              updateOpt(height);
-              m_opt_height = m_beacon.get_CARP().z;
-              m_opt_speed = speed;
-            }
-
-            distance_to_point = distanceByTime(lat, lon, height, m_args.glide_time + m_args.drop_time);
-
-            if((distance_to_point < m_args.drop_error && distance_to_point > m_previous_distance) || distance_to_point < 1)
-            {
-              startGlide();
-            }
-            else
-            {
-              m_previous_distance = distance_to_point;
-            }
-          }
-          else
-          {
-            distance_to_point = distanceByTime(lat, lon, height, m_args.drop_time);
-
-            if(isCloseToPoint(distance_to_point) && motorShutDownTimeHasRun())
-            {
-//              drop(distance_to_point,lat, lon, height);
-              oldDrop(distance_to_point);
-              goToGlideMode();
-            }
-            m_previous_distance = distance_to_point;
-          }
-
-          if(distance_to_point < m_smallest_distance && m_isGliding)
-          {
-            m_smallest_distance = distance_to_point;
-          }
-        }
-        counter++;
-        checkForFailure();
-      }
-
-      //Guidance state machine
-      void
-      runGuidanceStateMachine(void)
-      {
-        switch(m_guidance_mode)
-        {
-          case LONG_STRETCH:
-            guidanceLongStretch();
-            break;
-          case OPTIMAL_LONG_STRETCH:
-            guidanceOptLongStretch();
-            break;
-          case OWSI:
-            guidanceOWSI();
-            break;
-          default:
-            war("Current guidance law not available");
-            break;
-        }
-      }
-
-      //Final mode of state machine
-      void
-      goToSafeHeight(void)
-      {
-        if(!m_hasPoint)
-        {
-          m_hasPoint = true;
-          inf("Going to safe height!");
-          makePointFromCarp(GOING_TO_SAFE_HEIGHT, true, false, 0,0,100, m_target.z + m_args.safe_height);
-
-          dispatch_reference();
-        }
-
-        if(m_new_FollowRefState)
-        {
-          m_new_FollowRefState = false;
-          if (m_follow_ref.proximity & IMC::FollowRefState::PROX_Z_NEAR)
-          {
-            m_current_state = IDLE;
-            if(!m_args.repeated_testing){
-              stopExecution(m_stop_type);
-            }
-            if(m_args.repeated_testing){
-              consume(&m_target);
-            }
-          }
-        }
-      }
-
-      //State where the UAV goes to the start point
-      void
-      goToStartPoint(void)
-      {
-        double lat, lon, height;
-        getCurrentLatLonHeight(&lat, &lon, &height);
-        //check speed vector vs carp wind vector and closeness to start point
-        if(m_new_FollowRefState)
-        {
-          m_new_FollowRefState = false;
-          if ((m_follow_ref.proximity & IMC::FollowRefState::PROX_XY_NEAR)
-              && (m_follow_ref.proximity & IMC::FollowRefState::PROX_Z_NEAR) &&
-              WGS84::distance(m_start_point.lat, m_start_point.lon, 0, lat, lon, 0) < m_args.accepted_distance_to_start_point)
-          {
-            if(isParallelish(m_estate, m_carp_ewind, m_args.percent_accurate))
-            {
-              m_current_state = GOING_TO_DROP_POINT;
-              m_follow_ref.proximity = 0;
-              m_ref[m_current_state].setTimeStamp();
-              m_hasOptimized = false;
-            }
-          }
-        }
-      }
-
-      //Glide mode for dropping with engine off
-      void
-      runGlideMode(void)
-      {
-        if((timer.getMsec() - m_t_start_glide) > 1000 * m_args.glide_time)
-        {
-          inf("GLIDE MODE finished");
-          m_current_state = GOING_TO_SAFE_HEIGHT;
-          m_break.op=IMC::Brake::OP_STOP;
-          dispatch(m_break);
-          m_isGliding = false;
-        }
-      }
-
-      //Main state machine
-      void
-      runStateMachine(void)
-      {
-        if(m_follow_reference_is_running)
-        {
-          switch(m_current_state)
-          {
-            case GOING_TO_START_POINT:
-              goToStartPoint();
-              break;
-            case GOING_TO_DROP_POINT:
-              runGuidanceStateMachine();
-              break;
-            case GLIDE_MODE:
-              runGlideMode();
-              break;
-            case GOING_TO_SAFE_HEIGHT:
-              goToSafeHeight();
-              break;
-            default:
-              war("Current reference point out of bounds");
-              return;
-
-          }
-        }
-      }
-
-      //Consume target and calculate first CARP and start point
-      void
-      consume(const IMC::Target* msg)
-      {
-        if(m_initiated){
-          inf("Target received!");
-
-          //Make sure to stop all actions if target is received in mission
-          m_break.op=IMC::Brake::OP_STOP;
-          dispatch(m_break);
-          m_isGliding = false;
-          m_smallest_distance = INT_MAX;
-          m_previous_distance = INT_MAX;
-          m_hasPoint = false;
-
-          //Save wind for non-optimized guidance mode
-          m_carp_ewind = m_ewind;
-          m_wind_unit_x = m_ewind.x / sqrt(m_ewind.x * m_ewind.x + m_ewind.y * m_ewind.y);
-          m_wind_unit_y = m_ewind.y / sqrt(m_ewind.x * m_ewind.x + m_ewind.y * m_ewind.y);
-
-          //Save target
-          m_target = *msg;
-          m_target_received = true;
-
-          //Set target in Beacon class
-          m_beacon.set_target(m_target);
-          inf("Target set to: %f %f %f", m_beacon.get_target().lat, m_beacon.get_target().lon, m_beacon.get_target().z);
-
-          //Calculate CARP using wind speed to determine direction (this point is used to calculate start point for long stretch and used as CARP in non-optimized guidance mode)
-          m_beacon.calculate_CARP_velocity(-m_wind_unit_x * m_args.speed, -m_wind_unit_y * m_args.speed, 0, m_args.release_height + m_target.z, m_carp_ewind, m_args.dt, m_args.counter_max);
-          inf("CARP has been calculated!");
-          inf("CARP: lat: %f, lon: %f, height: %f", m_beacon.get_CARP().lat, m_beacon.get_CARP().lon, m_beacon.get_CARP().z);
-
-          //Reference for loitering start point
-          m_desired_height.z_units = IMC::Z_HEIGHT;
-          makePointFromCarp(GOING_TO_START_POINT, true, false, -m_wind_unit_x, -m_wind_unit_y, m_args.radius, m_args.release_height + m_target.z);
-
-          //Start point of long stretch
-          m_start_point.lat = m_ref[GOING_TO_START_POINT].lat;
-          m_start_point.lon = m_ref[GOING_TO_START_POINT].lon;
-          m_start_point.z = m_ref[GOING_TO_START_POINT].z.get()->value;
-
-          //Displace the start point one radius to the side
-          WGS84::displace(
-              m_args.radius * m_wind_unit_y,
-              -1 * m_args.radius * m_wind_unit_x ,
-              &m_ref[GOING_TO_START_POINT].lat, &m_ref[GOING_TO_START_POINT].lon);
-
-
-          if(m_args.direct_to_opt && (m_guidance_mode == OPTIMAL_LONG_STRETCH || m_guidance_mode == OWSI))
-            m_current_state = GOING_TO_DROP_POINT;
-          else
-          {
-            m_current_state = GOING_TO_START_POINT;
-            inf("Start point has been calculated!");
-
-            inf("Going to start point");
-          }
-          startExecution();
-          dispatch_reference();
-        }
-        else
-        {
-          war("New target received and ignored");
-        }
-      }
-
-      //Check if in air
-      void
-      consume(const IMC::VehicleMedium* vm)
-      {
-        m_ground = (vm->medium == IMC::VehicleMedium::VM_GROUND);
-      }
-
-      //Check control state
-      void
-      consume(const IMC::PlanControlState* msg)
-      {
-        if(msg->state == PlanControlState::PCS_READY && m_isBlocked )
-        {
-          m_isReady = true;
-          m_isBlocked = false;
-        }
-        else if(msg->state == PlanControlState::PCS_BLOCKED){
-          m_isBlocked = true;
-        }
-      }
-
       //Get estimated state
       void
       consume(const IMC::EstimatedState* msg)
@@ -908,6 +496,396 @@ namespace Autonomy
         m_course_error = msg->course_error;
       }
 
+      //Consume target and calculate first CARP and start point
+      void
+      consume(const IMC::Target* msg)
+      {
+        if(m_initiated){
+          inf("Target received!");
+
+          //Make sure to stop all actions if target is received in mission
+          m_break.op=IMC::Brake::OP_STOP;
+          dispatch(m_break);
+          m_isGliding = false;
+          m_smallest_distance = INT_MAX;
+          m_previous_distance = INT_MAX;
+          m_hasPoint = false;
+
+          //Save wind for non-optimized guidance mode
+          m_carp_ewind = m_ewind;
+          m_wind_unit_x = m_ewind.x / sqrt(m_ewind.x * m_ewind.x + m_ewind.y * m_ewind.y);
+          m_wind_unit_y = m_ewind.y / sqrt(m_ewind.x * m_ewind.x + m_ewind.y * m_ewind.y);
+
+          //Save target
+          m_target = *msg;
+          m_target_received = true;
+
+          //Set target in Beacon class
+          m_beacon.set_target(m_target);
+          inf("Target set to: %f %f %f", m_beacon.get_target().lat, m_beacon.get_target().lon, m_beacon.get_target().z);
+
+          //Calculate CARP using wind speed to determine direction (this point is used to calculate start point for long stretch and used as CARP in non-optimized guidance mode)
+          m_beacon.calculate_CARP_velocity(-m_wind_unit_x * m_args.speed, -m_wind_unit_y * m_args.speed, 0, m_args.release_height + m_target.z, m_carp_ewind, m_args.dt, m_args.counter_max);
+          inf("CARP has been calculated!");
+          inf("CARP: lat: %f, lon: %f, height: %f", m_beacon.get_CARP().lat, m_beacon.get_CARP().lon, m_beacon.get_CARP().z);
+
+          //Reference for loitering start point
+          m_desired_height.z_units = IMC::Z_HEIGHT;
+          makePointFromCarp(GOING_TO_START_POINT, true, false, -m_wind_unit_x, -m_wind_unit_y, m_args.radius, m_args.release_height + m_target.z);
+
+          //Start point of long stretch
+          m_start_point.lat = m_ref[GOING_TO_START_POINT].lat;
+          m_start_point.lon = m_ref[GOING_TO_START_POINT].lon;
+          m_start_point.z = m_ref[GOING_TO_START_POINT].z.get()->value;
+
+          //Displace the start point one radius to the side
+          WGS84::displace(
+              m_args.radius * m_wind_unit_y,
+              -1 * m_args.radius * m_wind_unit_x ,
+              &m_ref[GOING_TO_START_POINT].lat, &m_ref[GOING_TO_START_POINT].lon);
+
+
+          if(m_args.direct_to_opt && (m_guidance_mode == OPTIMAL_LONG_STRETCH || m_guidance_mode == OWSI))
+            m_current_state = GOING_TO_DROP_POINT;
+          else
+          {
+            m_current_state = GOING_TO_START_POINT;
+            inf("Start point has been calculated!");
+
+            inf("Going to start point");
+          }
+          startExecution();
+          dispatch_reference();
+        }
+        else
+        {
+          war("New target received and ignored");
+        }
+      }
+
+      //Check if in air
+      void
+      consume(const IMC::VehicleMedium* vm)
+      {
+        m_ground = (vm->medium == IMC::VehicleMedium::VM_GROUND);
+      }
+
+      //Check control state
+      void
+      consume(const IMC::PlanControlState* msg)
+      {
+        if(msg->state == PlanControlState::PCS_READY && m_isBlocked )
+        {
+          m_isReady = true;
+          m_isBlocked = false;
+        }
+        else if(msg->state == PlanControlState::PCS_BLOCKED){
+          m_isBlocked = true;
+        }
+      }
+      /**************************************************************************************/
+      /**************************** State Machine *******************************************/
+      /**************************************************************************************/
+
+      /**************************** Level One ***********************************************/
+
+      //Main state machine
+      void
+      runStateMachine(void)
+      {
+        if(m_follow_reference_is_running)
+        {
+          switch(m_current_state)
+          {
+            case GOING_TO_START_POINT:
+              goToStartPoint();
+              break;
+            case GOING_TO_DROP_POINT:
+              runGuidanceStateMachine();
+              break;
+            case GLIDE_MODE:
+              runGlideMode();
+              break;
+            case GOING_TO_SAFE_HEIGHT:
+              goToSafeHeight();
+              break;
+            default:
+              war("Current reference point out of bounds");
+              return;
+
+          }
+        }
+      }
+
+      /**************************** Level Two ***********************************************/
+
+      //State where the UAV goes to the start point
+      void
+      goToStartPoint(void)
+      {
+        double lat, lon, height;
+        getCurrentLatLonHeight(&lat, &lon, &height);
+        //check speed vector vs carp wind vector and closeness to start point
+        if(m_new_FollowRefState)
+        {
+          m_new_FollowRefState = false;
+          if ((m_follow_ref.proximity & IMC::FollowRefState::PROX_XY_NEAR)
+              && (m_follow_ref.proximity & IMC::FollowRefState::PROX_Z_NEAR) &&
+              WGS84::distance(m_start_point.lat, m_start_point.lon, 0, lat, lon, 0) < m_args.accepted_distance_to_start_point)
+          {
+            if(isParallelish(m_estate, m_carp_ewind, m_args.percent_accurate))
+            {
+              m_current_state = GOING_TO_DROP_POINT;
+              m_follow_ref.proximity = 0;
+              m_ref[m_current_state].setTimeStamp();
+              m_hasOptimized = false;
+            }
+          }
+        }
+      }
+
+      //Guidance state machine
+      void
+      runGuidanceStateMachine(void)
+      {
+        switch(m_guidance_mode)
+        {
+          case LONG_STRETCH:
+            guidanceLongStretch();
+            break;
+          case OPTIMAL_LONG_STRETCH:
+            guidanceOptLongStretch();
+            break;
+          case OWSI:
+            guidanceOWSI();
+            break;
+          default:
+            war("Current guidance law not available");
+            break;
+        }
+      }
+
+      //Glide mode for dropping with engine off
+      void
+      runGlideMode(void)
+      {
+        if((timer.getMsec() - m_t_start_glide) > 1000 * m_args.glide_time)
+        {
+          inf("GLIDE MODE finished");
+          m_current_state = GOING_TO_SAFE_HEIGHT;
+          m_break.op=IMC::Brake::OP_STOP;
+          dispatch(m_break);
+          m_isGliding = false;
+        }
+      }
+
+      //Final mode of state machine
+      void
+      goToSafeHeight(void)
+      {
+        if(!m_hasPoint)
+        {
+          m_hasPoint = true;
+          inf("Going to safe height!");
+          makePointFromCarp(GOING_TO_SAFE_HEIGHT, true, false, 0,0,100, m_target.z + m_args.safe_height);
+
+          dispatch_reference();
+        }
+
+        if(m_new_FollowRefState)
+        {
+          m_new_FollowRefState = false;
+          if (m_follow_ref.proximity & IMC::FollowRefState::PROX_Z_NEAR)
+          {
+            m_current_state = IDLE;
+            if(!m_args.repeated_testing){
+              stopExecution(m_stop_type);
+            }
+            if(m_args.repeated_testing){
+              consume(&m_target);
+            }
+          }
+        }
+      }
+
+      /**************************** Level Three *********************************************/
+
+      //Guidance strategy consisting of going to a start point and then turn against the wind towards the CARP
+      void
+      guidanceLongStretch(void)
+      {
+        if(m_new_EstimatedState)
+        {
+          m_new_EstimatedState = false;
+          double lat, lon, height, distance_to_point = INT_MAX;
+          getCurrentLatLonHeight(&lat, &lon, &height);
+
+          if(!m_isGliding)
+          {
+            if(!m_hasOptimized)
+            {
+              updateOptimalCarp(height);
+            }
+
+            distance_to_point = distanceByTime(lat, lon, height, m_args.glide_time + m_args.drop_time);
+
+            if((distance_to_point < m_args.drop_error && distance_to_point > m_previous_distance) || distance_to_point < 0.5)
+            {
+              startGlide();
+            }
+            else
+            {
+              m_previous_distance = distance_to_point;
+            }
+          }
+          else
+          {
+            distance_to_point = distanceByTime(lat, lon, height, m_args.drop_time);
+
+            if(isCloseToPoint(distance_to_point) && motorShutDownTimeHasRun())
+            {
+//              drop(distance_to_point,lat, lon, height);
+              oldDrop(distance_to_point);
+              goToGlideMode();
+            }
+            m_previous_distance = distance_to_point;
+          }
+
+          if(distance_to_point < m_smallest_distance && m_isGliding)
+          {
+            m_smallest_distance = distance_to_point;
+          }
+        }
+        counter++;
+        checkForFailure();
+      }
+
+      //Guidance strategy consisting of repeatedly optimizing the CARP and the straight line above it
+      void
+      guidanceOptLongStretch(void)
+      {
+        if(m_new_EstimatedState)
+        {
+          m_new_EstimatedState = false;
+          double lat, lon, height, distance_to_point = INT_MAX;
+          getCurrentLatLonHeight(&lat, &lon, &height);
+
+          if(!m_isGliding)
+          {
+            if((!m_hasPoint || !m_args.optimize_once) && (counter%m_args.opt_rate_inverse == 0))
+            {
+              updateOptimalCarp(height);
+              m_beacon.estimated_carp_error(m_ewind, m_estate, m_args.drop_time, m_args.dt);
+            }
+
+            distance_to_point = distanceByTime(lat, lon, height, m_args.glide_time + m_args.drop_time);
+
+            if((distance_to_point < m_args.drop_error && distance_to_point > m_previous_distance) || distance_to_point < 0.5)
+            {
+              startGlide();
+            }
+            else
+            {
+              m_previous_distance = distance_to_point;
+            }
+          }
+          else
+          {
+            distance_to_point = distanceByTime(lat, lon, height, m_args.drop_time);
+
+            if(isCloseToPoint(distance_to_point) && motorShutDownTimeHasRun())
+            {
+//              drop(distance_to_point,lat, lon, height);
+              oldDrop(distance_to_point);
+              goToGlideMode();
+            }
+            m_previous_distance = distance_to_point;
+          }
+
+          if(distance_to_point < m_smallest_distance && m_isGliding)
+          {
+            m_smallest_distance = distance_to_point;
+          }
+        }
+        counter++;
+        checkForFailure();
+      }
+
+      //Guidance strategy consisting of optimizing the CARP and the straight line above it if success is improbable
+      void
+      guidanceOWSI(void)
+      {
+        if(m_new_EstimatedState)
+        {
+          m_new_EstimatedState = false;
+          double lat, lon, height, distance_to_point = INT_MAX, speed = sqrt(m_estate.vy * m_estate.vy + m_estate.vx * m_estate.vx);
+          getCurrentLatLonHeight(&lat, &lon, &height);
+
+          if(!m_isGliding)
+          {
+            if((!m_hasPoint || !m_args.optimize_once) && m_beacon.estimated_carp_error(m_ewind, m_estate, m_args.drop_time, m_args.dt) > 0.3*m_args.drop_error)
+            {
+              updateOptimalCarp(height);
+            }
+
+            distance_to_point = distanceByTime(lat, lon, height, m_args.glide_time + m_args.drop_time);
+
+            if((distance_to_point < m_args.drop_error && distance_to_point > m_previous_distance) || distance_to_point < 0.5)
+            {
+              startGlide();
+            }
+            else
+            {
+              m_previous_distance = distance_to_point;
+            }
+          }
+          else
+          {
+            distance_to_point = distanceByTime(lat, lon, height, m_args.drop_time);
+
+            if(isCloseToPoint(distance_to_point) && motorShutDownTimeHasRun())
+            {
+//              drop(distance_to_point,lat, lon, height);
+              oldDrop(distance_to_point);
+              goToGlideMode();
+//              m_d_speed.value = 0.0;
+//              dispatch(m_d_speed);
+            }
+            m_previous_distance = distance_to_point;
+          }
+
+          if(distance_to_point < m_smallest_distance && m_isGliding)
+          {
+            m_smallest_distance = distance_to_point;
+          }
+        }
+        counter++;
+        checkForFailure();
+      }
+
+      /**************************** Level Four **********************************************/
+
+
+      void
+      updateOptimalCarp(double height)
+      {
+        war("Optimizes Carp");
+        m_opt_wind = m_ewind;
+        m_hasPoint = true;
+        double dt;
+        uint64_t start_temp = timer.getMsec();
+        m_beacon.optimal_CARP(height, m_ewind, m_estate, m_args.dt,
+                              m_args.counter_max, m_args.opt_circle, m_args.opt_points, m_W_vel, m_args.w_pos, m_args.glide_time);
+        dt = timer.getMsec() - start_temp;
+//        war("TIME FOR OPT: %f sec", dt);
+
+        double vx_unit = m_beacon.get_CARP().vx / sqrt(m_beacon.get_CARP().vx * m_beacon.get_CARP().vx + m_beacon.get_CARP().vy * m_beacon.get_CARP().vy);
+        double vy_unit = m_beacon.get_CARP().vy / sqrt(m_beacon.get_CARP().vx * m_beacon.get_CARP().vx + m_beacon.get_CARP().vy * m_beacon.get_CARP().vy);
+
+        makeStraightLineOverCarp(vx_unit,  vy_unit);
+        m_hasOptimized = true;
+      }
+
       // Start FollowReference maneuver
       void
       startExecution(void)
@@ -941,55 +919,6 @@ namespace Autonomy
           m_follow_reference_is_running = true;
           dispatch(startPlan);
         }
-      }
-
-      // Stop ongoing FollowReference maneuver
-      void
-      stopExecution(uint8_t stop_type)
-      {
-        if(m_follow_reference_is_running)
-        {
-          inf("Stopping drop plan...");
-          IMC::PlanControl stopPlan;
-          stopPlan.type = stop_type;
-          stopPlan.op = IMC::PlanControl::PC_STOP;
-          stopPlan.plan_id = "drop_plan";
-
-          m_follow_reference_is_running = false;
-          m_hasPoint = false;
-
-          dispatch(stopPlan);
-        }
-      }
-
-      //Make an enum from string
-      Modes
-      guidance_mode_string_to_enum(char* guidance_mode_input)
-      {
-        if(strcmp("OPTIMAL_LONG_STRETCH" , guidance_mode_input) == 0)
-          return OPTIMAL_LONG_STRETCH;
-        else if(strcmp("LONG_STRETCH" , guidance_mode_input) == 0)
-          return LONG_STRETCH;
-        else if(OWSI)
-          return OWSI;
-        return  LONG_STRETCH;
-      }
-
-      //Check if speed direction is parallell to the wind
-      bool
-      isParallelish(IMC::EstimatedState estate, IMC::EstimatedStreamVelocity ewind, fp64_t percentAccurate)
-      {
-        double stateAngle = atan2(estate.vx, estate.vy);
-        double windAngle = atan2(ewind.x, ewind.y);
-
-        double diff = (Angles::normalizeRadian(stateAngle - windAngle));
-
-        //inf("State angle is: %f and wind angle is %f", stateAngle, windAngle);
-        //inf("Difference is: %f and has to be bigger than %f", diff, Math::c_pi * (1 - percentAccurate/100.0));
-        if(abs(diff) > Math::c_pi * (1 - percentAccurate/100.0))
-          return true;
-
-        return false;
       }
 
       //Set controller (path or waypoint)
@@ -1041,6 +970,25 @@ namespace Autonomy
         delete sep;
 
         return setEntityParameters;
+      }
+
+      // Stop ongoing FollowReference maneuver
+      void
+      stopExecution(uint8_t stop_type)
+      {
+        if(m_follow_reference_is_running)
+        {
+          inf("Stopping drop plan...");
+          IMC::PlanControl stopPlan;
+          stopPlan.type = stop_type;
+          stopPlan.op = IMC::PlanControl::PC_STOP;
+          stopPlan.plan_id = "drop_plan";
+
+          m_follow_reference_is_running = false;
+          m_hasPoint = false;
+
+          dispatch(stopPlan);
+        }
       }
 
       //Drop without checking if motor is off
@@ -1122,6 +1070,84 @@ namespace Autonomy
         }
       }
 
+      //Make two points over the CARP together making a line
+      void
+      makeStraightLineOverCarp(double vx_unit, double vy_unit){
+
+        //For testing
+        //vx_unit = 0;
+        //vy_unit = 0;
+
+        //Make and dispatch point A in a line for LOS to follow
+        makePointFromCarp(GOING_TO_DROP_POINT, false, true, -vx_unit, -vy_unit, 0, m_target.z + m_args.release_height);
+        dispatch_reference();
+
+        //Make and dispatch point B in a line for LOS to follow
+        makePointFromCarp(GOING_TO_DROP_POINT, false, false, -vx_unit, -vy_unit, 0, m_target.z + m_args.release_height);
+        dispatch_reference();
+      }
+
+      /**************************** Low Level Functions ****************************************/
+      //Starting glide mode
+      void
+      goToGlideMode()
+      {
+        m_t_start_glide = timer.getMsec();
+        m_hasPoint = false;
+        //IMPLEMENT LATER: m_stop_type = IMC::PlanControl::PC_SUCCESS;
+        m_current_state = GLIDE_MODE;
+        m_previous_distance = INT_MAX;
+      }
+
+      //Stopping motor and starting glide
+      void
+      startGlide()
+      {
+        m_break.op=IMC::Brake::OP_START;
+        dispatch(m_break);
+        m_isGliding = true;
+        inf("GLIDING");
+        m_previous_distance = INT_MAX;
+        m_t_start_glide = timer.getMsec();
+      }
+
+      //Dispatch current reference
+      void
+      dispatch_reference(void)
+      {
+        if(m_current_state > IDLE and m_current_state < LAST_STATE)
+        {
+          dispatch(m_ref[m_current_state]);
+        }
+      }
+
+      //Check if you have passed the CARP
+      void
+      checkForFailure()
+      {
+        if(m_new_FollowRefState && (m_follow_ref.proximity & IMC::FollowRefState::PROX_XY_NEAR)
+            && (m_follow_ref.proximity & IMC::FollowRefState::PROX_Z_NEAR)
+            && (m_ref[m_current_state].getTimeStamp() + 10000) < m_follow_ref.getTimeStamp())
+        {
+          m_new_FollowRefState = false;
+          war("FAILURE: CARP missed! Was as close as: %f", m_smallest_distance);
+
+          m_break.op=IMC::Brake::OP_STOP;
+          dispatch(m_break);
+          m_isGliding = false;
+          m_smallest_distance = INT_MAX;
+          m_previous_distance = INT_MAX;
+          m_t_start_glide = timer.getMsec(); //=0?
+
+          //m_stop_type = IMC::PlanControl::PC_FAILURE;
+          m_current_state = GOING_TO_SAFE_HEIGHT;
+        }
+        else
+        {
+          m_new_FollowRefState = false;
+        }
+      }
+
       //Make a point depending on CARP
       void
       makePointFromCarp(int state, bool directFlag, bool startFlag, double x_unit_speed, double y_unit_speed, double radius, double height){
@@ -1170,29 +1196,12 @@ namespace Autonomy
       double
       distanceByTime(double lat, double lon, double height, double time){
         WGS84::displace( //Displacing forward (drop time) times speed because of delay
-            (m_estate.vx - m_ewind.x) * (time),
-            (m_estate.vy - m_ewind.y)* (time),
-            (m_estate.vz - m_ewind.z)* (time),    //m_estate can be replaced with m_beacon.get_CARP.vx etc.
+            (m_estate.vx) * (time),
+            (m_estate.vy)* (time),
+            (m_estate.vz)* (time),    //m_estate can be replaced with m_beacon.get_CARP.vx etc.
             &lat, &lon, &height);
 
         return WGS84::distance(m_beacon.get_CARP().lat, m_beacon.get_CARP().lon, (double)m_beacon.get_CARP().z, lat,  lon, height);
-      }
-
-      //Make two points over the CARP together making a line
-      void
-      makeStraightLineOverCarp(double vx_unit, double vy_unit){
-
-        //For testing
-        //vx_unit = 0;
-        //vy_unit = 0;
-
-        //Make and dispatch point A in a line for LOS to follow
-        makePointFromCarp(GOING_TO_DROP_POINT, false, true, -vx_unit, -vy_unit, 0, m_target.z + m_args.release_height);
-        dispatch_reference();
-
-        //Make and dispatch point B in a line for LOS to follow
-        makePointFromCarp(GOING_TO_DROP_POINT, false, false, -vx_unit, -vy_unit, 0, m_target.z + m_args.release_height);
-        dispatch_reference();
       }
 
       //Check if you are close to the CARP
@@ -1207,42 +1216,35 @@ namespace Autonomy
         return (m_t_start_glide - timer.getMsec()) > m_args.glide_time * 1000;
       }
 
-      //Check if you have passed the CARP
-      void
-      checkForFailure(){
-        if(m_new_FollowRefState && (m_follow_ref.proximity & IMC::FollowRefState::PROX_XY_NEAR)
-            && (m_follow_ref.proximity & IMC::FollowRefState::PROX_Z_NEAR)
-            && (m_ref[m_current_state].getTimeStamp() + 10000) < m_follow_ref.getTimeStamp())
-        {
-          m_new_FollowRefState = false;
-          war("FAILURE: CARP missed! Was as close as: %f", m_smallest_distance);
-
-          m_break.op=IMC::Brake::OP_STOP;
-          dispatch(m_break);
-          m_isGliding = false;
-          m_smallest_distance = INT_MAX;
-          m_previous_distance = INT_MAX;
-          m_t_start_glide = timer.getMsec(); //=0?
-
-          //m_stop_type = IMC::PlanControl::PC_FAILURE;
-          m_current_state = GOING_TO_SAFE_HEIGHT;
-        }
-        else
-        {
-          m_new_FollowRefState = false;
-        }
-      }
-
-      //Dispatch current reference
-      void
-      dispatch_reference(void)
+      //Check if speed direction is parallell to the wind
+      bool
+      isParallelish(IMC::EstimatedState estate, IMC::EstimatedStreamVelocity ewind, fp64_t percentAccurate)
       {
-        if(m_current_state > IDLE and m_current_state < LAST_STATE)
-        {
-          dispatch(m_ref[m_current_state]);
-        }
+        double stateAngle = atan2(estate.vx, estate.vy);
+        double windAngle = atan2(ewind.x, ewind.y);
+
+        double diff = (Angles::normalizeRadian(stateAngle - windAngle));
+
+        //inf("State angle is: %f and wind angle is %f", stateAngle, windAngle);
+        //inf("Difference is: %f and has to be bigger than %f", diff, Math::c_pi * (1 - percentAccurate/100.0));
+        if(abs(diff) > Math::c_pi * (1 - percentAccurate/100.0))
+          return true;
+
+        return false;
       }
 
+      //Make an enum from string
+      Modes
+      guidance_mode_string_to_enum(char* guidance_mode_input)
+      {
+        if(strcmp("OPTIMAL_LONG_STRETCH" , guidance_mode_input) == 0)
+          return OPTIMAL_LONG_STRETCH;
+        else if(strcmp("LONG_STRETCH" , guidance_mode_input) == 0)
+          return LONG_STRETCH;
+        else if(OWSI)
+          return OWSI;
+        return  LONG_STRETCH;
+      }
 
       //! Main loop.
       void

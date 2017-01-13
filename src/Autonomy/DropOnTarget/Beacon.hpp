@@ -42,14 +42,58 @@ public:
       t = 0;
   };
 
+  fp64_t estimated_carp_error(DUNE::IMC::EstimatedStreamVelocity wind, DUNE::IMC::EstimatedState state, fp64_t time_to_drop, fp32_t dt)
+  {
+    // Put Coordinates in order
+    DUNE::IMC::EstimatedState sim_state = state;
+    WGS84::displace(sim_state.x, sim_state.y, sim_state.z, &sim_state.lat, &sim_state.lon, &sim_state.height);
+    sim_state.x = 0.0; sim_state.y = 0.0; sim_state.z = 0.0;
+    fp32_t current_distance = WGS84::distance(sim_state.lat,sim_state.lon,sim_state.z,CARP.lat,CARP.lon,CARP.z);
+    fp32_t previous_distance;
+    int counter = 0;
+    // Simulate further journey
+    dt = 0.1;
+    do
+    {
+      previous_distance = current_distance;
+      WGS84::displace(
+          (sim_state.vx)*dt,
+          (sim_state.vy)*dt,
+          (sim_state.vz)*dt,
+          &sim_state.lat,
+          &sim_state.lon,
+          &sim_state.height);
+      current_distance = WGS84::distance(sim_state.lat,sim_state.lon,sim_state.height,CARP.lat,CARP.lon,CARP.z);
+      counter += 1;
+    }
+    while(current_distance < previous_distance);
+
+    printf("Estimated CARP error: counter = %d current distance = %f\n",counter, current_distance);
+
+    return current_distance;
+  }
+
   // Used to calculate the error of the dropped target, through simulation from the actual drop point.
   // Needs proper simulation with more realistic wind, e.g. turbulence.
+
+  fp32_t calculate_carp_deviation(DUNE::IMC::EstimatedState closest_state, fp64_t carp_dev[])
+  {
+    printf("State: x = %f, y = %f, z = %f\n\tlat = %f lon = %f height = %f\n", closest_state.x,closest_state.y,closest_state.z,closest_state.lat,closest_state.lon,closest_state.height);
+    WGS84::displace(closest_state.x,closest_state.y,closest_state.z,&closest_state.lat,&closest_state.lon,&closest_state.height);
+    printf("State: x = %f, y = %f, z = %f\n\tlat = %f lon = %f height = %f\n", closest_state.x,closest_state.y,closest_state.z,closest_state.lat,closest_state.lon,closest_state.height);
+    WGS84::displacement(CARP.lat, CARP.lon,CARP.z,closest_state.lat,closest_state.lon,closest_state.height,&carp_dev[0],&carp_dev[1],&carp_dev[2]);
+    printf("State: x = %f, y = %f, z = %f\n\tlat = %f lon = %f height = %f\n", closest_state.x,closest_state.y,closest_state.z,closest_state.lat,closest_state.lon,closest_state.height);
+    return WGS84::distance(CARP.lat,CARP.lon,CARP.z,closest_state.lat,closest_state.lon,closest_state.height);
+  }
+
   fp64_t calculate_target_deviation(DUNE::IMC::EstimatedStreamVelocity wind_in, DUNE::IMC::EstimatedState state, fp64_t time_to_drop, fp32_t dt, int counter_max, fp64_t target_dev[], fp64_t carp_dev[])
   {
+//    // Clear wind storage
+//    std::ofstream ofs;
+//    ofs.open("/home/siri/uavlab/results/wind.txt", std::ofstream::out | std::ofstream::trunc);
+//    ofs.close();
 
-    std::ofstream ofs;
-    ofs.open("/home/siri/uavlab/results/wind.txt", std::ofstream::out | std::ofstream::trunc);
-    ofs.close();
+    // Make Rotation matrix and calculatie wind
     double r_bn[] = {state.phi, state.theta, state.psi};
     // Body to NED rotation matrix
     DUNE::Math::Matrix R_bn =  DUNE::Math::Matrix(r_bn,3, 1).toQuaternion().toDCM();
@@ -63,21 +107,22 @@ public:
     DUNE::Math::Matrix steady_wind_matrix = DUNE::Math::Matrix(steady_wind,3,1);
     DUNE::Math::Matrix wind_matrix;
 
+    // Put coordinates in order
     fp64_t present_lat = state.lat;
     fp64_t present_lon = state.lon;
     fp32_t present_height = state.height;
     WGS84::displace(state.x,state.y,state.z, &present_lat,&present_lon,&present_height);
-
     Point drop_position;
     drop_position.lat = state.lat;
     drop_position.lon = state.lon;
     drop_position.z = state.height;
     WGS84::displace(state.x, state.y, state.z, &drop_position.lat, &drop_position.lon, &drop_position.z);
 
+    // Simulate Drop position
     WGS84::displace( //Displacing forward (drop time) times speed because of delay
-        (state.vx - wind_in.x) * (time_to_drop),
-        (state.vy - wind_in.y) * (time_to_drop),
-        (state.vz - wind_in.z) * (time_to_drop),
+        (state.vx) * (time_to_drop),
+        (state.vy) * (time_to_drop),
+        (state.vz) * (time_to_drop),
         &drop_position.lat, &drop_position.lon, &drop_position.z);
     drop_position.vx = state.vx;
     drop_position.vy = state.vy;
@@ -86,10 +131,10 @@ public:
     fp64_t x = 0.0, y=0.0, z=drop_position.z, vx=drop_position.vx, vy=drop_position.vy, vz = drop_position.vz;
     int counter = 0;
     double speed = sqrt(vx*vx+vy*vy+vz*vz);
-
     WindSimulator.initialize(steady_wind_matrix,R_bn,z-target.z);
     wind_matrix = WindSimulator.update(z-target.z,speed,dt);
 
+    // Simulate fall
     while(z > target.z and counter < counter_max)
     {
       counter ++;
@@ -101,8 +146,8 @@ public:
       vx += -b / mass * (vx - wind_matrix(0)) * v_rel_abs * dt;
       vy += -b / mass * (vy - wind_matrix(1)) * v_rel_abs * dt;
       vz += (-b / mass * (vz - wind_matrix(2)) * v_rel_abs + g) * dt;
-      if (counter < 100000)
-        printf("Z: %f Target.z: %f Height for Wind: %f\n",z,target.z,z-target.z);
+//      if (counter < 100000)
+//        printf("Z: %f Target.z: %f Height for Wind: %f\n",z,target.z,z-target.z);
       wind_matrix = WindSimulator.update(z-target.z,speed,dt);
     }
     //time to reach ground
