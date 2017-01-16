@@ -42,11 +42,13 @@ public:
       t = 0;
   };
 
-  fp64_t estimated_carp_error(DUNE::IMC::EstimatedStreamVelocity wind, DUNE::IMC::EstimatedState state, fp64_t time_to_drop, fp32_t dt)
+  fp64_t estimated_carp_error(DUNE::IMC::EstimatedStreamVelocity wind, DUNE::IMC::EstimatedState state, fp64_t time_to_drop, fp32_t dt, fp64_t counter_max,
+      fp64_t opt_rads, fp64_t opt_points, Matrix weight_velocity, double weight_position, double glide_time)
   {
     // Put Coordinates in order
     DUNE::IMC::EstimatedState sim_state = state;
     WGS84::displace(sim_state.x, sim_state.y, sim_state.z, &sim_state.lat, &sim_state.lon, &sim_state.height);
+    optimal_CARP(sim_state.height,wind,state,dt,counter_max,opt_rads,opt_points,weight_velocity,weight_position,glide_time);
     sim_state.x = 0.0; sim_state.y = 0.0; sim_state.z = 0.0;
     fp32_t current_distance = WGS84::distance(sim_state.lat,sim_state.lon,sim_state.z,CARP.lat,CARP.lon,CARP.z);
     fp32_t previous_distance;

@@ -27,6 +27,7 @@
 
 // DUNE headers.
 #include "Beacon.hpp"
+#include "Dryden.hpp"
 #include "Enums.hpp"
 
 // DUNE headers.
@@ -311,7 +312,7 @@ namespace Autonomy
         .defaultValue("false")
         .description("Test repeatedly on same target");
 
-        param("Optimation Rate Inverse", m_args.opt_rate_inverse)
+        param("Optimization Rate Inverse", m_args.opt_rate_inverse)
         .defaultValue("1")
         .description("Inverse of the optimation rate");
 
@@ -421,6 +422,18 @@ namespace Autonomy
           war("Ready for target coordinates");
         }
         runStateMachine();
+//        fp64_t coordinates[3];
+//        coordinates[0] = m_estate.lat;
+//        coordinates[1] = m_estate.lon;
+//        coordinates[2] = m_estate.height;
+//        WGS84::displace(m_estate.x,m_estate.y,m_estate.z,&coordinates[0],&coordinates[1],&coordinates[2]);
+//        fp64_t position[3];
+//        WGS84::displacement(m_beacon.get_CARP().lat,m_beacon.get_CARP().lon,m_beacon.get_CARP().z,coordinates[0],coordinates[1],coordinates[2],&position[0],&position[1],&position[2]);
+//        ofstream myfile;
+//        myfile.open("/home/siri/uavlab/results/state.txt",std::ios::app);
+//        myfile << position[0] << "\t" << position[1] << "\t" << position[2] << "\t";
+//        myfile << m_estate.vx << "\t" << m_estate.vy << "\t" << m_estate.vz << "\t"  << "\n\n";;
+//        myfile.close();
       }
 
       //Get usefull entities
@@ -775,7 +788,6 @@ namespace Autonomy
             if((!m_hasPoint || !m_args.optimize_once) && (counter%m_args.opt_rate_inverse == 0))
             {
               updateOptimalCarp(height);
-              m_beacon.estimated_carp_error(m_ewind, m_estate, m_args.drop_time, m_args.dt);
             }
 
             distance_to_point = distanceByTime(lat, lon, height, m_args.glide_time + m_args.drop_time);
@@ -823,14 +835,15 @@ namespace Autonomy
 
           if(!m_isGliding)
           {
-            if((!m_hasPoint || !m_args.optimize_once) && m_beacon.estimated_carp_error(m_ewind, m_estate, m_args.drop_time, m_args.dt) > 0.3*m_args.drop_error)
+            if((!m_hasPoint || !m_args.optimize_once) && m_beacon.estimated_carp_error(m_ewind, m_estate, m_args.drop_time, m_args.dt,
+                                 m_args.counter_max,m_args.opt_circle,m_args.opt_points,m_W_vel,m_args.w_pos, m_args.glide_time) > 0.5*m_args.drop_error)
             {
               updateOptimalCarp(height);
             }
 
             distance_to_point = distanceByTime(lat, lon, height, m_args.glide_time + m_args.drop_time);
 
-            if((distance_to_point < m_args.drop_error && distance_to_point > m_previous_distance) || distance_to_point < 0.5)
+            if((distance_to_point < m_args.drop_error && distance_to_point > m_previous_distance) || distance_to_point < 1.0)
             {
               startGlide();
             }
@@ -995,41 +1008,50 @@ namespace Autonomy
       void
       oldDrop(double distance_to_point)
       {
-        fp64_t lat, lon, height;
-        getCurrentLatLonHeight(&lat, &lon, &height);
-        fp64_t time_to_drop = m_args.drop_time;
+        if(1)//m_current < m_args.max_current and m_isGliding)
+        {
+//          inf("Current is OK!");
+//          m_pcc.name = "drop";
+//          m_pcc.op = 1;
+//
+//          m_drop_reaction_time = timer.getMsec();
+//          dispatch(m_pcc);
+          fp64_t lat, lon, height;
+          getCurrentLatLonHeight(&lat, &lon, &height);
+          fp64_t time_to_drop = m_args.drop_time;
 
-        war("This is a simple drop!");
-        fp64_t speed =  sqrt(m_estate.vx*m_estate.vx + m_estate.vy*m_estate.vy + m_estate.vz*m_estate.vz);
-        inf("Velocity: %f, %f, %f", m_estate.vx,m_estate.vy,m_estate.vz);
-        inf("Speed: %f",speed);
-        inf("Wind: %f, %f, %f", m_ewind.x,m_ewind.y,m_ewind.z);
-        fp64_t target_dev[3];
-        fp64_t carp_dev[3];
-        fp64_t target_deviation = m_beacon.calculate_target_deviation(m_ewind,m_estate,time_to_drop,m_args.dt, m_args.counter_max, target_dev, carp_dev);
-        fp64_t speed_size_deviation = m_beacon.get_velocity_size_deviation(speed);
-        fp64_t speed_angle_deviation = m_beacon.get_2D_velocity_angle_deviation(m_estate);
-        inf("Estimated Target Deviation: %f", target_deviation);
-        inf("Estimated CARP Deviation: %f", distance_to_point);
-        inf("Speed size deviation: %f, angle deviation: %f",speed_size_deviation, speed_angle_deviation);
+          war("This is a simple drop!");
+          fp64_t speed =  sqrt(m_estate.vx*m_estate.vx + m_estate.vy*m_estate.vy + m_estate.vz*m_estate.vz);
+          inf("Velocity: %f, %f, %f", m_estate.vx,m_estate.vy,m_estate.vz);
+          inf("Speed: %f",speed);
+          inf("Wind: %f, %f, %f", m_ewind.x,m_ewind.y,m_ewind.z);
+          fp64_t target_dev[3];
+          fp64_t carp_dev[3];
+          fp64_t target_deviation = m_beacon.calculate_target_deviation(m_ewind,m_estate,time_to_drop,m_args.dt, m_args.counter_max, target_dev, carp_dev);
+          fp64_t speed_size_deviation = m_beacon.get_velocity_size_deviation(speed);
+          fp64_t speed_angle_deviation = m_beacon.get_2D_velocity_angle_deviation(m_estate);
+          inf("Estimated Target Deviation: %f", target_deviation);
+          inf("Estimated CARP Deviation: %f", distance_to_point);
+          inf("Speed size deviation: %f, angle deviation: %f",speed_size_deviation, speed_angle_deviation);
 
-        ofstream myfile;
-        myfile.open("/home/siri/uavlab/results/results.txt",std::ios::app);
-        myfile << m_ewind.x << "\t" << m_ewind.y << "\t" << m_ewind.z << "\t";
-        myfile << m_estate.vx << "\t" << m_estate.vy << "\t" << m_estate.vz << "\t";
-        myfile << target_deviation << "\t";
-        myfile << target_dev[0] << "\t" << target_dev[1] << "\t" << target_dev[2] << "\t";
-        myfile << speed_size_deviation << "\t" << speed_angle_deviation << "\t";
-        myfile << m_estate.vx << "\t" << m_estate.vy << "\t" << m_estate.vz << "\t";
-        myfile << distance_to_point << "\t";
-        myfile << carp_dev[0] << "\t" << carp_dev[1] << "\t" << carp_dev[2] << "\t"  << "\n\n";
-        myfile.close();
+          ofstream myfile;
+          myfile.open("/home/siri/uavlab/results/results.txt",std::ios::app);
+          myfile << m_ewind.x << "\t" << m_ewind.y << "\t" << m_ewind.z << "\t";
+          myfile << m_estate.vx << "\t" << m_estate.vy << "\t" << m_estate.vz << "\t";
+          myfile << target_deviation << "\t";
+          myfile << target_dev[0] << "\t" << target_dev[1] << "\t" << target_dev[2] << "\t";
+          myfile << speed_size_deviation << "\t" << speed_angle_deviation << "\t";
+          myfile << m_estate.vx << "\t" << m_estate.vy << "\t" << m_estate.vz << "\t";
+          myfile << distance_to_point << "\t";
+          myfile << carp_dev[0] << "\t" << carp_dev[1] << "\t" << carp_dev[2] << "\t"  << "\n\n";
+          myfile.close();
+        }
 
-        m_pcc.op = 1;
-        dispatch(m_pcc);
-        //Wait before sending 0? TEST IT!
-        m_pcc.op = 0;
-        dispatch(m_pcc);
+//        m_pcc.op = 1;
+//        dispatch(m_pcc);
+//        //Wait before sending 0? TEST IT!
+//        m_pcc.op = 0;
+//        dispatch(m_pcc);
       }
 
       //Drop beacon
