@@ -1010,12 +1010,12 @@ namespace Autonomy
       {
         if(1)//m_current < m_args.max_current and m_isGliding)
         {
-//          inf("Current is OK!");
-//          m_pcc.name = "drop";
-//          m_pcc.op = 1;
-//
-//          m_drop_reaction_time = timer.getMsec();
-//          dispatch(m_pcc);
+          inf("Current is OK!");
+          m_pcc.name = "drop";
+          m_pcc.op = 1;
+
+          m_drop_reaction_time = timer.getMsec();
+          dispatch(m_pcc);
           fp64_t lat, lon, height;
           getCurrentLatLonHeight(&lat, &lon, &height);
           fp64_t time_to_drop = m_args.drop_time;
