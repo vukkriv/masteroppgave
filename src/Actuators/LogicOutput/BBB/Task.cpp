@@ -48,26 +48,24 @@ namespace Actuators
 
       struct Task: public DUNE::Tasks::Task
       {
-        IMC::PowerChannelState m_status;
-        GPIO* m_out;
         //! Constructor.
         //! @param[in] name task name.
         //! @param[in] ctx context.
+
+        IMC::PowerChannelState m_status;
+        GPIO* m_out;
         Arguments m_args;
+
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Tasks::Task(name, ctx), m_out(NULL)
         {
           param("Pin", m_args.pin)
-          .defaultValue("2")
+          .defaultValue("48")
           .description("Pin to control.");
 
           param("Initial Output", m_args.init)
-          .defaultValue("0")
+          .defaultValue("1")
           .description("Initial output on pin.");
-
-          param("Name", m_args.name)
-          .defaultValue("drop")
-          .description("Name of PowerChannel.");
 
           bind<PowerChannelControl>(this);
         }
@@ -76,6 +74,7 @@ namespace Actuators
         void
         onUpdateParameters(void)
         {
+          m_args.name = "drop";
           war("started act");
           m_status.name = m_args.name;
         }
@@ -97,8 +96,8 @@ namespace Actuators
         onResourceAcquisition(void)
         {
           m_out = new GPIO(m_args.pin);
-          m_out->setDirection(GPIO::GPIO_DIR_OUTPUT);
-          m_out->setValue(m_args.init);
+          m_out->setDirection("high");
+//          m_out->setValue(m_args.init);
           inf("Drop mechanism ready!");
           setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
         }
@@ -122,14 +121,17 @@ namespace Actuators
             if(msg->op == 0 || msg->op == 1)
             {
               //Turn off/on the drop mechanism
-              m_out->setValue(msg->op);
-
-              if (msg->op == 0){
-                m_status.state = IMC::PowerChannelState::PCS_OFF;
+              inf("Got the instruction to toggle the drop mechanism. Value: %d", msg->op);
+              if (msg->op == 1){
+                m_out->setValue(0);
+                m_status.state = IMC::PowerChannelState::PCS_ON;
+                inf("Now the drop mechanism is ON");
                 dispatch(m_status);
               }
-              if (msg->op == 1){
-                m_status.state = IMC::PowerChannelState::PCS_ON;
+              if (msg->op == 0){
+                m_out->setValue(1);
+                m_status.state = IMC::PowerChannelState::PCS_OFF;
+                inf("Now the drop mechanism is OFF");
                 dispatch(m_status);
               }
             }
