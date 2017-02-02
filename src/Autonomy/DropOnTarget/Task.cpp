@@ -125,6 +125,8 @@ namespace Autonomy
       int m_wind_est_ent;
       //Wind estimation entity from ardupilot
       int m_ardupilot_wind_ent;
+      //Wind estimation entity from ardupilot
+      int m_BBB_ent;
       //Fail or success when plan is finished
       uint8_t m_stop_type;
       //Previously measured distance to a point (CARP)
@@ -336,6 +338,7 @@ namespace Autonomy
         bind<Current>(this);
         bind<EntityList>(this);
         bind<PathControlState>(this);
+        bind<PowerChannelState>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -445,6 +448,7 @@ namespace Autonomy
           TupleList tup(msg->list, "=", ";", true);
           m_wind_est_ent = tup.get("Wind Estimator", -1);
           m_ardupilot_wind_ent = tup.get("Autopilot", -1);
+          m_BBB_ent = tup.get("BBB", -1);
         }
       }
 
@@ -463,6 +467,7 @@ namespace Autonomy
       void
       consume(const IMC::PowerChannelState* msg)
       {
+        war("We got a PowerChannelState msg");
         if(msg->state == IMC::PowerChannelState::PCS_ON)
         {
           m_pcc.op = 0;
