@@ -69,6 +69,7 @@ public:
     m_sigma_w = 0.1*m_windspeed_20_feet;
     m_sigma_u = m_sigma_w/pow((0.177+0.000823*m_height),0.4);
     m_sigma_v = m_sigma_w/pow((0.177+0.000823*m_height),0.4);
+    gen = Random::Factory::create(Random::Factory::c_default, -1);
   }
 
   double gaussian(double mu, double sigma)

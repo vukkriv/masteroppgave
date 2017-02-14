@@ -887,7 +887,7 @@ namespace Autonomy
       void
       updateOptimalCarp(double height)
       {
-        war("Optimizes Carp");
+//        war("Optimizes Carp");
         m_opt_wind = m_ewind;
         m_hasPoint = true;
         double dt;
