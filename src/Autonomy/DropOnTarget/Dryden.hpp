@@ -101,7 +101,7 @@ public:
     m_speed = 15.0*m_convertMeters2Feet;
   }
 
-  Matrix update(fp32_t height_in, fp32_t speed_in,fp32_t DT)
+  Matrix update(fp32_t speed_in,fp32_t DT)
   {
 //    if (height_in > 50.0)
 //          m_height = height_in*m_convertMeters2Feet;
