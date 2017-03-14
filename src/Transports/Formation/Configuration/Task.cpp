@@ -336,6 +336,7 @@ namespace Transports
             {
               inf("New desired formation.");
               debug("m_N = %d",m_N);
+              printMatrix(m_args.desired_formation, DEBUG_LEVEL_NONE);
               // Check dimensions
               if (m_args.desired_formation.size() == 0)
                 throw DUNE::Exception(
@@ -358,28 +359,35 @@ namespace Transports
                       m_x_c_default(0, uav_id), m_x_c_default(1, uav_id),
                       m_x_c_default(2, uav_id));
               }
+
+              printMatrix(m_x_c_default);
             }
 
             if (m_N > 1)
             {
               inf("New incidence matrix.");
 
+              printMatrix(m_args.incidence_matrix, DEBUG_LEVEL_DEBUG);
+
               // Check dimensions
               if (m_args.incidence_matrix.size() == 0)
                throw DUNE::Exception("Incidence matrix is empty!");
-              if (m_args.incidence_matrix.rows() % m_N != 0)
+              debug("nRows: %d, m_N: %d", m_args.incidence_matrix.rows(), m_N);
+              if (m_args.incidence_matrix.rows() != (int) m_N)
                throw DUNE::Exception(
                    "Incidence matrix doesn't match number of vehicles!");
 
               // Update number of links
-              m_L = m_args.incidence_matrix.rows() / m_N;
+              // m_L = m_args.incidence_matrix.rows() / m_N;
+              m_L = m_args.incidence_matrix.columns();
               // Resize incidence matrix
               m_D.resize(m_N, m_L);
               // Update incidence matrix
               for (unsigned int link = 0; link < m_L; link++)
               {
                for (unsigned int uav = 0; uav < m_N; uav++)
-                 m_D(uav, link) = m_args.incidence_matrix(uav + link * m_N);
+                 //m_D(uav, link) = m_args.incidence_matrix(uav + link * m_N);
+                 m_D(uav, link) = m_args.incidence_matrix(uav, link);
               }
               printMatrix(m_D);
             }
@@ -411,10 +419,16 @@ namespace Transports
               m_config.participants.push_back(m_agent);
               if (m_N > 1)
               {
+                // Moved from inside the next loop...
+                m_incidence_agent.links.clear();
                 for (unsigned int link = 0; link < m_L; link++)
                 {
-                  m_incidence_agent.links.clear();
-                  m_incidence_link.orientation = m_args.incidence_matrix(uav + link * m_N);
+
+                  //m_incidence_link.orientation = m_args.incidence_matrix(uav + link * m_N);
+
+                  // Use the actually computed incidence matrix..
+                  m_incidence_link.orientation = m_D(uav, link);
+
                   m_incidence_agent.links.push_back(m_incidence_link);
                   debug("[%d,%d]:m_incidence_link.orientation=%d",uav,link,m_incidence_link.orientation);
                 }
