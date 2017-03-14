@@ -820,8 +820,8 @@ namespace Control
           }
 
           // Initialize matrices
-          m_last_pos_update = Matrix(1, m_N, Clock::get());
-          m_last_heading_update = Matrix(1, m_N, Clock::get());
+          m_last_pos_update = Matrix(1, m_N, Clock::getSinceEpoch());
+          m_last_heading_update = Matrix(1, m_N, Clock::getSinceEpoch());
           m_pos_update_rate = Matrix(1, m_N, 0);
           m_pos_update_delay = Matrix(1, m_N, 0);
         }
