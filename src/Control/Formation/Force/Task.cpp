@@ -206,6 +206,9 @@ namespace Control
         Matrix Kd;
         Matrix Ka;
 
+        //! Formation control u feed-forward control parameter
+        Matrix Gamma;
+
         double max_norm_F;
 
         //low pass filter on desired heading
@@ -256,7 +259,7 @@ namespace Control
                                                     DTR_RT("Mission-X"), DTR_RT("Mission-Y"), DTR_RT("Mission-Z"),
                                                     DTR_RT("Collision-X"), DTR_RT("Collision-Y"), DTR_RT("Collision-Z"),
                                                     DTR_RT("Formation-X"), DTR_RT("Formation-Y"), DTR_RT("Formation-Z"),
-                                                    DTR_RT("Wind_ff")
+                                                    DTR_RT("Wind_ff"), DTR_RT("Formation-VX"), DTR_RT("Formation-VY"), DTR_RT("Formation_VZ")
                                                   };
 
       enum Parcel {
@@ -273,10 +276,13 @@ namespace Control
         PC_FORMATION_Y = 10,
         PC_FORMATION_Z = 11,
         PC_WIND_FF     = 12,
-        PC_NUM         = 13
+        PC_FORMATION_VX = 13,
+        PC_FORMATION_VY = 14,
+        PC_FORMATION_VZ = 15,
+        PC_NUM         = 16
       };
 
-      static const int NUM_PARCELS = 13;
+      static const int NUM_PARCELS = 16;
 
       // Convencience data holder for the desired position
       // To clarify the frames:
@@ -332,6 +338,9 @@ namespace Control
         //! Difference variables
         Matrix m_z;
 
+        //! Derivative of difference variables
+        Matrix m_dz;
+
         //! Difference variables filtered
         Matrix m_z_filtered;        
 
@@ -345,6 +354,9 @@ namespace Control
 
         //! Vehicle positions
         Matrix m_x;
+
+        //! Vehicle velocities
+        Matrix m_dx;
 
         //! Vehicles Stream Estimates
         Matrix m_esvs;
@@ -417,6 +429,8 @@ namespace Control
         //! State of baseline gains
         BaselineGains m_baseline_gains;
 
+        //! Gamma gain matrix (3x3) calculated from the (1x3) argument
+        Matrix m_Gamma;
 
 
         //! Constructor.
@@ -439,7 +453,8 @@ namespace Control
           m_time_prev_control_execution(0),
           m_configured(false),
           m_bias_estimate(Matrix(3,1, 0.0)),
-          m_self_local_updated(false)
+          m_self_local_updated(false),
+          m_Gamma(3, 3, 0.0)
         {
           param("Formation Controller", m_args.use_controller)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -536,6 +551,11 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Velocity Controller tuning parameter Ka");
 
+          param("Gamma Velocity Control", m_args.Gamma)
+          .defaultValue("0.1, 0.1, 0.1")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Elements for a diagonal matrix Gamma, which controls the ammount of feed-forward the formation velocity u has on the integral action. ");
+
           param("Maximum Normalized Force", m_args.max_norm_F)
           .defaultValue("5.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -631,6 +651,8 @@ namespace Control
           bind<IMC::CoordConfig>(this);
           bind<IMC::EstimatedStreamVelocity>(this);
           bind<IMC::ControlProfile>(this);
+
+
         }
 
         //! Update internal state with new parameter values.
@@ -662,6 +684,18 @@ namespace Control
             m_args.Ki = checkGainMatrix(m_args.Ki);
           if (paramChanged(m_args.Ka))
             m_args.Ka = checkGainMatrix(m_args.Ka);
+
+          if (paramChanged(m_args.Gamma))
+          {
+            m_args.Gamma = checkGainMatrix(m_args.Gamma);
+
+            // Construct diagonal matrix
+            m_Gamma = Matrix(3, 3, 0.0);
+            for (unsigned int i = 0; i < 3; ++i)
+            {
+              m_Gamma(i, i) = m_args.Gamma(i);
+            }
+          }
 
           if (paramChanged(m_args.mass))
             m_baseline_gains.setMassAndUpdate(m_args.mass);
@@ -812,6 +846,9 @@ namespace Control
             m_z.resizeAndFill(3, m_L, 0);
             m_z_filtered.resizeAndFill(3, m_L, 0);
             m_z_d.resizeAndFill(3, m_L, 0);
+            m_dz.resizeAndFill(3, m_L, 0.0);
+
+
             // Update desired difference variables matrix
             calcDiffVariable(&m_z_d, m_D, m_x_c);
             calcDiffVariable(&m_z_d, m_D, m_df.x_d_ned);
@@ -884,6 +921,7 @@ namespace Control
             }
             // Resize and reset position and velocity matrices to fit number of vehicles
             m_x.resizeAndFill(3, m_N, 0);
+            m_dx.resizeAndFill(3, m_N, 0.0);
             m_esvs.resizeAndFill(3, m_N, 0.0);
             m_v_ned.resizeAndFill(3, 1, 0);
             m_a_ned.resizeAndFill(3, 1, 0);
@@ -1154,6 +1192,11 @@ namespace Control
               m_x(0, uav) = msg->state->x;
               m_x(1, uav) = msg->state->y;
               m_x(2, uav) = msg->state->z;
+
+              // Update velocity
+              m_dx(0, uav) = msg->state->vx;
+              m_dx(1, uav) = msg->state->vy;
+              m_dx(2, uav) = msg->state->vz;
 
               //spew("m_last_pos_update.size()=%d",m_last_pos_update.size());
               m_last_pos_update(uav) = now;
@@ -1579,31 +1622,46 @@ namespace Control
         }
 
         //! Calculate formation velocity
+        //! Just for convenience, du_form is returned through the argument for now.
         Matrix
-        formationVelocity(void)
+        formationVelocity(Matrix& du_form)
         {
+          // Initialize
           Matrix u_form(3, 1, 0);
+          du_form = Matrix(3,1, 0.0);
+
           if (m_cargs.disable_formation_velocity)
             return u_form;
 
           // Calculate z_tilde
           calcDiffVariable(&m_z, m_D, m_x);
+          calcDiffVariable(&m_dz, m_D, m_dx);
 
           Matrix z_tilde = m_z - m_z_d;
+
+          // Also, calculate the tilde velocities
+          // TODO: Add feed-forward to formation changed. (derivative of m_z_d)
+          Matrix dz_tilde = m_dz;
+
+
           if (m_args.link_filter_enable)
           {
             double beta = m_args.link_filter_beta;
             m_z_filtered = m_z*beta + (1-beta)*m_z_filtered;
             z_tilde = m_z_filtered - m_z_d;
+
+            // We don't filter dz_tilde. (rarely used anyways..)
           } 
 
           m_coord_state.link_distance       = m_z.norm_2();
           m_coord_state.link_distance_error = z_tilde.norm_2();
-          m_coord_state.link_vel = 0; //currently not available
+          m_coord_state.link_vel            = m_dz.norm_2(); // Is this really saying anything when more than 2 vehicles?
           dispatch(m_coord_state);
+
           // Calculate formation velocity component
           static double last_print;
 
+          // For logging
           Matrix link_errors_agent = Matrix(3,1, 0.0);
 
           // To calculate link gain, the following steps are done:
@@ -1639,11 +1697,14 @@ namespace Control
             if (!m_gain_scheduler.enable)
               gain *= m_delta(link);
 
-            u_form -= m_D(m_i, link) * gain * z_tilde.column(link);
+            u_form  -= m_D(m_i, link) * gain *  z_tilde.column(link);
+            du_form -= m_D(m_i, link) * gain * dz_tilde.column(link);
 
             // Scale down z.
             u_form(2) *= m_args.link_z_gain_multiplier;
+            du_form(2)*= m_args.link_z_gain_multiplier;
 
+            // Errors for logging
             link_errors_agent += m_D(m_i, link) * z_tilde.column(link);
           }
 
@@ -1657,6 +1718,7 @@ namespace Control
 
           // Log mission velocities
           logAndDispatchParcel(PC_FORMATION_X, u_form);
+          logAndDispatchParcel(PC_FORMATION_VX, du_form);
 
           return u_form;
         }
@@ -1786,7 +1848,7 @@ namespace Control
         //! v_des in NED
         //! dv_des in NED
         Matrix
-        velocityControl(Matrix u, Matrix v_des, Matrix dv_des)
+        velocityControl(Matrix u, Matrix du, Matrix v_des, Matrix dv_des)
         {
           //m_v and m_a in AGENT body
 
@@ -1794,8 +1856,8 @@ namespace Control
           Matrix F_i = Matrix(3, 1, 0.0);
           Matrix Rni = RNedAgent();
 
-          Matrix v_error_ned  = v_des - m_v_ned;
-          Matrix dv_error_ned = dv_des - m_a_ned;
+          Matrix v_error_ned  = v_des - m_v_ned + m_Gamma*u;
+          Matrix dv_error_ned = dv_des - m_a_ned + m_Gamma*du;
 
           // Acceleration in z is received with gravity component, cancel
           dv_error_ned(2) += Math::c_gravity;
@@ -1868,7 +1930,7 @@ namespace Control
             u_sync = m_args.bias_sync_gain*streamSyncBias();
           }
 
-          // Do not update in NO_INTEGRAL mode, or in PASSIVE mode as the v_error_ned is not valid.
+          // Do not update in NO_INTEGRAL  mode, or in PASSIVE mode as the v_error_ned is not valid.
           if (isNotPassiveMode && ((m_cprofile.flags & IMC::ControlProfile::CPF_NO_INTEGRAL) == 0))
           {
             m_bias_estimate(0) += ((double)m_time_diff/1.0E3) * Ki(0) * ((v_error_ned(0) + formation_int_enable * u_bias_est(0)) + u_sync(0));
@@ -1883,7 +1945,7 @@ namespace Control
 
           }
           // Add acceleration feed-forward and coordination input u
-          F_i += m_args.mass * dv_des + u;
+          F_i += m_args.mass * (dv_des + m_Gamma*du) + u;
 
           // Add optional bias compensation
           if (m_args.enable_bias_compensation)
@@ -1998,13 +2060,17 @@ namespace Control
           // update formation based on current desired heading
           // NB: only master should change according to his desired heading?
           Matrix u = Matrix(3,1,0.0);
+          Matrix du = Matrix(3,1, 0.0);
           if (m_N > 1)
           {
             // Calculate external feedback, u (desired velocity in NED)
-            u = formationVelocity() + collAvoidVelocity();
+            u = formationVelocity(du) + collAvoidVelocity();
             // Set heave to zero if not controlling altitude
             if (!m_args.use_altitude)
-              u(2) = 0;
+            {
+              u(2)  = 0.0;
+              du(2) = 0.0;
+            }
           }
 
 
@@ -2020,7 +2086,7 @@ namespace Control
             err("Overflow in task execution!");
 
           // Tau is in NED-frame.
-          Matrix tau = velocityControl(u, v_mission_ned, dv_mission_ned);
+          Matrix tau = velocityControl(u, du, v_mission_ned, dv_mission_ned);
           //if (m_args.disable_force_output)
           //  return;
           sendDesiredForce(tau);
