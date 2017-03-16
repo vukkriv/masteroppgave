@@ -99,6 +99,10 @@ namespace Transports
         double baseline_bw;
         double baseline_damping;
 
+        //! Common Formation Gamma
+        double gamma_xy;
+        double gamma_z;
+
         //! Reference latitide
         double ref_lat;
         //! Reference longitude
@@ -253,6 +257,19 @@ namespace Transports
           .defaultValue("1.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Baseline controller relative damping factor.");
+
+
+          param("Gamma -- XY", m_args.gamma_xy)
+          .minimumValue("0.0")
+          .defaultValue("1.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Gamam XY component");
+
+          param("Gamma -- Z", m_args.gamma_z)
+          .minimumValue("0.0")
+          .defaultValue("0.0")
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Gamam Z component");
 
           param("Latitude", m_args.ref_lat)
           .defaultValue("-999.0")
@@ -565,6 +582,24 @@ namespace Transports
             debug("CoordConfig dispatched from new baseline control parameters.");
             setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
           }
+
+
+          if (paramChanged(m_args.gamma_xy)                ||
+              paramChanged(m_args.gamma_z)
+             )
+          {
+            debug("m_config.update = false");
+            m_config.update = false;
+            setEntityState(IMC::EntityState::ESTA_BOOT, Status::CODE_SYNCING);
+
+            m_config.gamma_xy = m_args.gamma_xy;
+            m_config.gamma_z  = m_args.gamma_z;
+
+            dispatch(m_config);
+            debug("CoordConfig dispatched from new GAMMA parameters.");
+            setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
+          }
+
         }
 
         //! Reserve entity identifiers.
