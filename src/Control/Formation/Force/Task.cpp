@@ -154,6 +154,10 @@ namespace Control
         // Baseline control parameters
         double baseline_bw;
         double baseline_damping;
+
+        // Gamma parameters
+        double gamma_xy;
+        double gamma_z;
       };
 
       struct Arguments
@@ -283,6 +287,8 @@ namespace Control
       };
 
       static const int NUM_PARCELS = 16;
+
+      static const int MAX_NUM_LINKS_LOG = 6;
 
       // Convencience data holder for the desired position
       // To clarify the frames:
@@ -431,6 +437,10 @@ namespace Control
 
         //! Gamma gain matrix (3x3) calculated from the (1x3) argument
         Matrix m_Gamma;
+
+        //! Array of links to log
+        IMC::FormationLinkState m_formationlinkState[MAX_NUM_LINKS_LOG];
+        IMC::FormationLinkError m_formationlinkError[MAX_NUM_LINKS_LOG];
 
 
         //! Constructor.
@@ -734,6 +744,13 @@ namespace Control
         {
           for (unsigned i = 0; i < NUM_PARCELS; ++i)
             m_parcels[i].setSourceEntity(reserveEntity(c_parcel_names[i] + " Parcel"));
+
+          char buf[50];
+          for (unsigned int i = 0; i < MAX_NUM_LINKS_LOG; ++i)
+          {
+              snprintf(buf, 50, "FormationLinkError - Link %d", i);
+              m_formationlinkError[i].setSourceEntity(reserveEntity(buf));
+          }
         }
 
         //! Resolve entity names.
@@ -1090,7 +1107,17 @@ namespace Control
           m_cargs.baseline_bw                = config->baseline_bw;
           m_cargs.baseline_damping           = config->baseline_damping;
 
+          m_cargs.gamma_xy                   = config->gamma_xy;
+          m_cargs.gamma_z                    = config->gamma_z;
+
           m_baseline_gains.setParametersAndUpdate(config->baseline_bw, config->baseline_damping);
+
+          // Update gamma gains
+          m_Gamma(0,0) = m_cargs.gamma_xy;
+          m_Gamma(1,1) = m_cargs.gamma_xy;
+          m_Gamma(2,2) = m_cargs.gamma_z;
+
+          debug("Gamma set to: %.2f, %.2f, %.2f", m_Gamma(0,0), m_Gamma(1,1), m_Gamma(2,2));
 
           debug("CoordConfig handled, m_configured=%d",m_configured);
         }
@@ -1706,6 +1733,41 @@ namespace Control
 
             // Errors for logging
             link_errors_agent += m_D(m_i, link) * z_tilde.column(link);
+
+            // Logging
+            // Only done by main master vehicle.
+            if (link < MAX_NUM_LINKS_LOG && m_i == 0)
+            {
+
+              // Send ERROR state
+              Matrix zk_err = z_tilde.column(link);
+
+              m_formationlinkError[link].id = link;
+
+              m_formationlinkError[link].length = zk_err.norm_2();
+
+              m_formationlinkError[link].x = zk_err(0);
+              m_formationlinkError[link].y = zk_err(1);
+              m_formationlinkError[link].z = zk_err(2);
+
+              dispatch(m_formationlinkError[link]);
+
+
+              // Send CURRENT state
+              Matrix zk = m_z.column(link);
+
+              m_formationlinkState[link].id = link;
+              m_formationlinkState[link].length = zk.norm_2();
+
+              m_formationlinkState[link].x = zk(0);
+              m_formationlinkState[link].y = zk(1);
+              m_formationlinkState[link].z = zk(2);
+
+              dispatch(m_formationlinkState[link]);
+
+            }
+
+
           }
 
           //spew("u_form: [%1.1f, %1.1f, %1.1f]", u_form(0), u_form(1), u_form(2));
