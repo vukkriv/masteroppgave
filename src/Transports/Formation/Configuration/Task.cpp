@@ -103,6 +103,16 @@ namespace Transports
         double gamma_xy;
         double gamma_z;
 
+        // All new params
+        double outer_bw_xy;
+        double outer_bw_z;
+        double inner_bw_xy;
+        double inner_bw_z;
+        double inner_af_xy;
+        double inner_af_z;
+        double inner_integral_rel_bw_xy;
+        double inner_integral_rel_bw_z;
+
         //! Reference latitide
         double ref_lat;
         //! Reference longitude
@@ -258,7 +268,6 @@ namespace Transports
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Baseline controller relative damping factor.");
 
-
           param("Gamma -- XY", m_args.gamma_xy)
           .minimumValue("0.0")
           .defaultValue("1.0")
@@ -270,6 +279,62 @@ namespace Transports
           .defaultValue("0.0")
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .description("Gamam Z component");
+
+          param("IO -- Outer BW -- XY", m_args.outer_bw_xy)
+          .minimumValue("0.0")
+          .defaultValue("0.05")
+          .units(Units::RadianPerSecond)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Outer XY Bandwidth");
+
+          param("IO -- Outer BW -- Z", m_args.outer_bw_z)
+          .minimumValue("0.0")
+          .defaultValue("0.05")
+          .units(Units::RadianPerSecond)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Outer Z Bandwidth");
+
+          param("IO -- Inner BW -- XY", m_args.inner_bw_xy)
+          .minimumValue("0.0")
+          .defaultValue("0.5")
+          .units(Units::RadianPerSecond)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Inner XY Bandwidth");
+
+          param("IO -- Inner BW -- Z", m_args.inner_bw_z)
+          .minimumValue("0.0")
+          .defaultValue("0.4")
+          .units(Units::RadianPerSecond)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Inner Z Bandwidth");
+
+          param("IO -- Inner AF -- XY", m_args.inner_af_xy)
+          .minimumValue("0.0")
+          .defaultValue("0.5")
+          .units(Units::Kilogram)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Inner XY Acceleration Feedback");
+
+          param("IO -- Inner AF -- Z", m_args.inner_af_z)
+          .minimumValue("0.0")
+          .defaultValue("0.0")
+          .units(Units::Kilogram)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Inner Z AF Acceleration Feedback");
+
+          param("IO -- Inner Integral Relative BW XY", m_args.inner_integral_rel_bw_xy)
+          .minimumValue("0.0")
+          .defaultValue("0.1")
+          .units(Units::RadianPerSecond)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Inner Z Integral relative BW. Set to 0.1 for 10 times as slow.");
+
+          param("IO -- Inner Integral Relative BW Z", m_args.inner_integral_rel_bw_z)
+          .minimumValue("0.0")
+          .defaultValue("0.0")
+          .units(Units::RadianPerSecond)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .description("Inner Z Integral relative BW. Set to 0.1 for 10 times as slow.");
 
           param("Latitude", m_args.ref_lat)
           .defaultValue("-999.0")
@@ -599,6 +664,43 @@ namespace Transports
             debug("CoordConfig dispatched from new GAMMA parameters.");
             setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
           }
+
+          if (paramChanged(m_args.outer_bw_xy)  ||
+              paramChanged(m_args.outer_bw_z)   ||
+              paramChanged(m_args.inner_bw_xy)  ||
+              paramChanged(m_args.inner_bw_z)   ||
+              paramChanged(m_args.inner_af_xy)  ||
+              paramChanged(m_args.inner_af_z)   ||
+              paramChanged(m_args.inner_integral_rel_bw_xy) ||
+              paramChanged(m_args.inner_integral_rel_bw_z)
+          )
+          {
+
+
+
+            debug("m_config.update = false");
+             m_config.update = false;
+             setEntityState(IMC::EntityState::ESTA_BOOT, Status::CODE_SYNCING);
+
+             m_config.outer_bw_xy = m_args.outer_bw_xy;
+             m_config.outer_bw_z  = m_args.outer_bw_z;
+             m_config.inner_bw_xy = m_args.inner_bw_xy;
+             m_config.inner_bw_z  = m_args.inner_bw_z;
+             m_config.inner_af_xy = m_args.inner_af_xy;
+             m_config.inner_af_z  = m_args.inner_af_z;
+             m_config.inner_integral_rel_bw_xy = m_args.inner_integral_rel_bw_xy;
+             m_config.inner_integral_rel_bw_z  = m_args.inner_integral_rel_bw_z;
+
+             dispatch(m_config);
+             debug("CoordConfig dispatched from new GAMMA parameters.");
+             setEntityState(IMC::EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
+
+
+          }
+
+
+
+
 
         }
 
