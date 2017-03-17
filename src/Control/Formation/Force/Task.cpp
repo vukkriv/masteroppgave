@@ -158,6 +158,18 @@ namespace Control
         // Gamma parameters
         double gamma_xy;
         double gamma_z;
+
+        // All new params
+        double outer_bw_xy;
+        double outer_bw_z;
+        double inner_bw_xy;
+        double inner_bw_z;
+        double inner_af_xy;
+        double inner_af_z;
+        double inner_integral_rel_bw_xy;
+        double inner_integral_rel_bw_z;
+
+
       };
 
       struct Arguments
@@ -257,6 +269,9 @@ namespace Control
 
         //! Extra link gain for the z-axis. Typically 0.3.
         double link_z_gain_multiplier;
+
+        //! Use new tuning interface
+        bool use_new_tuning_interface;
       };
 
       static const std::string c_parcel_names[] = { DTR_RT("Force PID-X"), DTR_RT("Force PID-Y"), DTR_RT("Force PID-Z"),
@@ -652,6 +667,10 @@ namespace Control
           param("Link Z Gain Multiplier", m_args.link_z_gain_multiplier)
           .defaultValue("0.3")
           .description("Additional multiplier used to lower the gain on the z-axis of formation. Typically 0.3");
+
+          param("Use New Tuning Interface", m_args.use_new_tuning_interface)
+          .defaultValue("true")
+          .visibility(Tasks::Parameter::VISIBILITY_USER);
 
           // Bind incoming IMC messages
           bind<IMC::DesiredLinearState>(this);
@@ -1109,6 +1128,16 @@ namespace Control
 
           m_cargs.gamma_xy                   = config->gamma_xy;
           m_cargs.gamma_z                    = config->gamma_z;
+
+          // All new gains
+          m_cargs.outer_bw_xy                = config->outer_bw_xy;
+          m_cargs.outer_bw_z                 = config->outer_bw_z;
+          m_cargs.inner_bw_xy                = config->inner_bw_xy;
+          m_cargs.inner_bw_z                 = config->inner_bw_z;
+          m_cargs.inner_af_xy                = config->inner_af_xy;
+          m_cargs.inner_af_z                 = config->inner_af_z;
+          m_cargs.inner_integral_rel_bw_xy   = config->inner_integral_rel_bw_xy;
+          m_cargs.inner_integral_rel_bw_z    = config->inner_integral_rel_bw_z;
 
           m_baseline_gains.setParametersAndUpdate(config->baseline_bw, config->baseline_damping);
 
@@ -1697,7 +1726,16 @@ namespace Control
           // 2b. Alternatively, scale based on link gain.
           // 3. Scale z-axis.
 
-          double baseline_gain = m_baseline_gains.getKp();
+          double baseline_gain_xy = m_baseline_gains.getKp();
+          double baseline_gain_z  = m_baseline_gains.getKp()*m_args.link_z_gain_multiplier;
+
+
+
+          if (m_args.use_new_tuning_interface)
+          {
+            baseline_gain_xy = m_cargs.outer_bw_xy;
+            baseline_gain_z  = m_cargs.outer_bw_z;
+          }
 
           if (m_gain_scheduler.enable)
           {
@@ -1714,22 +1752,27 @@ namespace Control
             }
 
             // Update baseline gain.
-            baseline_gain *= sigmoid_gain;
+            baseline_gain_xy *= sigmoid_gain;
+            baseline_gain_z  *= sigmoid_gain;
           }
+
+
+
+          Matrix Delta = Matrix(3,3, 0.0);
+          Delta(0,0) = baseline_gain_xy;
+          Delta(1,1) = baseline_gain_xy;
+          Delta(2,2) = baseline_gain_z;
 
           for (unsigned int link = 0; link < m_L; link++)
           {
-            double gain = baseline_gain;
 
-            if (!m_gain_scheduler.enable)
-              gain *= m_delta(link);
 
-            u_form  -= m_D(m_i, link) * gain *  z_tilde.column(link);
-            du_form -= m_D(m_i, link) * gain * dz_tilde.column(link);
+            //if (!m_gain_scheduler.enable)
+            //  gain *= m_delta(link);
 
-            // Scale down z.
-            u_form(2) *= m_args.link_z_gain_multiplier;
-            du_form(2)*= m_args.link_z_gain_multiplier;
+            u_form  -= m_D(m_i, link) * Delta *  z_tilde.column(link);
+            du_form -= m_D(m_i, link) * Delta * dz_tilde.column(link);
+
 
             // Errors for logging
             link_errors_agent += m_D(m_i, link) * z_tilde.column(link);
@@ -1944,6 +1987,24 @@ namespace Control
           //Matrix Ki = m_args.mass * std::pow(wn, 3) * m_args.Ki / 10.0;
           Matrix Ki = m_baseline_gains.getKi() * m_args.Ki;
 
+          Matrix Ka = m_args.Ka;
+
+          if (m_args.use_new_tuning_interface)
+          {
+            Kd(0) = m_cargs.inner_bw_xy * (m_args.mass + m_cargs.inner_af_xy);
+            Kd(1) = m_cargs.inner_bw_xy * (m_args.mass + m_cargs.inner_af_xy);
+            Kd(2) = m_cargs.inner_bw_z  * (m_args.mass + m_cargs.inner_af_z );
+
+            Ki(0) = m_cargs.inner_bw_xy * m_cargs.inner_integral_rel_bw_xy;
+            Ki(1) = m_cargs.inner_bw_xy * m_cargs.inner_integral_rel_bw_xy;
+            Ki(2) = m_cargs.inner_bw_z  * m_cargs.inner_integral_rel_bw_z;
+
+            Ka(0) = m_cargs.inner_af_xy;
+            Ka(1) = m_cargs.inner_af_xy;
+            Ka(2) = m_cargs.inner_af_z;
+
+          }
+
 
           // Only add if not in passive mode
           bool isNotPassiveMode = ((m_cprofile.flags & IMC::ControlProfile::CPF_PASSIVE) == 0);
@@ -1956,9 +2017,9 @@ namespace Control
             F_i(2) = Kd(2) * v_error_ned(2);
 
             // Add damping on acceleration. (Basically acceleration feed-forward. Will act as a mass-increaser, might make more robust to wind)
-            F_i(0) += m_args.Ka(0) * dv_error_ned(0);
-            F_i(1) += m_args.Ka(1) * dv_error_ned(1);
-            F_i(2) += m_args.Ka(2) * dv_error_ned(2);
+            F_i(0) += Ka(0) * dv_error_ned(0);
+            F_i(1) += Ka(1) * dv_error_ned(1);
+            F_i(2) += Ka(2) * dv_error_ned(2);
           }
           else
           {
@@ -1967,9 +2028,9 @@ namespace Control
 
 
             // Only acceleration damping
-            F_i(0) = m_args.Ka(0) * -m_a_ned(0);
-            F_i(1) = m_args.Ka(1) * -m_a_ned(1);
-            F_i(2) = m_args.Ka(2) * -m_a_ned(2);
+            F_i(0) = Ka(0) * -m_a_ned(0);
+            F_i(1) = Ka(1) * -m_a_ned(1);
+            F_i(2) = Ka(2) * -m_a_ned(2);
 
             // Still control altitude.
             F_i(2) += Kd(2) * v_error_ned(2);
@@ -2007,7 +2068,7 @@ namespace Control
 
           }
           // Add acceleration feed-forward and coordination input u
-          F_i += m_args.mass * (dv_des + m_Gamma*du) + u;
+          F_i += m_args.mass * (dv_des + m_Gamma*du);// + u;
 
           // Add optional bias compensation
           if (m_args.enable_bias_compensation)
