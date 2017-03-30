@@ -173,7 +173,8 @@ namespace Navigation
           m_wind_estimated.y = +m_w.element(1,0);
 //          m_wind_estimated.y = -m_wind_estimated.y;
           m_wind_estimated.z = +m_w.element(2,0);
-
+          if(isNaN(m_wind_estimated.x) || isNaN(m_wind_estimated.y) || isNaN(m_wind_estimated.z))
+            inf("Problems with wind estimator: Output: %f %f %f", m_wind_estimated.x, m_wind_estimated.y, m_wind_estimated.z);
 //          dispatch(m_wind_at_the_moment);
           dispatch(m_wind_estimated);
 
