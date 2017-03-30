@@ -150,13 +150,12 @@ public:
     m_gust_wind_matrix = m_C*m_Y;
     Matrix result_wind = m_steady_wind_matrix + m_R_bn*m_gust_wind_matrix;
 //    printf("Gust wind matrix: %f, %f, %f\n",m_gust_wind_matrix(0),m_gust_wind_matrix(1),m_gust_wind_matrix(2));
-//    ofstream myfile;
-//    myfile.open("/home/siri/uavlab/results/wind.txt",std::ios::app);
-//    myfile << height_in << "\t";
-//    myfile << m_white_noise_matrix(0) << "\t" << m_white_noise_matrix(1) << "\t" << m_white_noise_matrix(2) << "\t";
-//    myfile << m_gust_wind_matrix(0) << "\t" << m_gust_wind_matrix(1) << "\t" << m_gust_wind_matrix(2) << "\t";
-//    myfile << result_wind(0) << "\t" << result_wind(1) << "\t" << result_wind(2) << "\t" << "\n\n";
-//    myfile.close();
+    ofstream myfile;
+    myfile.open("/home/siri/uavlab/results/wind.txt",std::ios::app);
+    myfile << m_white_noise_matrix(0) << "\t" << m_white_noise_matrix(1) << "\t" << m_white_noise_matrix(2) << "\t";
+    myfile << m_gust_wind_matrix(0) << "\t" << m_gust_wind_matrix(1) << "\t" << m_gust_wind_matrix(2) << "\t";
+    myfile << result_wind(0) << "\t" << result_wind(1) << "\t" << result_wind(2) << "\t" << "\n\n";
+    myfile.close();
     return m_steady_wind_matrix + m_R_bn*m_gust_wind_matrix;
   }
 };
