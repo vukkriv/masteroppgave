@@ -62,6 +62,11 @@ namespace Control
           double refmodel_max_jerk;
           double refmodel_omega_n;
           double refmodel_xi;
+
+          std::string knob_tuning_task;
+          std::string knob_tuning_parameter;
+          double knob_tuning_max;
+          double knob_tuning_min;
         };
 
         enum PwmChannel {
@@ -125,13 +130,21 @@ namespace Control
           //! Reference Model
           ReferenceModel m_refmodel;
 
+          //! Tuning enabled
+          bool m_knob_tuning_enabled;
+
+          //! Time of last tuning value sent
+          double m_time_last_knob_tuning;
+
           //! Constructor.
           //! @param[in] name task name.
           //! @param[in] ctx context.
           Task(const std::string& name, Tasks::Context& ctx):
             BasicUAVAutopilot(name, ctx, c_controllable, c_required),
             m_elocalstate_filter(NULL),
-            m_desired_yaw(0)
+            m_desired_yaw(0),
+            m_knob_tuning_enabled(false)
+
           {
             param("RCCoordinated Controller", m_args.use_controller)
             .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -179,8 +192,28 @@ namespace Control
             .visibility(Tasks::Parameter::VISIBILITY_USER)
             .description("Relative Damping Factor of the speed reference model");
 
+            param("Knob Tuning Task to Send to", m_args.knob_tuning_task)
+            .defaultValue("Coordination Configuration");
+
+            param("Knob Tuning Parameter", m_args.knob_tuning_parameter)
+            .visibility(Parameter::VISIBILITY_USER)
+            .values("None,IO -- Outer BW -- XY,IO -- Outer BW -- Z,IO -- Inner BW -- XY,IO -- Inner BW -- Z,IO -- Inner AF -- XY,IO -- Inner AF -- Z,IO -- Inner Integral Relative BW XY,IO -- Inner Integral Relative BW Z")
+            .defaultValue("None")
+            .description("Which parameter to tune. ");
+
+            param("Knob Tuning Minimum", m_args.knob_tuning_min)
+            .visibility(Parameter::VISIBILITY_USER)
+            .defaultValue("0.5");
+
+            param("Knob Tuning Maximum", m_args.knob_tuning_max)
+            .visibility(Parameter::VISIBILITY_USER)
+            .defaultValue("0.5");
+
             // Initialize
             m_centroid_elstate.clear();
+
+            m_time_last_knob_tuning = Clock::get();
+
 
 
             bind<IMC::PWM>(this);
@@ -247,6 +280,31 @@ namespace Control
 
           }
 
+          double
+          pwmToValue(double val_min, double val_max, unsigned int rc_min, unsigned int rc_max, unsigned int rc_in)
+          {
+            // Range
+            double range = val_max - val_min;
+
+            // Pwm range
+            unsigned int pwm_range = rc_max - rc_min;
+
+            // clean input
+            if (rc_in > rc_max)
+              rc_in = rc_max;
+
+            if (rc_in < rc_min)
+              rc_in = rc_min;
+
+            // Percent input
+            double pwm_percent = (double) (rc_in - rc_min) / (double) pwm_range;
+
+            // Set output
+
+            return pwm_percent * range + val_min;
+
+
+          }
 
           double
           pwmToValueDeadband(double val_min, double val_max, unsigned int rc_min, unsigned int rc_max, int inverse, double deadbandPercent, unsigned int rc_in)
@@ -316,7 +374,59 @@ namespace Control
 
             spew("Channel: %d, value: %f", pwm->id, pwmToValueDeadband(-4, 4, 900, 2100, 0, 0.1, pwm->duty_cycle));
 
+            if (pwm->id == 8)
+            {
+              calculateKnobTuning();
+            }
+
           }
+
+          void
+          calculateKnobTuning(void)
+          {
+
+
+            // Check if tuning
+            if (m_knob_tuning_enabled)
+            {
+              // Check time
+              double now = Clock::get();
+
+              if (now - m_time_last_knob_tuning > 1.0)
+              {
+                m_time_last_knob_tuning = now;
+                // Calculate and send new one
+                double val = pwmToValue(m_args.knob_tuning_min, m_args.knob_tuning_max, 1100, 1900, m_pwm_inputs[CH_TUNE]);
+
+                // Send a parameter update request
+                IMC::EntityParameter tuningParam;
+                tuningParam.name = m_args.knob_tuning_parameter;
+
+                char buffer[32];
+
+                snprintf(buffer, sizeof(buffer), "%.4g", val);
+                tuningParam.value = std::string(buffer);
+
+                MessageList<IMC::EntityParameter> msgList;
+                msgList.push_back(tuningParam);
+
+
+                IMC::SetEntityParameters toSet;
+                toSet.name = m_args.knob_tuning_task;
+                toSet.params = msgList;
+
+                dispatch(toSet);
+
+                debug("Set %s to value %s", m_args.knob_tuning_parameter.c_str(), buffer);
+
+              }
+              debug("Enable, not time.");
+
+            }
+            debug("not enable. ");
+
+          }
+
 
           //! On autopilot activation
           virtual void
@@ -464,6 +574,10 @@ namespace Control
           void
           onUpdateParameters(void)
           {
+            // Check knob tuning
+            m_knob_tuning_enabled = false;
+            if (m_args.knob_tuning_parameter != "None")
+              m_knob_tuning_enabled = true;
           }
 
 
