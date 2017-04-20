@@ -78,6 +78,7 @@ namespace Autonomy
       bool                          m_is_executing;
 
       int                           m_johansen_wind_est_ent;
+      int                           m_ref_change_counter;
 
       uint64_t                      m_t_dropped_object;
       uint64_t                      m_t_guided_started;
@@ -85,6 +86,10 @@ namespace Autonomy
 
       fp32_t                        m_distance_to_CARP_centre;
       fp32_t                        m_current;
+      fp32_t                        m_current_hitpoint_error;
+      fp32_t                        m_previous_hitpoint_error;
+
+      fp64_t                        m_airSpeed;
 
       Maneuver_states               m_maneuver_state;
 
@@ -92,6 +97,7 @@ namespace Autonomy
       Payload                       m_payload;
       Clock                         m_timer;
       Random::Generator*            m_random_generator;
+      string                        m_autopilot_mode;
 
       //Arguments from .ini-file
       Arguments                     m_args;
@@ -115,11 +121,15 @@ namespace Autonomy
         m_continue_after_break(false),
         m_is_executing(false),
         m_johansen_wind_est_ent(-1),
+        m_ref_change_counter(0),
         m_t_dropped_object(0),
         m_t_guided_started(0),
         m_t_shut_down_motor(0),
-        m_distance_to_CARP_centre(0.0),
+        m_distance_to_CARP_centre(10000.0),
         m_current(0.0),
+        m_current_hitpoint_error(10000.0),
+        m_previous_hitpoint_error(10000.0),
+        m_airSpeed(0.0),
         m_maneuver_state(IDLE),
         m_random_generator(0)
       {
@@ -173,6 +183,7 @@ namespace Autonomy
         bind<EntityList>(this);
         bind<PowerChannelState>(this);
         bind<AutopilotMode>(this);
+        bind<IndicatedSpeed>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -228,14 +239,14 @@ namespace Autonomy
         }
         m_UAV_state.lat = msg->lat;
         m_UAV_state.lon = msg->lon;
-        m_UAV_state.z = msg->height;
+        m_UAV_state.height = msg->height;
         m_UAV_state.vx = msg->vx;
         m_UAV_state.vy = msg->vy;
         m_UAV_state.vz = msg->vz;
-        WGS84::displace(msg->x,msg->y,msg->z,&m_UAV_state.lat,&m_UAV_state.lon,&m_UAV_state.z);
+        WGS84::displace(msg->x,msg->y,msg->z,&m_UAV_state.lat,&m_UAV_state.lon,&m_UAV_state.height);
         if(m_has_target){
-          m_distance_to_CARP_centre = WGS84::distance(m_UAV_state.lat,m_UAV_state.lon,m_UAV_state.z,
-                     m_payload.get_CARP_circle().centre_lat,m_payload.get_CARP_circle().centre_lon,m_payload.get_CARP_circle().z);
+          m_distance_to_CARP_centre = WGS84::distance(m_UAV_state.lat,m_UAV_state.lon,m_UAV_state.height,
+                     m_payload.get_CARP_circle().centre_lat,m_payload.get_CARP_circle().centre_lon,m_payload.get_CARP_circle().height);
         }
         runStateMachine();
       }
@@ -281,6 +292,7 @@ namespace Autonomy
       void
       consume(const IMC::AutopilotMode* msg)
       {
+        m_autopilot_mode = msg->mode;
         if(msg->mode == "GUIDED" && m_args.simulation)
         {
           int time_since_guided_started = m_timer.getMsec() - m_t_guided_started;
@@ -293,6 +305,12 @@ namespace Autonomy
         }
         else
           m_t_guided_started = m_timer.getMsec();
+      }
+
+      void
+      consume(const IMC::IndicatedSpeed* msg)
+      {
+        m_airSpeed = msg->value;
       }
 
       //Check plan control state
@@ -357,14 +375,14 @@ namespace Autonomy
           inf("Target set to: %f %f %f", m_target.lat, m_target.lon, m_target.z);
 
           //Calculate CARP circle
-          m_payload.calculate_CARP_circle(m_wind,m_args.desired_speed,m_args.drop_altitude);
+          m_payload.calculate_CARP_circle(m_wind,m_airSpeed,m_UAV_state.height);
 
 
           //Reference for CARP circle centre
 
           m_CARP_circle_centre_ref.lat = m_payload.get_CARP_circle().centre_lat;
           m_CARP_circle_centre_ref.lon = m_payload.get_CARP_circle().centre_lon;
-          m_dheight.value = m_payload.get_CARP_circle().z;
+          m_dheight.value = m_payload.get_CARP_circle().height;
           m_CARP_circle_centre_ref.z.set(m_dheight);
           m_CARP_circle_centre_ref.speed.set(m_dspeed);
           m_CARP_circle_centre_ref.radius = 0.0;
@@ -385,6 +403,14 @@ namespace Autonomy
           if(!m_is_executing)
           {
           startExecution();
+          }
+          if (m_distance_to_CARP_centre >= m_args.decision_distance)
+          {
+            dispatch(m_CARP_circle_centre_ref);
+
+          }else
+          {
+            dispatch(m_loiter_ref);
           }
         }
         else
@@ -438,7 +464,13 @@ namespace Autonomy
       void
       startManeuver( void )
       {
-        startExecution();
+        if(m_autopilot_mode != "FBWB")
+        {
+          consume(&m_target);
+//          return;
+          cout << "AutopilotMode: " << m_autopilot_mode;
+          return;
+        }
         if (m_distance_to_CARP_centre >= m_args.decision_distance)
         {
           dispatch(m_CARP_circle_centre_ref);
@@ -468,15 +500,35 @@ namespace Autonomy
       void guidance( void )
       {
 //        dispatch(m_CARP_circle_centre_ref);
-//            war("Distance to CARP centre: %f - Radius: %f", m_distance_to_CARP_centre, m_payload.get_CARP_circle().radius);
-        if(m_distance_to_CARP_centre <= m_payload.get_CARP_circle().radius)
+//          war("Distance to CARP centre: %f - Radius: %f", m_distance_to_CARP_centre, m_payload.get_CARP_circle().radius);
+        m_payload.calculate_CARP_circle(m_wind,m_airSpeed,m_UAV_state.height);
+
+        m_ref_change_counter += 1;
+        if(m_ref_change_counter%10 == 0)
+        {
+          //cout << "HELLO!" << endl;
+          m_CARP_circle_centre_ref.lat = m_payload.get_CARP_circle().centre_lat;
+          m_CARP_circle_centre_ref.lon = m_payload.get_CARP_circle().centre_lon;
+          //m_dheight.value = m_payload.get_CARP_circle().height;
+          //m_CARP_circle_centre_ref.speed.set(m_dspeed);
+          dispatch(m_CARP_circle_centre_ref);
+        }
+
+
+//        war("Distance_to_CARP_centre: %f \n Radius: %f", m_distance_to_CARP_centre, m_payload.get_CARP_circle().radius);
+        if(pow(m_distance_to_CARP_centre-m_payload.get_CARP_circle().radius,2) < 0.5)
+//        if((m_current_hitpoint_error > m_previous_hitpoint_error && m_current_hitpoint_error < 2) || m_current_hitpoint_error < 1)
         {
           war("Distance to CARP centre: %f - Radius: %f", m_distance_to_CARP_centre, m_payload.get_CARP_circle().radius);
+          drop();
           change_to_FBWA();
           send_throttle_command(0.0);
           m_maneuver_state = GLIDE_BEFORE_DROP;
           war("Going to state GLIDE_BEFORE_DROP");
           m_t_shut_down_motor = m_timer.getMsec();
+        }else if(m_distance_to_CARP_centre < m_payload.get_CARP_circle().radius)
+        {
+          err("Missed!");
         }
       }
 
@@ -484,13 +536,13 @@ namespace Autonomy
       void glideBeforeDrop( void )
       {
         //Make sure motor is turned off
-        int time_since_motor_shutdown = m_timer.getMsec() - m_t_shut_down_motor;
-        if(m_current < m_args.max_current && (time_since_motor_shutdown > (m_args.glide_time*1000 - 50)))
-        {
-          drop();
+//        int time_since_motor_shutdown = m_timer.getMsec() - m_t_shut_down_motor;
+        //if(m_current < m_args.max_current && (time_since_motor_shutdown > (m_args.glide_time*1000 - 50)))
+        //{
+//          drop();
           m_maneuver_state = GLIDE_AFTER_DROP;
           war("Going to state GLIDE_AFTER_DROP");
-        }
+        //}
       }
 
       // Drop once the motor is turned off
@@ -509,13 +561,17 @@ namespace Autonomy
         fp32_t target_dev[3];
 
         war("This is a simple drop!");
-        war("Height: %f, ideal drop height: %f", m_UAV_state.z,m_payload.get_CARP_circle().z);
+        war("Height: %f, ideal drop height: %f", m_UAV_state.height,m_payload.get_CARP_circle().height);
 
-        m_payload.set_release_state(m_UAV_state);
-        m_payload.calculate_estimated_hitpoint(m_wind);
+        m_payload.calculate_estimated_hitpoint(m_wind, m_UAV_state);
         m_payload.load_release_displacement(release_dev);
         m_payload.load_CARP_centre_displacement(carp_centre_dev);
         m_payload.load_target_error(target_dev);
+
+        fp32_t ref_dev[3];
+
+        WGS84::displacement(m_target.lat,m_target.lon,0.0,
+            m_CARP_circle_centre_ref.lat,m_CARP_circle_centre_ref.lon,0.0,&ref_dev[0],&ref_dev[1],&ref_dev[2]);
 
         std::ofstream myfile;
         myfile.open("/home/siri/uavlab/results/direct_drop_results.txt",std::ios::app);
@@ -523,7 +579,8 @@ namespace Autonomy
         myfile << m_UAV_state.vx << "\t" << m_UAV_state.vy << "\t" << m_UAV_state.vz << "\t";
         myfile << carp_centre_dev[0] << "\t" << carp_centre_dev[1] << "\t" << carp_centre_dev[2] << "\t" << m_payload.get_CARP_circle().radius << "\t";
         myfile << release_dev[0] << "\t" << release_dev[1] << "\t" << release_dev[2] << "\t";
-        myfile << target_dev[0] << "\t" << target_dev[1] << "\t" << target_dev[2] << "\t"  << "\n\n";
+        myfile << target_dev[0] << "\t" << target_dev[1] << "\t" << target_dev[2] << "\t";
+        myfile << ref_dev[0] << "\t" << ref_dev[1] << "\t" << ref_dev[2] << "\t" << "\n\n";
         myfile.close();
 
       }
