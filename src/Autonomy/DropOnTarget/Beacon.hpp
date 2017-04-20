@@ -12,7 +12,7 @@
 #include "Dryden.hpp"
 #include <limits.h>
 
-struct Point
+struct BeaconPoint
 {
   fp64_t lat;
   fp64_t lon;
@@ -27,11 +27,11 @@ class Beacon
 {
 
 private:
-  Point target;
+  BeaconPoint target;
   Dryden WindSimulator;
-  Point CARP;
-  Point estimated_hitpoint;
-  Point release_point;
+  BeaconPoint CARP;
+  BeaconPoint estimated_hitpoint;
+  BeaconPoint release_point;
   fp32_t mass;
   fp32_t b;
   fp32_t g;
@@ -56,7 +56,7 @@ public:
     b = 0.5*C_D*rho*A;  //damping constant
     mass = 0.104;         // mass
     g = 9.81;           //gravity constant
-    CARP = Point();
+    CARP = BeaconPoint();
     WindSimulator = Dryden();
     t = 0;
     opt_rads = 1;
@@ -78,7 +78,7 @@ public:
       b = 0.5*C_D*rho*A;  //damping constant
       mass = 0.104;         // mass
       g = 9.81;           //gravity constant
-      CARP = Point();
+      CARP = BeaconPoint();
       WindSimulator = Dryden();
       t = 0;
       opt_rads = opt_rads_in;
@@ -91,7 +91,7 @@ public:
       dt = dt_in;
   };
 
-  Point get_CARP()
+  BeaconPoint get_CARP()
   {
     return CARP;
   };
@@ -175,7 +175,7 @@ public:
 
     fp64_t best_sum = 10000;
     fp64_t test_sum = 0;
-    Point optimal_carp;
+    BeaconPoint optimal_carp;
     Matrix V_new;
     //Assuming horizontal velocity
     fp64_t v_now[] = {estate.vx, estate.vy, 0};

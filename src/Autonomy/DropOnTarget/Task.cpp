@@ -137,9 +137,9 @@ namespace Autonomy
       //Weighing matrix for velocity
       Matrix m_W_vel;
       //End point
-      Point m_end_point;
+      BeaconPoint m_end_point;
       //Start point
-      Point m_start_point;
+      BeaconPoint m_start_point;
       // Autopilot mode
       string m_autopilotmode;
 
@@ -664,7 +664,6 @@ namespace Autonomy
           m_dthrottle.value = 0.0;
           dispatch(m_dthrottle);
           m_current_state = GLIDE_BEFORE_DROP;
-          int time_since_motor_shutdown = m_timer.getMsec() - m_t_shut_down_motor;
         }else if(distance_to_point > m_args.drop_error && distance_to_point > smallest_distance + 10)
         {
           err("Missed!");
