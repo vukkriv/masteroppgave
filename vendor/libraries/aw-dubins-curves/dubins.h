@@ -49,7 +49,7 @@ typedef struct
 {
     double qi[3];       // the initial configuration
     double param[3];    // the lengths of the three segments
-    double rho;         // model forward velocity / model angular velocity
+    double rho;         // turning radius (model forward velocity / model angular velocity)
     int type;           // path type. one of LSL, LSR, ... 
 } DubinsPath;
 
@@ -140,6 +140,7 @@ int dubins_RSL( double alpha, double beta, double d, double* outputs );
 int dubins_LRL( double alpha, double beta, double d, double* outputs );
 int dubins_RLR( double alpha, double beta, double d, double* outputs );
 
+int specific_dubins_init( double q0[3], double q1[3], double rho, DubinsPath* path, int type);
 #ifdef __cplusplus
 }
 #endif // __cplusplus

@@ -348,4 +348,24 @@ int dubins_extract_subpath( DubinsPath* path, double t, DubinsPath* newpath )
     return 0;
 }
 
-
+int specific_dubins_init( double q0[3], double q1[3], double rho, DubinsPath* path, int type)
+{
+    int i;
+    double dx = q1[0] - q0[0];
+    double dy = q1[1] - q0[1];
+    double D = sqrt( dx * dx + dy * dy );
+    double d = D / rho;
+    if( rho <= 0. ) {
+        return EDUBBADRHO;
+    }
+    double theta = mod2pi(atan2( dy, dx ));
+    double alpha = mod2pi(q0[2] - theta);
+    double beta  = mod2pi(q1[2] - theta);
+    for( i = 0; i < 3; i ++ ) {
+        path->qi[i] = q0[i];
+    }
+    path->rho = rho;
+    int err = dubins_words[type](alpha, beta, d, path->param);
+    path->type = type;
+    return err;
+}
