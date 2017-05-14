@@ -165,8 +165,7 @@ namespace Control
           if (!m_args.use_controller)
             return;
           // Activate controller
-          enableControlLoops(IMC::CL_THROTTLE);
-          enableControlLoops(IMC::CL_PITCH);
+          enableControlLoops(IMC::CL_THROTTLE | IMC::CL_PITCH);
         }
 
         virtual void
@@ -176,14 +175,12 @@ namespace Control
           (void)ts;
 
           if (!m_args.use_controller){
-            disableControlLoops(IMC::CL_THROTTLE);
-            disableControlLoops(IMC::CL_PITCH);
+            disableControlLoops(IMC::CL_THROTTLE | IMC::CL_PITCH);
 
           }
           else{
             // Activate controller
-            enableControlLoops(IMC::CL_THROTTLE);
-            enableControlLoops(IMC::CL_PITCH);
+            enableControlLoops(IMC::CL_THROTTLE | IMC::CL_PITCH);
           }
         }
 
@@ -192,8 +189,7 @@ namespace Control
         {
           if (!m_args.use_controller){
             // Deactivate controller.
-            disableControlLoops(IMC::CL_THROTTLE);
-            disableControlLoops(IMC::CL_PITCH);
+            disableControlLoops(IMC::CL_THROTTLE | IMC::CL_PITCH);
           }
         }
 
