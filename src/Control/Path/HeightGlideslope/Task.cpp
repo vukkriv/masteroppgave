@@ -342,8 +342,7 @@ namespace Control
           if (!m_args.use_controller)
             return;
           // Activate height and height-rate controller
-          enableControlLoops(IMC::CL_ALTITUDE);
-          enableControlLoops(IMC::CL_VERTICAL_RATE);
+          enableControlLoops(IMC::CL_ALTITUDE | IMC::CL_VERTICAL_RATE);
           first_waypoint = true; // A new path arrived. Tracking to first waypoint.
         }
 
@@ -352,8 +351,7 @@ namespace Control
         {
           if (!m_args.use_controller){
             // Deactivate controller.
-            disableControlLoops(IMC::CL_ALTITUDE);
-            disableControlLoops(IMC::CL_VERTICAL_RATE);
+             disableControlLoops(IMC::CL_ALTITUDE | IMC::CL_VERTICAL_RATE);
           }
         }
         virtual void
@@ -363,13 +361,11 @@ namespace Control
           (void)ts;
 
           if (!m_args.use_controller){
-            disableControlLoops(IMC::CL_ALTITUDE);
-            disableControlLoops(IMC::CL_VERTICAL_RATE);
+            disableControlLoops(IMC::CL_ALTITUDE | IMC::CL_VERTICAL_RATE);
           }
           else{
             // Activate controller
-            enableControlLoops(IMC::CL_ALTITUDE);
-            enableControlLoops(IMC::CL_VERTICAL_RATE);
+            enableControlLoops(IMC::CL_ALTITUDE | IMC::CL_VERTICAL_RATE);
           }
 
           //Check if tracking to first waypoint
