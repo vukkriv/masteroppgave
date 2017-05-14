@@ -333,6 +333,11 @@ namespace Control
 
           m_refmodel_gamma.updateFilter(m_args.Tref_gamma, m_args.zeta_gamma);
 
+          if (paramChanged(m_args.use_controller) && !m_args.use_controller)
+          { //controller should no longer be used
+            disableControlLoops(IMC::CL_ALTITUDE | IMC::CL_VERTICAL_RATE);
+          }
+
         }
         
 
@@ -349,21 +354,17 @@ namespace Control
         void
         onPathDeactivation(void)
         {
-          if (!m_args.use_controller){
-            // Deactivate controller.
-             disableControlLoops(IMC::CL_ALTITUDE | IMC::CL_VERTICAL_RATE);
-          }
+
         }
+
         virtual void
         onPathStartup(const IMC::EstimatedState& state, const TrackingState& ts)
         {
           (void)state;
           (void)ts;
 
-          if (!m_args.use_controller){
-            disableControlLoops(IMC::CL_ALTITUDE | IMC::CL_VERTICAL_RATE);
-          }
-          else{
+          if (m_args.use_controller)
+          {
             // Activate controller
             enableControlLoops(IMC::CL_ALTITUDE | IMC::CL_VERTICAL_RATE);
           }
