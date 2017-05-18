@@ -160,6 +160,19 @@ namespace Control
         }
 
         void
+        onUpdateParameters(void)
+        {
+          PathController::onUpdateParameters();
+
+
+          if (paramChanged(m_args.use_controller) && !m_args.use_controller)
+          { //controller should no longer be used
+            disableControlLoops(IMC::CL_THROTTLE | IMC::CL_PITCH);
+          }
+
+        }
+
+        void
         onPathActivation(void)
         {
           if (!m_args.use_controller)
@@ -174,11 +187,7 @@ namespace Control
           (void)state;
           (void)ts;
 
-          if (!m_args.use_controller){
-            disableControlLoops(IMC::CL_THROTTLE | IMC::CL_PITCH);
-
-          }
-          else{
+          if (m_args.use_controller){
             // Activate controller
             enableControlLoops(IMC::CL_THROTTLE | IMC::CL_PITCH);
           }
@@ -187,10 +196,7 @@ namespace Control
         void
         onPathDeactivation(void)
         {
-          if (!m_args.use_controller){
-            // Deactivate controller.
-            disableControlLoops(IMC::CL_THROTTLE | IMC::CL_PITCH);
-          }
+
         }
 
         void
