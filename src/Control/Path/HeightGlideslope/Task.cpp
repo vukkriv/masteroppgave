@@ -483,21 +483,21 @@ namespace Control
             spew("Height ref derivative: %f", height_ref_derivative);
             spew("Last filter ramp?: %d", m_last_filter_ramp);
 
-            //Checking what state the unfiltered reference is in and filtering accordingly
-            if (height_ref_derivative <= 0.0001 && height_ref_derivative >= -0.0001 && m_last_filter_ramp)
-            {
-              //Step
-              spew("Filter: Step");
-              m_refmodel_z.updateFilter(m_args.Tref_z_step, m_args.zeta_z_step);
-              m_last_filter_ramp = false;
-            }
-            else if ((height_ref_derivative > 0.0001 || height_ref_derivative < -0.0001) && !m_last_filter_ramp)
-            {
-              //Ramp
+            ////Checking what state the unfiltered reference is in and filtering accordingly
+            //if (height_ref_derivative <= 0.0001 && height_ref_derivative >= -0.0001 && m_last_filter_ramp)
+            //{
+              ////Step
+              //spew("Filter: Step");
+              //m_refmodel_z.updateFilter(m_args.Tref_z_step, m_args.zeta_z_step);
+              //m_last_filter_ramp = false;
+            //}
+            //else if ((height_ref_derivative > 0.0001 || height_ref_derivative < -0.0001) && !m_last_filter_ramp)
+            //{
+              ////Ramp
               spew("Filter: Ramp");
-              m_refmodel_z.updateFilter(m_args.Tref_z_ramp, m_args.zeta_z_ramp);
+              //m_refmodel_z.updateFilter(m_args.Tref_z_ramp, m_args.zeta_z_ramp);
               m_last_filter_ramp = true;
-            }
+            //}
 
             debug("Z-ref before filter: %f",zref.value);
             m_refmodel_z.x = (m_refmodel_z.I + (ts.delta*m_refmodel_z.A))*m_refmodel_z.x + (ts.delta*m_refmodel_z.B) * zref.value;
