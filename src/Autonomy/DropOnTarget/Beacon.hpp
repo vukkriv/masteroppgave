@@ -50,11 +50,11 @@ public:
   {
     //fp32_t rho = 1.341; // air density at -10 degrees celsius, according to Simen Fuglaas
     fp32_t rho = 1.246; // air density at 10 degrees celsius, according to wikipedia
-    fp32_t C_D = 0.39;   // drag coefficient of our cone
-    fp32_t r = 0.045;    // 0.045 meters in radius.
-    fp32_t A = M_PI*r*r;
+    fp32_t C_D = 0.46;   // drag coefficient of our cone
+    //fp32_t r = 0.045;    // 0.045 meters in radius.
+    fp32_t A = 0.0036;
     b = 0.5*C_D*rho*A;  //damping constant
-    mass = 0.104;         // mass
+    mass = 0.312;         // mass
     g = 9.81;           //gravity constant
     CARP = BeaconPoint();
     WindSimulator = Dryden();
@@ -72,11 +72,11 @@ public:
   {   //THESE CONSTANTS MUST BE CHANGABLE IN INI FILE
       //fp32_t rho = 1.341; // air density at -10 degrees celsius, according to Simen Fuglaas
       fp32_t rho = 1.246; // air density at 10 degrees celsius, according to wikipedia
-      fp32_t C_D = 0.39;   // drag coefficient of our cone
-      fp32_t r = 0.045;    // 0.045 meters in radius.
-      fp32_t A = M_PI*r*r;
+      fp32_t C_D = 0.46;   // drag coefficient of our cone
+      //fp32_t r = 0.045;    // 0.045 meters in radius.
+      fp32_t A = 0.0036;
       b = 0.5*C_D*rho*A;  //damping constant
-      mass = 0.104;         // mass
+      mass = 0.312;         // mass
       g = 9.81;           //gravity constant
       CARP = BeaconPoint();
       WindSimulator = Dryden();

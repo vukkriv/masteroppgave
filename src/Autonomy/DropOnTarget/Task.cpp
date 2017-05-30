@@ -140,6 +140,8 @@ namespace Autonomy
       BeaconPoint m_end_point;
       //Start point
       BeaconPoint m_start_point;
+      //RTK Position
+      BeaconPoint m_UAV_state;
       // Autopilot mode
       string m_autopilotmode;
 
@@ -304,6 +306,7 @@ namespace Autonomy
         bind<EntityList>(this);
         bind<PowerChannelState>(this);
         bind<AutopilotMode>(this);
+        bind<GpsFixRtk>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -360,6 +363,17 @@ namespace Autonomy
           war("Ready for target coordinates");
         }
         runStateMachine();
+      }
+      void
+      consume(const IMC::GpsFixRtk* msg)
+      {
+        m_UAV_state.lat = msg->base_lat;
+        m_UAV_state.lon = msg->base_lon;
+        m_UAV_state.z = msg->base_height;
+        m_UAV_state.vx = msg->v_n;
+        m_UAV_state.vy = msg->v_e;
+        m_UAV_state.vz = msg->v_d;
+        WGS84::displace(msg->n,msg->e,msg->d,&m_UAV_state.lat,&m_UAV_state.lon,&m_UAV_state.z);
       }
 
       //Get usefull entities
@@ -706,6 +720,19 @@ namespace Autonomy
         fp32_t carp_dist;
 
         war("This is a simple drop!");
+        fp64_t lat = m_estate.lat;
+        fp64_t lon = m_estate.lon;
+        fp64_t height = m_estate.height;
+        WGS84::displace(m_estate.x,m_estate.y,m_estate.z,&lat,&lon,&height);
+        fp32_t CARP_target[3];
+        WGS84::displacement(m_target.lat,m_target.lon,m_target.z,m_beacon.get_CARP().lat,m_beacon.get_CARP().lon,m_beacon.get_CARP().z,&CARP_target[0],&CARP_target[1],&CARP_target[2]);
+        fp32_t GSPpos_target[3];
+        WGS84::displacement(m_target.lat,m_target.lon,m_target.z,lat,lon,height,&GSPpos_target[0],&GSPpos_target[1],&GSPpos_target[2]);
+        fp32_t RTKpos_target[3];
+        WGS84::displacement(m_target.lat,m_target.lon,m_target.z,m_UAV_state.lat,m_UAV_state.lon,m_UAV_state.z,&RTKpos_target[0],&RTKpos_target[1],&RTKpos_target[2]);
+        war("CARP displacement from target: %f %f %f",CARP_target[0],CARP_target[1],CARP_target[2]);
+        war("GPS position displacement from target: %f %f %f",GSPpos_target[0],GSPpos_target[1],GSPpos_target[2]);
+        war("RTK position displacement from target: %f %f %f",RTKpos_target[0],RTKpos_target[1],RTKpos_target[2]);
 
         m_beacon.set_release_point(m_estate);
         m_beacon.calculate_estimated_hitpoint(m_estate,m_ewind);
