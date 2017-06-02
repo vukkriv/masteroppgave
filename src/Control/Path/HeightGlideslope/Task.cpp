@@ -395,8 +395,7 @@ namespace Control
             start_z = state.height - start_z;
           }
 
-          double Vg = sqrt( (state.vx*state.vx) + (state.vy*state.vy) + (state.vz*state.vz) ); // Ground speed
-
+          double speed_g = ts.speed; // Ground speed 
 
           // Calculate glide-slope angle
           glideslope_angle = atan2((std::abs(end_z) -std::abs(start_z)),ts.track_length); //Negative for decent
@@ -532,12 +531,12 @@ namespace Control
           debug("Los_angle: %f",Angles::degrees(los_angle));
 
           double gamma_cmd = glideslope_angle + los_angle; //Commanded flight path angle
-          double h_dot_desired = Vg*sin(gamma_cmd);        //Convert commanded flight path angle to demanded vertical-rate.
+          double h_dot_desired = speed_g*sin(gamma_cmd);        //Convert commanded flight path angle to demanded vertical-rate.
 
           m_vrate.value = h_dot_desired;
 
           //Testing constant-rate
-          //h_dot_desired = Vg*sin(2*(M_PI/180));
+          //h_dot_desired = speed_g*sin(2*(M_PI/180));
           //m_vrate.value= h_dot_desired;
 
           m_hdiff.err_z = (state.height - state.z) - zref.value;
