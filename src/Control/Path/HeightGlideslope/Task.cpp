@@ -43,8 +43,6 @@ namespace Control
       {
         bool use_controller; //Flag to enable controller
         bool use_refmodel;
-        double k_vr;
-        double phi_h;
         double k_ph_down;
         double k_ih_down;
         double k_r_down;
@@ -56,10 +54,6 @@ namespace Control
         double k_ph_line;
         double k_ih_line;
         double k_r_line;
-
-        double kp;
-        double h_dot_i;
-        double h_dot_p;
 
         double Tref_z_ramp;
         double zeta_z_ramp;
@@ -177,7 +171,6 @@ namespace Control
         waypoint last_end_wp;
         Delta m_last_step;
 
-        double m_airspeed;
         double glideslope_range;
         double glideslope_bearing;
         double glideslope_angle;
@@ -204,7 +197,6 @@ namespace Control
 
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
-          m_airspeed(0.0),
           glideslope_range(0.0),
           glideslope_bearing(0.0),
           glideslope_angle(1.0),
@@ -223,15 +215,6 @@ namespace Control
           m_last_filter_ramp(false)
 
         {
-          param("Height bandwidth", m_args.phi_h)
-          .units(Units::Meter)
-          .defaultValue("20")
-          .description("Limit distance above and bellow desired height from which maximum control is used");
-
-          param("Vertical Rate maximum gain", m_args.k_vr)
-          .defaultValue("0.15")
-          .description("Vertical Rate maximum gain for control");
-
           param("LOS Proportional gain up", m_args.k_ph_up)
           .defaultValue("0.9")
           .description("LOS Proportional gain for control");
@@ -311,8 +294,6 @@ namespace Control
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .defaultValue("false")
           .description("Use this controller for maneuver");
-
-          bind<IMC::IndicatedSpeed>(this);
 
         }
 
@@ -398,12 +379,6 @@ namespace Control
         hasSpecificZControl(void) const
         {
           return true;
-        }
-
-        void
-        consume(const IMC::IndicatedSpeed* airspeed)
-        {
-          m_airspeed = airspeed->value;
         }
 
         void
