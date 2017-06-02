@@ -254,16 +254,16 @@ namespace Control
           if (!m_args.use_controller)
             return;
 
-          double Vg = sqrt( (state.vx*state.vx) + (state.vy*state.vy) + (state.vz*state.vz) ); // Ground speed
+          double speed_g = ts.speed; // Ground speed 
           double h_dot = state.u*sin(state.theta) - state.v*sin(state.phi)*cos(state.theta) - state.w*cos(state.phi)*cos(state.theta);
-          double gamma_now = asin(h_dot/Vg);
+          double gamma_now = asin(h_dot/speed_g);
 
           double glideslope_angle = atan2((std::abs(ts.end.z) -std::abs(ts.start.z)),ts.track_length); //Negative for decent
 
           // Assumes no wind
           double alpha_now = gamma_now - state.theta;
 
-          double gamma_desired = asin(m_dvrate/Vg);
+          double gamma_desired = asin(m_dvrate/speed_g);
           double gamma_error = gamma_now - gamma_desired;
           double V_error =  m_dspeed - m_airspeed;
 
