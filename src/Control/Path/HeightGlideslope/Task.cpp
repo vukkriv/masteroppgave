@@ -164,11 +164,11 @@ namespace Control
       {
         Arguments m_args;
         IMC::DesiredVerticalRate m_vrate;
-        IMC::DesiredZ zref;
+        IMC::DesiredZ m_zref;
         IMC::DesiredLinearState ref_nofilter; //Used for non-filtered height and glideslope_angle reference filtered and gldeslope_angle, for live plotting in Neptus
         IMC::ControlParcel m_parcel_los;
         IMC::RelativeState m_hdiff;
-        waypoint last_end_wp;
+        waypoint m_last_end_wp;
         Delta m_last_step;
 
         double glideslope_range;
@@ -182,14 +182,14 @@ namespace Control
         bool m_first_run;
         double los_angle;
         double start_time;
-        double last_end_z;
-        bool last_loitering;
-        double last_start_z;
+        double m_last_end_z;
+        bool m_last_loitering;
+        double m_last_start_z;
         bool first_waypoint;
         bool m_shifting_waypoint;
         double state_z_shifting;
-        bool last_WP_loiter;
-        double last_loiter_z;
+        bool m_last_WP_loiter;
+        double m_last_loiter_z;
         double m_prev_unfiltered_height;
         bool m_last_filter_ramp;
         ReferenceModel m_refmodel_z;
@@ -208,7 +208,7 @@ namespace Control
           m_first_run(true),
           los_angle(1.0),
           start_time(99999),
-          last_start_z(9999),
+          m_last_start_z(9999),
           first_waypoint(true),
           m_shifting_waypoint(false),
           m_prev_unfiltered_height(0),
@@ -342,7 +342,6 @@ namespace Control
         onPathStartup(const IMC::EstimatedState& state, const TrackingState& ts)
         {
           (void)state;
-          (void)ts;
 
           if (m_args.use_controller)
           {
@@ -351,28 +350,24 @@ namespace Control
           }
 
           //Check if tracking to first waypoint
-          if(last_start_z != ts.start.z){
-            if(last_end_z == ts.start.z){
+          if(m_last_start_z != ts.start.z)
+          {
+            if(m_last_end_z == ts.start.z)
               first_waypoint = false;
-            }
-            else{
+            else
               first_waypoint = true;
-            }
           }
 
-          if(ts.start.z == last_end_z){
+          if(m_last_end_z == ts.start.z)
             first_waypoint = false;
-          }
 
-          last_end_z = ts.end.z;
-          last_start_z = ts.start.z;
+          m_last_end_z = ts.end.z;
+          m_last_start_z = ts.start.z;
           m_shifting_waypoint = true;
-          if(last_loitering){
-            last_WP_loiter = true;
-          }
-          else{
-            last_WP_loiter = false;
-          }
+          if(m_last_loitering)
+            m_last_WP_loiter = true;
+          else
+            m_last_WP_loiter = false;
         }
 
         bool
@@ -391,9 +386,8 @@ namespace Control
           double start_z = ts.start.z;
           double end_z = ts.end.z;
 
-          if(first_waypoint){
+          if(first_waypoint)
             start_z = state.height - start_z;
-          }
 
           double speed_g = ts.speed; // Ground speed 
 
@@ -401,18 +395,18 @@ namespace Control
           glideslope_angle = atan2((std::abs(end_z) -std::abs(start_z)),ts.track_length); //Negative for decent
           double glideslope_angle_nofilter = glideslope_angle;
 
-          if(last_WP_loiter){
-            start_z = last_loiter_z;
-          }
+          if(m_last_WP_loiter)
+            start_z = m_last_loiter_z;
+
 
           //Calculate Z_ref based along-track along the glideslope. Endpoint is trimmed in order so Z_ref always is between the waypoints
           if(std::abs(start_z) < std::abs(end_z)){//Glide-slope upwards
-            zref.value = (tan(glideslope_angle)*(ts.track_length - ts.range)) + std::abs(start_z); //Current desired z
-            zref.value = trimValue(zref.value,std::abs(start_z),tan(glideslope_angle)*(ts.track_length) + std::abs(start_z));
+            m_zref.value = (tan(glideslope_angle)*(ts.track_length - ts.range)) + std::abs(start_z); //Current desired z
+            m_zref.value = trimValue(m_zref.value,std::abs(start_z),tan(glideslope_angle)*(ts.track_length) + std::abs(start_z));
           }
           else{ //Glide-slope downwards
-            zref.value = (tan(glideslope_angle)*(ts.track_length - ts.range)) + std::abs(start_z); //Current desired z
-            zref.value = trimValue(zref.value,tan(glideslope_angle)*(ts.track_length)+ std::abs(start_z),std::abs(start_z));
+            m_zref.value = (tan(glideslope_angle)*(ts.track_length - ts.range)) + std::abs(start_z); //Current desired z
+            m_zref.value = trimValue(m_zref.value,tan(glideslope_angle)*(ts.track_length)+ std::abs(start_z),std::abs(start_z));
           }
           if (m_first_run){
             // Avoid large jumps in the desired height when 
@@ -433,9 +427,9 @@ namespace Control
           }
 
           if(ts.loitering){
-            zref.value = ts.loiter.center.z;
+            m_zref.value = ts.loiter.center.z;
             glideslope_angle = 0.0;
-            last_loiter_z = ts.loiter.center.z;
+            m_last_loiter_z = ts.loiter.center.z;
             debug("Loiter-z: %f",ts.loiter.center.z);
             debug("end-z : %f",ts.end.z);
             debug("start-z : %f",ts.start.z);
@@ -448,12 +442,12 @@ namespace Control
           //****************************************************
           // Reference model for desired Z and flight-path angle
           //****************************************************
-          ref_nofilter.z = zref.value;
+          ref_nofilter.z = m_zref.value;
           ref_nofilter.ay = glideslope_angle;
 
           if(m_args.use_refmodel)
           {
-            double height_ref_derivative = (zref.value - m_prev_unfiltered_height)/ts.delta;
+            double height_ref_derivative = (m_zref.value - m_prev_unfiltered_height)/ts.delta;
             spew("Height ref derivative: %f", height_ref_derivative);
             spew("Last filter ramp?: %d", m_last_filter_ramp);
 
@@ -473,9 +467,9 @@ namespace Control
               m_last_filter_ramp = true;
             //}
 
-            debug("Z-ref before filter: %f",zref.value);
-            m_refmodel_z.x = (m_refmodel_z.I + (ts.delta*m_refmodel_z.A))*m_refmodel_z.x + (ts.delta*m_refmodel_z.B) * zref.value;
-            zref.value = m_refmodel_z.C(0,0)*m_refmodel_z.x(0,0) + m_refmodel_z.C(0,1)*m_refmodel_z.x(1,0) + m_refmodel_z.C(0,2)*m_refmodel_z.x(2,0);
+            debug("Z-ref before filter: %f",m_zref.value);
+            m_refmodel_z.x = (m_refmodel_z.I + (ts.delta*m_refmodel_z.A))*m_refmodel_z.x + (ts.delta*m_refmodel_z.B) * m_zref.value;
+            m_zref.value = m_refmodel_z.C(0,0)*m_refmodel_z.x(0,0) + m_refmodel_z.C(0,1)*m_refmodel_z.x(1,0) + m_refmodel_z.C(0,2)*m_refmodel_z.x(2,0);
 
             debug("glideslope before filter: %f",glideslope_angle);
 
@@ -486,7 +480,7 @@ namespace Control
 
 
           //Calculate height error along glideslope
-          double h_error = (zref.value - (state.height - state.z))*cos(glideslope_angle);
+          double h_error = (m_zref.value - (state.height - state.z))*cos(glideslope_angle);
           spew("H_error: %f",h_error);
 
           //Integrator
@@ -539,21 +533,21 @@ namespace Control
           //h_dot_desired = speed_g*sin(2*(M_PI/180));
           //m_vrate.value= h_dot_desired;
 
-          m_hdiff.err_z = (state.height - state.z) - zref.value;
+          m_hdiff.err_z = (state.height - state.z) - m_zref.value;
 
           m_prev_unfiltered_height = ref_nofilter.z;
 
           dispatch(m_vrate);
-          zref.z_units=Z_HEIGHT;
-          dispatch(zref);
+          m_zref.z_units=Z_HEIGHT;
+          dispatch(m_zref);
           dispatch(ref_nofilter);
           dispatch(m_parcel_los);
           dispatch(m_hdiff);
 
-          last_end_wp.x = ts.end.x;
-          last_end_wp.y = ts.end.y;
-          last_end_wp.z = ts.end.z;
-          last_loitering = ts.loitering;
+          m_last_end_wp.x = ts.end.x;
+          m_last_end_wp.y = ts.end.y;
+          m_last_end_wp.z = ts.end.z;
+          m_last_loitering = ts.loitering;
         }
       };
     }
