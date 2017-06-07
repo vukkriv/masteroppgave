@@ -82,9 +82,8 @@ namespace Control
         double m_dvrate;
         double m_thr_i;
         double m_dz;
-        double H_error;
-        bool H_error_feedforward;
-
+        double m_h_err;
+        bool   m_h_err_feedforward;
         Delta m_last_step;
 
         Task(const std::string& name, Tasks::Context& ctx):
@@ -94,8 +93,8 @@ namespace Control
           m_dvrate(0.0),
           m_thr_i(0.0),
           m_dz(0.0),
-          H_error(0.0),
-          H_error_feedforward(false)
+          m_h_err(0.0),
+          m_h_err_feedforward(false)
 
         {
           param("Use controller", m_args.use_controller)
@@ -230,11 +229,11 @@ namespace Control
         void
         consume(const IMC::DesiredZ* d_z)
         {
-          if(!(d_z->getSourceEntity() == resolveEntity(m_args.dz_src))){
+          if(!(d_z->getSourceEntity() == resolveEntity(m_args.dz_src)))
             return;
-          }
 
-          H_error_feedforward = true;
+
+          m_h_err_feedforward = true;
 
           m_dz = d_z->value;
         }
@@ -242,9 +241,9 @@ namespace Control
         void
         consume(const IMC::DesiredVerticalRate* d_vrate)
         {
-          if(!(d_vrate->getSourceEntity() == resolveEntity(m_args.dz_src))){
+          if(!(d_vrate->getSourceEntity() == resolveEntity(m_args.dz_src)))
             return;
-          }
+
           m_dvrate = d_vrate->value;
         }
 
@@ -267,12 +266,14 @@ namespace Control
           double gamma_error = gamma_now - gamma_desired;
           double V_error =  m_dspeed - m_airspeed;
 
-          if(H_error_feedforward){
-            H_error = (m_dz - (state.height - state.z))*std::cos(glideslope_angle);
-            H_error = trimValue(H_error,-2,2);
+          if(m_h_err_feedforward){
+            m_h_err = (m_dz - (state.height - state.z))*std::cos(glideslope_angle);
+            m_h_err = trimValue(m_h_err,-2,2);
           }
           else
-            H_error = 0.0;
+          {
+            m_h_err = 0.0;
+          }
 
 
           //Throttle integrator
@@ -281,7 +282,7 @@ namespace Control
           m_thr_i = trimValue(m_thr_i,m_args.thr_min,m_args.thr_max); //Throttle anti wind-up at 
 
           //Calculate desired throttle and pitch
-          double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i*m_thr_i + H_error*m_args.k_thr_ph + m_args.trim_throttle;
+          double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i*m_thr_i + m_h_err*m_args.k_thr_ph + m_args.trim_throttle;
           double pitch_desired = gamma_desired + Angles::radians(m_args.trim_pitch)-gamma_error*m_args.k_gamma_p; //Backstepping,pitch_desired = gamma_desired + alpha_0
           pitch_desired = trimValue(pitch_desired,Angles::radians(m_args.pitch_min_deg),Angles::radians(m_args.pitch_max_deg));
           m_throttle.value = throttle_desired;
@@ -289,7 +290,7 @@ namespace Control
 
           m_parcels[PC_THR].p = m_args.k_thr_p*V_error;
           m_parcels[PC_THR].i = m_args.k_thr_i*m_thr_i;
-          m_parcels[PC_THR].d = H_error*m_args.k_thr_ph ;
+          m_parcels[PC_THR].d = m_h_err*m_args.k_thr_ph ;
           m_parcels[PC_PTCH].p = gamma_error*m_args.k_gamma_p; 
 
           spew("pitch desired: %f \t alpha_0: %f",m_pitch.value,Angles::degrees(alpha_now));
