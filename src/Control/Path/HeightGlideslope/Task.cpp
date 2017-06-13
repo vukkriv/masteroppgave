@@ -43,16 +43,20 @@ namespace Control
       {
         bool use_controller; //Flag to enable controller
         bool use_refmodel;
+        bool use_ratelim;
         double k_ph_down;
         double k_ih_down;
+        double k_dh_down;
         double k_r_down;
 
         double k_ph_up;
         double k_ih_up;
+        double k_dh_up;
         double k_r_up;
 
         double k_ph_line;
         double k_ih_line;
+        double k_dh_line;
         double k_r_line;
 
         double Tref_z_ramp;
@@ -64,6 +68,10 @@ namespace Control
 
         double los_min_deg;
         double los_max_deg;
+        double upper_lim_zrate;
+        double lower_lim_zrate;
+        double upper_lim_gammarate;
+        double lower_lim_gammarate;
       };
 
       class ReferenceModel
@@ -191,6 +199,8 @@ namespace Control
         bool m_last_WP_loiter;
         double m_last_loiter_z;
         double m_prev_unfiltered_height;
+        double m_prev_z;
+        double m_prev_gamma;
         bool m_last_filter_ramp;
         ReferenceModel m_refmodel_z;
         ReferenceModel m_refmodel_gamma;
@@ -212,6 +222,8 @@ namespace Control
           first_waypoint(true),
           m_shifting_waypoint(false),
           m_prev_unfiltered_height(0),
+          m_prev_z(0.0),
+          m_prev_gamma(0.0),
           m_last_filter_ramp(false)
 
         {
@@ -222,6 +234,10 @@ namespace Control
           param("LOS Integral gain up", m_args.k_ih_up)
           .defaultValue("0.1")
           .description("LOS Integral gain for control");
+
+          param("LOS Derivative gain up", m_args.k_dh_up)
+          .defaultValue("0.0")
+          .description("LOS Derivative gain for control");
 
           param("LOS Radius up", m_args.k_r_up)
           .defaultValue("14.0")
@@ -235,6 +251,10 @@ namespace Control
           .defaultValue("0.1")
           .description("LOS Integral gain for control");
 
+          param("LOS Derivative gain down", m_args.k_dh_down)
+          .defaultValue("0.0")
+          .description("LOS Derivative gain for control");
+
           param("LOS Radius down", m_args.k_r_down)
           .defaultValue("14.0")
           .description("Approach distance gain up");
@@ -242,6 +262,10 @@ namespace Control
           param("LOS Proportional gain line", m_args.k_ph_line)
           .defaultValue("1.4")
           .description("LOS Proportional gain for control");
+
+          param("LOS Derivative gain line", m_args.k_dh_line)
+          .defaultValue("0.0")
+          .description("LOS Derivative gain for control");
 
           param("LOS Integral gain line", m_args.k_ih_line)
           .defaultValue("0.02")
@@ -276,18 +300,42 @@ namespace Control
           .description("Dampening ratio for reference model for gamma");
 
           param("Minimum LOS angle", m_args.los_min_deg)
-          .defaultValue("-7.0")              
+          .defaultValue("-10.0")              
           .units(Units::Degree)
           .description("Longitudinal line of sight angle is saturated to this value");
 
           param("Maximum LOS angle", m_args.los_max_deg)
-          .defaultValue("7.0")              
+          .defaultValue("10.0")              
           .units(Units::Degree)
           .description("Longitudinal line of sight angle is saturated to this value");
 
+          param("Maximum z rate", m_args.upper_lim_zrate)
+          .defaultValue("15.0")              
+          .units(Units::MeterPerSecond)
+          .description("When rate limited, z rate is saturated at this value");
+
+          param("Minimum z rate", m_args.lower_lim_zrate)
+          .defaultValue("-20.0")              
+          .units(Units::MeterPerSecond)
+          .description("When rate limited, z rate is saturated at this value");
+
+          param("Maximum gamma rate", m_args.upper_lim_gammarate)
+          .defaultValue("15.0")              
+          .units(Units::DegreePerSecond)
+          .description("When rate limited, gamma rate is saturated at this value");
+
+          param("Minimum gamma rate", m_args.lower_lim_gammarate)
+          .defaultValue("-15.0")              
+          .units(Units::DegreePerSecond)
+          .description("When rate limited, gamma rate is saturated at this value");
+
           param("Use reference model", m_args.use_refmodel)
-          .defaultValue("true")
+          .defaultValue("false")
           .description("Flag to use reference model");
+
+          param("Use rate limiter", m_args.use_ratelim)
+          .defaultValue("true")
+          .description("Flag to use rate limiter (when ref model is not used)");
 
           param("Use controller", m_args.use_controller)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -387,7 +435,10 @@ namespace Control
           double end_z = ts.end.z;
 
           if(first_waypoint)
+          {
             start_z = state.height - start_z;
+            m_prev_gamma = atan2((std::abs(end_z) -std::abs(start_z)),ts.track_length); //Negative for decent
+          }
 
           double speed_g = ts.speed; // Ground speed 
 
@@ -424,6 +475,8 @@ namespace Control
             m_refmodel_gamma.x(2,0) = 0.0;
 
             m_first_run = false;
+            m_prev_z = (state.height - state.z);
+            m_prev_gamma = glideslope_angle;
           }
 
           if(ts.loitering){
@@ -445,7 +498,7 @@ namespace Control
           ref_nofilter.z = m_zref.value;
           ref_nofilter.ay = glideslope_angle;
 
-          if(m_args.use_refmodel)
+          if((m_args.use_refmodel) && (ts.delta < 10))
           {
             double height_ref_derivative = (m_zref.value - m_prev_unfiltered_height)/ts.delta;
             spew("Height ref derivative: %f", height_ref_derivative);
@@ -475,9 +528,51 @@ namespace Control
 
             m_refmodel_gamma.x = (m_refmodel_gamma.I + (ts.delta*m_refmodel_gamma.A))*m_refmodel_gamma.x + (ts.delta*m_refmodel_gamma.B) * glideslope_angle;
             glideslope_angle = m_refmodel_gamma.C(0,0)*m_refmodel_gamma.x(0,0); //Uses C = [omega^3 0 0] because of unfiltered bahaviour is only a series of steps
-            ref_nofilter.vy = glideslope_angle;
+          }
+          else if ((m_args.use_ratelim) && (ts.delta < 10))
+          {
+            //height rate limiter
+              double rate = (m_zref.value - m_prev_z);
+              double upper_lim = ts.delta*m_args.upper_lim_zrate;
+              double lower_lim = ts.delta*m_args.lower_lim_zrate;
+              spew("Z upper %f, lower %f, rate %f, delta_t %f", upper_lim, lower_lim, rate, ts.delta);
+
+              //m_zref.value = trimValue(m_zref.value, m_prev_unfiltered_height
+              if (rate > upper_lim) 
+              {
+                m_zref.value = m_prev_z + ts.delta*upper_lim;
+                debug("Limiting z rate to upper lim: zref = %f", m_zref.value);
+              }
+              else if (rate < lower_lim)
+              {
+                m_zref.value = m_prev_z + ts.delta*lower_lim;
+                debug("Limiting z rate to lower lim: zref = %f", m_zref.value);
+              } 
+              //else //unmodified reference
+              
+            //gamma rate limiter
+              rate = (glideslope_angle - m_prev_gamma);
+              upper_lim = ts.delta*Angles::radians(m_args.upper_lim_gammarate);
+              lower_lim = ts.delta*Angles::radians(m_args.lower_lim_gammarate);
+              spew("Gamma upper %f, lower %f, rate %f, delta_t %f", upper_lim, lower_lim, rate, ts.delta);
+
+              //m_zref.value = trimValue(m_zref.value, m_prev_unfiltered_height
+              if (rate > upper_lim) 
+              {
+                glideslope_angle = m_prev_gamma + ts.delta*upper_lim;
+                debug("Limiting gamma rate to upper lim: gammaref = %f", glideslope_angle);
+              }
+              else if (rate < lower_lim)
+              {
+                glideslope_angle = m_prev_gamma + ts.delta*lower_lim;
+                debug("Limiting gamma rate to lower lim: gammaref = %f", glideslope_angle);
+              } 
+              //else //unmodified reference
           }
 
+          ref_nofilter.vy = glideslope_angle; //store filtered value, for plot
+          m_prev_z = m_zref.value;
+          m_prev_gamma = glideslope_angle;
 
           //Calculate height error along glideslope
           double h_error = (m_zref.value - (state.height - state.z))*cos(glideslope_angle);
@@ -488,13 +583,16 @@ namespace Control
           m_integrator = m_integrator + timestep*h_error;
           m_integrator = trimValue(m_integrator,-2,2); //Anti wind-up at 2 meter
 
+          //Derivative term
+          double h_dot = state.u*sin(state.theta) - state.v*sin(state.phi)*cos(state.theta) - state.w*cos(state.phi)*cos(state.theta);
+
 
           //Calculate look-ahead distance based on glide-slope up, down or straight line
           if(glideslope_angle_nofilter > 0){ //Glideslope up
             double h_error_trimmed = trimValue(std::abs(h_error),0.0,m_args.k_r_up-0.5); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             double h_app = sqrt(m_args.k_r_up*m_args.k_r_up - h_error_trimmed*h_error_trimmed);
             m_parcel_los.a = h_app;
-            los_angle = atan2(m_args.k_ph_up*h_error + m_args.k_ih_up*m_integrator,h_app); //Calculate LOS-angle glideslope up
+            los_angle = atan2(m_args.k_ph_up*h_error + m_args.k_ih_up*m_integrator + m_args.k_dh_up*h_dot,h_app); //Calculate LOS-angle glideslope up
             m_parcel_los.p = m_args.k_ph_up*h_error;
             m_parcel_los.i = m_args.k_ih_up*m_integrator;
             spew("Glideslope UP! %f",glideslope_angle);
@@ -503,17 +601,16 @@ namespace Control
             double h_error_trimmed = trimValue(std::abs(h_error),0.0,m_args.k_r_down-0.5); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             double h_app = sqrt(m_args.k_r_down*m_args.k_r_down - h_error_trimmed*h_error_trimmed);
             m_parcel_los.a = h_app;
-            los_angle = atan2(m_args.k_ph_down*h_error + m_args.k_ih_down*m_integrator,h_app); //Calculate LOS-angle glideslope down
+            los_angle = atan2(m_args.k_ph_down*h_error + m_args.k_ih_down*m_integrator + m_args.k_dh_down*h_dot,h_app); //Calculate LOS-angle glideslope down
             m_parcel_los.p = m_args.k_ph_down*h_error;
             m_parcel_los.i = m_args.k_ih_down*m_integrator;
-
             spew("Glideslope DOWN! %f",glideslope_angle);
           }
           else{//Straight line
             double h_error_trimmed = trimValue(std::abs(h_error),0.0,m_args.k_r_line-0.5); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             double h_app = sqrt(m_args.k_r_line*m_args.k_r_line - h_error_trimmed*h_error_trimmed);
             m_parcel_los.a = h_app;
-            los_angle = atan2(m_args.k_ph_line*h_error + m_args.k_ih_line*m_integrator,h_app); //Calculate LOS-angle straight line
+            los_angle = atan2(m_args.k_ph_line*h_error + m_args.k_ih_line*m_integrator + m_args.k_dh_line*h_dot,h_app); //Calculate LOS-angle straight line
             m_parcel_los.p = m_args.k_ph_line*h_error;
             m_parcel_los.i = m_args.k_ih_line*m_integrator;
             spew("Glideslope LINE ! %f",glideslope_angle);
