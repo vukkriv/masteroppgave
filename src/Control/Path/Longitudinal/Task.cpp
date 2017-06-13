@@ -285,7 +285,7 @@ namespace Control
           double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i*m_thr_i + m_h_err*m_args.k_thr_ph + m_args.trim_throttle;
           double pitch_desired = gamma_desired + Angles::radians(m_args.trim_pitch)-gamma_error*m_args.k_gamma_p; //Backstepping,pitch_desired = gamma_desired + alpha_0
           pitch_desired = trimValue(pitch_desired,Angles::radians(m_args.pitch_min_deg),Angles::radians(m_args.pitch_max_deg));
-          m_throttle.value = throttle_desired;
+          m_throttle.value = trimValue(throttle_desired, 0, 100);
           m_pitch.value = pitch_desired;
 
           m_parcels[PC_THR].p = m_args.k_thr_p*V_error;
