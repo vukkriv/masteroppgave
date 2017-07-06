@@ -205,7 +205,7 @@ namespace Control
           PathController::onEntityReservation();
 
           for (unsigned i = 0; i < NUM_PARCELS; ++i)
-            m_parcels[i].setSourceEntity(reserveEntity(c_parcel_names[i] + " Parcel"));
+            m_parcels[i].setSourceEntity(reserveEntity(this->getEntityLabel() + c_parcel_names[i] + " Parcel"));
         }
 
 
