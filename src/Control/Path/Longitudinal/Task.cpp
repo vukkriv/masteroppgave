@@ -51,26 +51,39 @@ namespace Control
         double k_thr_ph;
         double trim_pitch;
         double trim_throttle;
+        double thr_max;
+        double thr_min;
+        double pitch_max_deg;
+        double pitch_min_deg;
         // Input filtering
         std::string dz_src;
 
       };
+
+      static const std::string c_parcel_names[] = {DTR_RT("Throttle"), DTR_RT("Pitch")};
+
+      enum Parcel {
+        PC_THR = 0,
+        PC_PTCH = 1
+      };
+
+      static const int NUM_PARCELS = 2;
 
       struct Task: public DUNE::Control::PathController
       {
         Arguments m_args;
         IMC::DesiredThrottle m_throttle;
         IMC::DesiredPitch m_pitch;
-        IMC::ControlParcel m_parcel_throttle;
+        //! Parcel array
+        IMC::ControlParcel m_parcels[NUM_PARCELS];
 
         double m_airspeed;
         double m_dspeed;
         double m_dvrate;
         double m_thr_i;
         double m_dz;
-        double H_error;
-        bool H_error_feedforward;
-
+        double m_h_err;
+        bool   m_h_err_feedforward;
         Delta m_last_step;
 
         Task(const std::string& name, Tasks::Context& ctx):
@@ -80,8 +93,8 @@ namespace Control
           m_dvrate(0.0),
           m_thr_i(0.0),
           m_dz(0.0),
-          H_error(0.0),
-          H_error_feedforward(false)
+          m_h_err(0.0),
+          m_h_err_feedforward(false)
 
         {
           param("Use controller", m_args.use_controller)
@@ -114,9 +127,29 @@ namespace Control
           .defaultValue("44.0")
           .description("Trim throttle for level flight");
 
-          param("DesiredZ Filter", m_args.dz_src)
-          .defaultValue("Tracking Altitude Controller")
-          .description("Entity allowed to set DesiredZ.");
+          param("Minimum pitch", m_args.pitch_min_deg)
+          .defaultValue("-10.0")              
+          .units(Units::Degree)
+          .description("Desired pitch is saturated to this value");
+
+          param("Maximum pitch", m_args.pitch_max_deg)
+          .defaultValue("15.0")
+          .units(Units::Degree)
+          .description("Desired pitch is saturated to this value");
+
+          param("Minimum throttle", m_args.thr_min)
+          .defaultValue("-30.0")              
+          .units(Units::Percentage)
+          .description("Throttle integrator is limited to this percentage");
+
+          param("Maximum throttle", m_args.thr_max)
+          .defaultValue("30.0")              
+          .units(Units::Percentage)
+          .description("Throttle integrator is limited to this percentage");
+
+          param("Desired Vertical Rate source", m_args.dz_src)
+          .defaultValue("Glideslope Height Controller")
+          .description("Entity allowed to set DesiredZ and DesiredVerticalRate.");
 
           bind<IMC::IndicatedSpeed>(this);
           bind<IMC::DesiredVerticalRate>(this);
@@ -126,13 +159,25 @@ namespace Control
         }
 
         void
+        onUpdateParameters(void)
+        {
+          PathController::onUpdateParameters();
+
+
+          if (paramChanged(m_args.use_controller) && !m_args.use_controller)
+          { //controller should no longer be used
+            disableControlLoops(IMC::CL_THROTTLE | IMC::CL_PITCH);
+          }
+
+        }
+
+        void
         onPathActivation(void)
         {
           if (!m_args.use_controller)
             return;
           // Activate controller
-          enableControlLoops(IMC::CL_THROTTLE);
-          enableControlLoops(IMC::CL_PITCH);
+          enableControlLoops(IMC::CL_THROTTLE | IMC::CL_PITCH);
         }
 
         virtual void
@@ -141,26 +186,25 @@ namespace Control
           (void)state;
           (void)ts;
 
-          if (!m_args.use_controller){
-            disableControlLoops(IMC::CL_THROTTLE);
-            disableControlLoops(IMC::CL_PITCH);
-
-          }
-          else{
+          if (m_args.use_controller){
             // Activate controller
-            enableControlLoops(IMC::CL_THROTTLE);
-            enableControlLoops(IMC::CL_PITCH);
+            enableControlLoops(IMC::CL_THROTTLE | IMC::CL_PITCH);
           }
         }
 
         void
         onPathDeactivation(void)
         {
-          if (!m_args.use_controller){
-            // Deactivate controller.
-            disableControlLoops(IMC::CL_THROTTLE);
-            disableControlLoops(IMC::CL_PITCH);
-          }
+
+        }
+
+        void
+        onEntityReservation(void)
+        {
+          PathController::onEntityReservation();
+
+          for (unsigned i = 0; i < NUM_PARCELS; ++i)
+            m_parcels[i].setSourceEntity(reserveEntity(this->getEntityLabel() + c_parcel_names[i] + " Parcel"));
         }
 
 
@@ -185,11 +229,11 @@ namespace Control
         void
         consume(const IMC::DesiredZ* d_z)
         {
-          if(!(d_z->getSourceEntity() == resolveEntity(m_args.dz_src))){
+          if(!(d_z->getSourceEntity() == resolveEntity(m_args.dz_src)))
             return;
-          }
 
-          H_error_feedforward = true;
+
+          m_h_err_feedforward = true;
 
           m_dz = d_z->value;
         }
@@ -197,6 +241,9 @@ namespace Control
         void
         consume(const IMC::DesiredVerticalRate* d_vrate)
         {
+          if(!(d_vrate->getSourceEntity() == resolveEntity(m_args.dz_src)))
+            return;
+
           m_dvrate = d_vrate->value;
         }
 
@@ -206,52 +253,53 @@ namespace Control
           if (!m_args.use_controller)
             return;
 
-          double Vg = sqrt( (state.vx*state.vx) + (state.vy*state.vy) + (state.vz*state.vz) ); // Ground speed
+          double speed_g = ts.speed; // Ground speed 
           double h_dot = state.u*sin(state.theta) - state.v*sin(state.phi)*cos(state.theta) - state.w*cos(state.phi)*cos(state.theta);
-          double gamma_now = asin(h_dot/Vg);
+          double gamma_now = asin(h_dot/speed_g);
 
           double glideslope_angle = atan2((std::abs(ts.end.z) -std::abs(ts.start.z)),ts.track_length); //Negative for decent
 
+          // Assumes no wind
           double alpha_now = gamma_now - state.theta;
 
-          double gamma_desired = asin(m_dvrate/Vg);
+          double gamma_desired = asin(m_dvrate/speed_g);
           double gamma_error = gamma_now - gamma_desired;
           double V_error =  m_dspeed - m_airspeed;
 
-          if(H_error_feedforward){
-            H_error = (m_dz - (state.height - state.z))*std::cos(glideslope_angle);
-            H_error = trimValue(H_error,-2,2);
+          if(m_h_err_feedforward){
+            m_h_err = (m_dz - (state.height - state.z))*std::cos(glideslope_angle);
+            m_h_err = trimValue(m_h_err,-2,2);
           }
           else
-            H_error = 0.0;
+          {
+            m_h_err = 0.0;
+          }
 
 
           //Throttle integrator
           double timestep = m_last_step.getDelta();
           m_thr_i = m_thr_i + timestep*V_error;
-          m_thr_i = trimValue(m_thr_i,-30,30); //Anti wind-up at 30 % throttle
+          m_thr_i = trimValue(m_thr_i,m_args.thr_min,m_args.thr_max); //Throttle anti wind-up at 
 
           //Calculate desired throttle and pitch
-          double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i *m_thr_i+ H_error*m_args.k_thr_ph + m_args.trim_throttle;
-          //double pitch_desired = gamma_desired + alpha_now-gamma_error*m_args.k_gamma_p;
+          double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i*m_thr_i + m_h_err*m_args.k_thr_ph + m_args.trim_throttle;
           double pitch_desired = gamma_desired + Angles::radians(m_args.trim_pitch)-gamma_error*m_args.k_gamma_p; //Backstepping,pitch_desired = gamma_desired + alpha_0
-          pitch_desired = trimValue(pitch_desired,-0.1745,0.2618); //Trim pitch -10 / 15 degree
-          m_throttle.value = throttle_desired;
+          pitch_desired = trimValue(pitch_desired,Angles::radians(m_args.pitch_min_deg),Angles::radians(m_args.pitch_max_deg));
+          m_throttle.value = trimValue(throttle_desired, 0, 100);
           m_pitch.value = pitch_desired;
 
-          m_parcel_throttle.p = m_args.k_thr_p*V_error;
-          m_parcel_throttle.i = m_args.k_thr_i *m_thr_i;
-          m_parcel_throttle.d = H_error*m_args.k_thr_ph ;
-          m_parcel_throttle.a = gamma_error*m_args.k_gamma_p; // pitch
+          m_parcels[PC_THR].p = m_args.k_thr_p*V_error;
+          m_parcels[PC_THR].i = m_args.k_thr_i*m_thr_i;
+          m_parcels[PC_THR].d = m_h_err*m_args.k_thr_ph ;
+          m_parcels[PC_PTCH].p = gamma_error*m_args.k_gamma_p; 
 
-
-
-
-          spew("pitch desired er %f, og alpha_0 er: %f",m_pitch.value,Angles::degrees(alpha_now));
+          spew("pitch desired: %f \t alpha_0: %f",m_pitch.value,Angles::degrees(alpha_now));
 
           dispatch(m_throttle);
           dispatch(m_pitch);
-          dispatch(m_parcel_throttle);
+          for (int i = 0; i < NUM_PARCELS; ++i) {
+            dispatch(m_parcels[i]);
+          }
         }
       };
     }
