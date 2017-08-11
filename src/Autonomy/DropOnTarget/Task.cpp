@@ -142,6 +142,8 @@ namespace Autonomy
       SimpleState m_start_point;
       //RTK Position
       SimpleState m_RTK_state;
+      //Current Position
+      SimpleState m_GPS_state;
       // Autopilot mode
       string m_autopilotmode;
 
@@ -357,6 +359,13 @@ namespace Autonomy
       consume(const IMC::EstimatedState* msg)
       {
         m_estate = *msg;
+        m_GPS_state.lat = msg->lat;
+        m_GPS_state.lon = msg->lon;
+        m_GPS_state.z = msg->height;
+        m_GPS_state.vx = msg->vx;
+        m_GPS_state.vy = msg->vy;
+        m_GPS_state.vz = msg->vz;
+        WGS84::displace(msg->x,msg->y,msg->z,&m_GPS_state.lat,&m_GPS_state.lon,&m_GPS_state.z);
         if(m_is_wind_received && m_is_ready && !m_is_on_ground && !m_is_initiated)
         {
           m_is_initiated = true;
@@ -616,12 +625,8 @@ namespace Autonomy
           return;
         }
 
-        fp64_t lat, lon;
-        fp32_t height;
-        getCurrentLatLonHeight(&lat, &lon, &height);
-
         //check speed vector vs carp wind vector and closeness to start point
-        if (WGS84::distance(m_start_point.lat, m_start_point.lon, 0, lat, lon, 0) < m_args.accepted_distance_to_start_point)
+        if (WGS84::distance(m_start_point.lat, m_start_point.lon, 0, m_GPS_state.lat, m_GPS_state.lon, 0) < m_args.accepted_distance_to_start_point)
         {
           if(isParallelish(m_estate, m_carp_ewind, m_args.percent_accurate))
           {
@@ -638,10 +643,8 @@ namespace Autonomy
         {
           war("Guided. State: %d", m_current_state);
         }
-        fp64_t lat,lon;
-        fp32_t height, distance_to_point = INT_MAX;
-        getCurrentLatLonHeight(&lat,&lon,&height);
-        distance_to_point = distanceByTime(lat, lon, height, m_args.glide_time + m_args.drop_time);
+        fp32_t distance_to_point = INT_MAX;
+        distance_to_point = distanceByTime(m_GPS_state.lat, m_GPS_state.lon, m_GPS_state.z, m_args.glide_time + m_args.drop_time);
         fp64_t smallest_distance = distance_to_point;
 
         if("LONG_STRETCH" == m_args.guidance_mode_input)
@@ -653,7 +656,7 @@ namespace Autonomy
           if(//distance_to_point < m_args.distance_circle_to_CARP/2 &&
               m_counter%m_args.opt_rate_inverse == 0)
           {
-            updateOptimalCarp(height);
+            updateOptimalCarp(m_GPS_state.z);
           }
         }
         else if("OWSI"== m_args.guidance_mode_input)
@@ -662,7 +665,7 @@ namespace Autonomy
               m_counter%m_args.opt_rate_inverse == 0)
           {
             if(m_beacon.estimated_carp_error(m_ewind, m_estate) > 0.5)
-              updateOptimalCarp(height);
+              updateOptimalCarp(m_GPS_state.z);
           }
         }
         m_counter++;
@@ -720,16 +723,15 @@ namespace Autonomy
         fp32_t carp_dist;
 
         war("This is a simple drop!");
-        fp64_t lat = m_estate.lat;
-        fp64_t lon = m_estate.lon;
-        fp64_t height = m_estate.height;
-        WGS84::displace(m_estate.x,m_estate.y,m_estate.z,&lat,&lon,&height);
         fp32_t CARP_target[3];
-        WGS84::displacement(m_target.lat,m_target.lon,m_target.z,m_beacon.get_CARP().lat,m_beacon.get_CARP().lon,m_beacon.get_CARP().z,&CARP_target[0],&CARP_target[1],&CARP_target[2]);
+        WGS84::displacement(m_target.lat,m_target.lon,m_target.z,m_beacon.get_CARP().lat,m_beacon.get_CARP().lon,m_beacon.get_CARP().z,
+            &CARP_target[0],&CARP_target[1],&CARP_target[2]);
         fp32_t GSPpos_target[3];
-        WGS84::displacement(m_target.lat,m_target.lon,m_target.z,lat,lon,height,&GSPpos_target[0],&GSPpos_target[1],&GSPpos_target[2]);
+        WGS84::displacement(m_target.lat,m_target.lon,m_target.z,m_GPS_state.lat,m_GPS_state.lon,m_GPS_state.z,
+            &GSPpos_target[0],&GSPpos_target[1],&GSPpos_target[2]);
         fp32_t RTKpos_target[3];
-        WGS84::displacement(m_target.lat,m_target.lon,m_target.z,m_RTK_state.lat,m_RTK_state.lon,m_RTK_state.z,&RTKpos_target[0],&RTKpos_target[1],&RTKpos_target[2]);
+        WGS84::displacement(m_target.lat,m_target.lon,m_target.z,m_RTK_state.lat,m_RTK_state.lon,m_RTK_state.z,
+            &RTKpos_target[0],&RTKpos_target[1],&RTKpos_target[2]);
         war("CARP displacement from target: %f %f %f",CARP_target[0],CARP_target[1],CARP_target[2]);
         war("GPS position displacement from target: %f %f %f",GSPpos_target[0],GSPpos_target[1],GSPpos_target[2]);
         war("RTK position displacement from target: %f %f %f",RTKpos_target[0],RTKpos_target[1],RTKpos_target[2]);
@@ -814,12 +816,7 @@ namespace Autonomy
           war("Guided. State: %d", m_current_state);
         }
         dispatch(m_ref);
-        fp64_t lat, lon;
-        lat = m_estate.lat;
-        lon = m_estate.lon;
-        fp32_t height = m_estate.height;
-        getCurrentLatLonHeight(&lat,&lon,&height);
-        fp32_t distance_to_ref = WGS84::distance(lat,lon,0.0,m_ref.lat,m_ref.lon,0.0);
+        fp32_t distance_to_ref = WGS84::distance(m_GPS_state.lat,m_GPS_state.lon,0.0,m_ref.lat,m_ref.lon,0.0);
         if(distance_to_ref < 50)
         {
           if(m_args.simulation)
@@ -842,11 +839,7 @@ namespace Autonomy
       void
       setLongStretchReference( void )
       {
-        fp64_t lat = m_estate.lat, lon = m_estate.lon;
-        fp32_t height = m_estate.height;
-        getCurrentLatLonHeight(&lat,&lon,&height);
-
-        m_beacon.optimal_CARP(height, m_ewind, m_estate);
+        m_beacon.optimal_CARP(m_GPS_state.z, m_ewind, m_estate);
 
         m_ref.radius = 0.0; //Small radius to make UAV go straight: DANGER! DANGER! //20 is minimum
         m_ref.lat = m_beacon.get_CARP().lat;
@@ -859,10 +852,9 @@ namespace Autonomy
 
         m_ref.flags = Reference::FLAG_DIRECT | Reference::FLAG_SPEED | Reference::FLAG_LOCATION | Reference::FLAG_Z | Reference::FLAG_RADIUS;
 
-
         fp32_t disp[3];
-        WGS84::displacement(lat,lon,height,m_beacon.get_CARP().lat,m_beacon.get_CARP().lon,m_beacon.get_CARP().z,&disp[0],&disp[1],&disp[2]);
-
+        WGS84::displacement(m_GPS_state.lat,m_GPS_state.lon,m_GPS_state.z,
+            m_beacon.get_CARP().lat,m_beacon.get_CARP().lon,m_beacon.get_CARP().z,&disp[0],&disp[1],&disp[2]);
         WGS84::displace(0.5*disp[0],0.5*disp[1], &m_ref.lat,&m_ref.lon);
         dispatch(m_ref);
 
@@ -908,7 +900,6 @@ namespace Autonomy
         man.timeout = m_args.connection_timeout;
 
         IMC::PlanSpecification spec;
-
         spec.plan_id = "drop_plan";
         spec.start_man_id = "follow_drop";
         IMC::PlanManeuver pm;
@@ -919,7 +910,6 @@ namespace Autonomy
         startPlan.arg.set(spec);
         startPlan.request_id = 0;
         startPlan.flags = 0;
-
         dispatch(startPlan);
       }
 
@@ -986,13 +976,6 @@ namespace Autonomy
           m_continue_state_machine = true;
         dispatch(stopPlan);
         m_is_executing = false;
-      }
-
-      //Get current lat lon and height
-      void
-      getCurrentLatLonHeight(fp64_t *lat, fp64_t *lon, fp32_t *height){
-        *lat = m_estate.lat, *lon = m_estate.lon, *height = m_estate.height;
-        WGS84::displace(m_estate.x, m_estate.y, m_estate.z, lat, lon, height);
       }
 
       //Check how far you are from the CARP in a certain number of seconds
