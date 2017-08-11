@@ -137,11 +137,11 @@ namespace Autonomy
       //Weighing matrix for velocity
       Matrix m_W_vel;
       //End point
-      BeaconPoint m_end_point;
+      SimpleState m_end_point;
       //Start point
-      BeaconPoint m_start_point;
+      SimpleState m_start_point;
       //RTK Position
-      BeaconPoint m_UAV_state;
+      SimpleState m_RTK_state;
       // Autopilot mode
       string m_autopilotmode;
 
@@ -367,13 +367,13 @@ namespace Autonomy
       void
       consume(const IMC::GpsFixRtk* msg)
       {
-        m_UAV_state.lat = msg->base_lat;
-        m_UAV_state.lon = msg->base_lon;
-        m_UAV_state.z = msg->base_height;
-        m_UAV_state.vx = msg->v_n;
-        m_UAV_state.vy = msg->v_e;
-        m_UAV_state.vz = msg->v_d;
-        WGS84::displace(msg->n,msg->e,msg->d,&m_UAV_state.lat,&m_UAV_state.lon,&m_UAV_state.z);
+        m_RTK_state.lat = msg->base_lat;
+        m_RTK_state.lon = msg->base_lon;
+        m_RTK_state.z = msg->base_height;
+        m_RTK_state.vx = msg->v_n;
+        m_RTK_state.vy = msg->v_e;
+        m_RTK_state.vz = msg->v_d;
+        WGS84::displace(msg->n,msg->e,msg->d,&m_RTK_state.lat,&m_RTK_state.lon,&m_RTK_state.z);
       }
 
       //Get usefull entities
@@ -483,7 +483,7 @@ namespace Autonomy
       consume(const IMC::Target* msg)
       {
         if(m_is_initiated){
-//          inf("Target received!");
+          inf("Target received!");
 
           //Make sure to stop all actions if target is received in mission
           m_break.op=IMC::Brake::OP_STOP;
@@ -729,7 +729,7 @@ namespace Autonomy
         fp32_t GSPpos_target[3];
         WGS84::displacement(m_target.lat,m_target.lon,m_target.z,lat,lon,height,&GSPpos_target[0],&GSPpos_target[1],&GSPpos_target[2]);
         fp32_t RTKpos_target[3];
-        WGS84::displacement(m_target.lat,m_target.lon,m_target.z,m_UAV_state.lat,m_UAV_state.lon,m_UAV_state.z,&RTKpos_target[0],&RTKpos_target[1],&RTKpos_target[2]);
+        WGS84::displacement(m_target.lat,m_target.lon,m_target.z,m_RTK_state.lat,m_RTK_state.lon,m_RTK_state.z,&RTKpos_target[0],&RTKpos_target[1],&RTKpos_target[2]);
         war("CARP displacement from target: %f %f %f",CARP_target[0],CARP_target[1],CARP_target[2]);
         war("GPS position displacement from target: %f %f %f",GSPpos_target[0],GSPpos_target[1],GSPpos_target[2]);
         war("RTK position displacement from target: %f %f %f",RTKpos_target[0],RTKpos_target[1],RTKpos_target[2]);
