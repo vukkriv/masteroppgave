@@ -76,6 +76,14 @@ namespace Plan
       double gamma_d;
       //! Decent angle in approach path
       double approachDecent;
+      //! (Optional) Start orientation
+      double startHeading;
+      //! (Optional) Start lat
+      double start_lat;
+      //! (Optional) Start lon
+      double start_lon;
+      //! (Optional) Start height
+      double start_height;
       //! Net orientation
       double netHeading;
       //! Net lat
@@ -225,6 +233,10 @@ namespace Plan
         if (msg->plan_id=="land")
         {
 
+          m_landArg.start_lat = msg->start_lat;
+          m_landArg.start_lon = msg->start_lon;
+          m_landArg.startHeading = msg->start_heading;
+          m_landArg.start_height = msg->start_height;
           m_landArg.rightStartTurningDirection = msg->startcounterclockwise;
           m_landArg.rightFinishTurningCircle = msg->finishcounterclockwise;
           m_landArg.net_lat = msg->lat;
