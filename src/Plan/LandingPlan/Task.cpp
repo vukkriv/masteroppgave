@@ -129,9 +129,9 @@ namespace Plan
       Matrix OCF;
       //! Start position
       Matrix Xs;
-      double state_lat;
-      double state_lon;
-      double state_height;
+      double llhref_lat;
+      double llhref_lon;
+      double llhref_height;
       //! Finish turning circle offset height
       double OCFz;
     };
@@ -352,10 +352,10 @@ namespace Plan
         //! Create a followPath maneuver which is filled with Dubins path
         IMC::FollowPath fPath;
 
-        // Start from the current position
-        fPath.lat = m_landParameteres.state_lat;
-        fPath.lon = m_landParameteres.state_lon;
-        fPath.z = m_landParameteres.state_height;
+        // Set starting point as NED reference for the path
+        fPath.lat = m_landParameteres.llhref_lat;
+        fPath.lon = m_landParameteres.llhref_lon;
+        fPath.z = m_landParameteres.llhref_height;
 
         debug("Current lat: %f current lon: %f current height: %f",fPath.lat,fPath.lon,fPath.z);
         fPath.z_units = IMC::Z_HEIGHT;
@@ -446,12 +446,16 @@ namespace Plan
         debug("m_estate height: %f net height: %f",m_estate.height,m_landArg.net_WGS84_height);
         debug("State: lat %f lon %f height %f",state_lat,state_lon,state_height);
 
-        m_landParameteres.Xs = Xs;
-        m_landParameteres.state_lat = state_lat;
-        m_landParameteres.state_lon = state_lon;
-        m_landParameteres.state_height = state_height;
+        // Set the reference lat/lon/height to be the starting point
+        // and set the NED start position to zero, accordingly
+        m_landParameteres.Xs = Xs; //TODO: why is this set? It is never used...
 
-        // Set the start position to zero
+        // Set the reference lat/lon/height to be the starting point
+        // and set the NED start position to zero, accordingly
+        m_landParameteres.Xs = Xs; //TODO: why is this set? It is never used...
+        m_landParameteres.llhref_lat = startpoint_lat;
+        m_landParameteres.llhref_lon = startpoint_lon;
+        m_landParameteres.llhref_height = startpoint_height;
         Xs(0,0) = 0.0;
         Xs(1,0) = 0.0;
         Xs(2,0) = 0.0;
@@ -566,9 +570,9 @@ namespace Plan
       addLoiter(IMC::MessageList<IMC::Maneuver>& maneuverList)
       {
         IMC::Loiter loiter;
-        double loiter_lat = m_landParameteres.state_lat;
-        double loiter_lon = m_landParameteres.state_lon;
-        double loiter_h = m_landParameteres.state_height;
+        double loiter_lat = m_landParameteres.llhref_lat;
+        double loiter_lon = m_landParameteres.llhref_lon;
+        double loiter_h = m_landParameteres.llhref_height;
         debug("loiter_h %f OCFz %f ",loiter_h,m_landParameteres.OCFz);
         Coordinates::WGS84_Accurate::displace(m_landParameteres.OCF(0,0),m_landParameteres.OCF(1,0),m_landParameteres.OCFz,
                                               &loiter_lat,&loiter_lon,&loiter_h);
