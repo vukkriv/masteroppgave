@@ -282,7 +282,7 @@ namespace Sensors
           if (m_poll.poll(1.0))
           {
             checkSerialPort();
-
+            consumeMessages();
           }
         }
       }
