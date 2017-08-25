@@ -31,6 +31,8 @@
 // Local headers
 #include "CopterPendulumModel.hpp"
 
+#include <cmath>
+
 namespace Simulators
 {
   namespace CopterPendulum5Dof
@@ -163,13 +165,13 @@ namespace Simulators
       void
       consume(const IMC::DesiredControl* msg)
       {
-        if ((msg->flags & IMC::DesiredControl::FL_X) && !isnan(msg->x))
+        if ((msg->flags & IMC::DesiredControl::FL_X) && !std::isnan(msg->x))
           m_tau(0) = msg->x*m_args.mass_copter;
 
-        if ((msg->flags & IMC::DesiredControl::FL_Y) && !isnan(msg->y))
+        if ((msg->flags & IMC::DesiredControl::FL_Y) && !std::isnan(msg->y))
           m_tau(1) = msg->y*m_args.mass_copter;
 
-        if ((msg->flags & IMC::DesiredControl::FL_Z) && !isnan(msg->z))
+        if ((msg->flags & IMC::DesiredControl::FL_Z) && !std::isnan(msg->z))
         {
           if( m_args.enable_load )
             m_tau(2) = msg->z*m_args.mass_copter - Math::c_gravity * (m_args.mass_copter + m_args.mass_load);
