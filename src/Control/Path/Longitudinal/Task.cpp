@@ -253,7 +253,8 @@ namespace Control
           if (!m_args.use_controller)
             return;
 
-          double speed_g = ts.speed; // Ground speed 
+          //double speed_g = ts.speed; // Ground speed 
+          double speed_g = sqrt(state.vx*state.vx+state.vy*state.vy+state.vz*state.vz);//ground speed
           double h_dot = state.u*sin(state.theta) - state.v*sin(state.phi)*cos(state.theta) - state.w*cos(state.phi)*cos(state.theta);
           double gamma_now = asin(h_dot/speed_g);
 
@@ -292,6 +293,7 @@ namespace Control
           m_parcels[PC_THR].i = m_args.k_thr_i*m_thr_i;
           m_parcels[PC_THR].d = m_h_err*m_args.k_thr_ph ;
           m_parcels[PC_PTCH].p = gamma_error*m_args.k_gamma_p; 
+          m_parcels[PC_PTCH].i = gamma_desired; //Abuse of notation
 
           spew("pitch desired: %f \t alpha_0: %f",m_pitch.value,Angles::degrees(alpha_now));
 
