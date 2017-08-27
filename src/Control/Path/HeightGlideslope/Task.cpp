@@ -219,6 +219,8 @@ namespace Control
           m_first_run(true),
           los_angle(1.0),
           start_time(99999),
+          m_last_end_z(9999),
+          m_last_loitering(false),
           m_last_start_z(9999),
           first_waypoint(true),
           m_shifting_waypoint(false),
