@@ -148,12 +148,12 @@ namespace Navigation
       {
         bool valid = true;
 
-        if (msg->validity & IMC::GpsFixRtk::RFV_VALID_BASE == 0)
+        if ((msg->validity & IMC::GpsFixRtk::RFV_VALID_BASE) == 0)
         {
           trace("Message not valid due to invalid base.");
           valid = false;
         }
-        if (msg->validity & IMC::GpsFixRtk::RFV_VALID_POS == 0)
+        if ((msg->validity & IMC::GpsFixRtk::RFV_VALID_POS) == 0)
         {
           trace("Message not valid due to invalid position. ");
           valid = false;
@@ -179,23 +179,25 @@ namespace Navigation
         // Integrate forward to the current time
         RtkReceipt old = m_currentRtk;
 
-        double now = Clock::get();
+        double now = Clock::getSinceEpoch();
 
         double deltat = now - old.tov;
 
         if (deltat < 0)
         {
-          err("Invalid time delta. Using zero. ");
+          err("Invalid time delta, %f. Using zero. ", deltat);
           deltat = 0;
         }
 
         m_currentRtk.msg.n += deltat * old.msg.v_n;
         m_currentRtk.msg.e += deltat * old.msg.v_e;
         m_currentRtk.msg.d += deltat * old.msg.v_d;
+        debug("After\t Pn:\t %f\t Pe:\t %f\t Pd:\t %f",m_currentRtk.msg.n,m_currentRtk.msg.e,m_currentRtk.msg.d);
 
         m_currentRtk.tov += deltat;
 
 
+        dispatch(m_currentRtk.msg);
       }
 
       void
