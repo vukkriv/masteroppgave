@@ -66,6 +66,7 @@ namespace Control
         double Tref_gamma;
         double zeta_gamma;
 
+        double k_i_lim;
         double los_min_deg;
         double los_max_deg;
         double upper_lim_zrate;
@@ -299,6 +300,13 @@ namespace Control
           .defaultValue("1.0")
           .description("Dampening ratio for reference model for gamma");
 
+          param("I-LOS integrator limit", m_args.k_i_lim)
+          .minimumValue("0.0")              
+          .defaultValue("1.5")              
+          .maximumValue("90.0")              
+          .units(Units::Degree)
+          .description("Longitudinal line of sight angle integral effect is saturated to this value");
+
           param("Minimum LOS angle", m_args.los_min_deg)
           .defaultValue("-10.0")              
           .units(Units::Degree)
@@ -366,6 +374,12 @@ namespace Control
           { //controller should no longer be used
             disableControlLoops(IMC::CL_ALTITUDE | IMC::CL_VERTICAL_RATE);
           }
+          // Reset integrator upon change in integrator gains
+          if (paramChanged(m_args.k_ih_up) || paramChanged(m_args.k_ih_down) || paramChanged(m_args.k_ih_line) )
+            m_integrator = 0.0;
+
+          if (paramChanged(m_args.k_i_lim))
+              m_args.k_i_lim = Angles::radians(m_args.k_i_lim);
 
         }
         
@@ -378,6 +392,7 @@ namespace Control
           // Activate height and height-rate controller
           enableControlLoops(IMC::CL_ALTITUDE | IMC::CL_VERTICAL_RATE);
           first_waypoint = true; // A new path arrived. Tracking to first waypoint.
+          m_integrator = 0.0;
         }
 
         void
@@ -440,7 +455,8 @@ namespace Control
             m_prev_gamma = atan2((std::abs(end_z) -std::abs(start_z)),ts.track_length); //Negative for decent
           }
 
-          double speed_g = ts.speed; // Ground speed 
+          //double speed_g = ts.speed; // Ground speed 
+          double speed_g = sqrt(state.vx*state.vx+state.vy*state.vy+state.vz*state.vz);//ground speed
 
           // Calculate glide-slope angle
           glideslope_angle = atan2((std::abs(end_z) -std::abs(start_z)),ts.track_length); //Negative for decent
@@ -580,8 +596,6 @@ namespace Control
 
           //Integrator
           double timestep = m_last_step.getDelta();
-          m_integrator = m_integrator + timestep*h_error;
-          m_integrator = trimValue(m_integrator,-2,2); //Anti wind-up at 2 meter
 
           //Derivative term
           double h_dot = state.u*sin(state.theta) - state.v*sin(state.phi)*cos(state.theta) - state.w*cos(state.phi)*cos(state.theta);
@@ -592,33 +606,42 @@ namespace Control
             double h_error_trimmed = trimValue(std::abs(h_error),0.0,m_args.k_r_up-0.5); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             double h_app = sqrt(m_args.k_r_up*m_args.k_r_up - h_error_trimmed*h_error_trimmed);
             m_parcel_los.a = h_app;
-            los_angle = atan2(m_args.k_ph_up*h_error + m_args.k_ih_up*m_integrator + m_args.k_dh_up*h_dot,h_app); //Calculate LOS-angle glideslope up
+            m_integrator += timestep*h_error*m_args.k_ih_up;
+            m_integrator = trimValue(m_integrator,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
+            los_angle = atan(m_args.k_ph_up*h_error + m_integrator + m_args.k_dh_up*h_dot/h_app); //Calculate LOS-angle glideslope up
             m_parcel_los.p = m_args.k_ph_up*h_error;
-            m_parcel_los.i = m_args.k_ih_up*m_integrator;
+            m_parcel_los.i = m_integrator;
+            m_parcel_los.d = m_args.k_dh_up*h_dot;
             spew("Glideslope UP! %f",glideslope_angle);
           }
           else if(glideslope_angle_nofilter < 0){ //Glideslope down
             double h_error_trimmed = trimValue(std::abs(h_error),0.0,m_args.k_r_down-0.5); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             double h_app = sqrt(m_args.k_r_down*m_args.k_r_down - h_error_trimmed*h_error_trimmed);
             m_parcel_los.a = h_app;
-            los_angle = atan2(m_args.k_ph_down*h_error + m_args.k_ih_down*m_integrator + m_args.k_dh_down*h_dot,h_app); //Calculate LOS-angle glideslope down
+            m_integrator += timestep*h_error*m_args.k_ih_down;
+            m_integrator = trimValue(m_integrator,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
+            los_angle = atan(m_args.k_ph_down*h_error + m_integrator + m_args.k_dh_down*h_dot/h_app); //Calculate LOS-angle glideslope down
             m_parcel_los.p = m_args.k_ph_down*h_error;
-            m_parcel_los.i = m_args.k_ih_down*m_integrator;
+            m_parcel_los.i = m_integrator;
+            m_parcel_los.d = m_args.k_dh_down*h_dot;
             spew("Glideslope DOWN! %f",glideslope_angle);
           }
           else{//Straight line
             double h_error_trimmed = trimValue(std::abs(h_error),0.0,m_args.k_r_line-0.5); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             double h_app = sqrt(m_args.k_r_line*m_args.k_r_line - h_error_trimmed*h_error_trimmed);
             m_parcel_los.a = h_app;
-            los_angle = atan2(m_args.k_ph_line*h_error + m_args.k_ih_line*m_integrator + m_args.k_dh_line*h_dot,h_app); //Calculate LOS-angle straight line
+            m_integrator += timestep*h_error*m_args.k_ih_line;
+            m_integrator = trimValue(m_integrator,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
+            los_angle = atan(m_args.k_ph_line*h_error + m_integrator + m_args.k_dh_line*h_dot/h_app); //Calculate LOS-angle glideslope line
             m_parcel_los.p = m_args.k_ph_line*h_error;
-            m_parcel_los.i = m_args.k_ih_line*m_integrator;
+            m_parcel_los.i = m_integrator;
+            m_parcel_los.d = m_args.k_dh_line*h_dot;
             spew("Glideslope LINE ! %f",glideslope_angle);
           }
 
 
           los_angle = trimValue(los_angle,Angles::radians(m_args.los_min_deg),Angles::radians(m_args.los_max_deg));
-          m_parcel_los.d = los_angle; // dispatch los angle as the derivative los parcel, for plotting
+          m_parcel_los.a = los_angle; // dispatch los angle as the derivative los parcel, for plotting
           debug("Los_angle: %f",Angles::degrees(los_angle));
 
           double gamma_cmd = glideslope_angle + los_angle; //Commanded flight path angle
