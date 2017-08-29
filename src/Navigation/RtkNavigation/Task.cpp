@@ -151,11 +151,13 @@ namespace Navigation
         if ((msg->validity & IMC::GpsFixRtk::RFV_VALID_BASE) == 0)
         {
           trace("Message not valid due to invalid base.");
+          m_currentRtk.msg.validity &= ~IMC::GpsFixRtk::RFV_VALID_BASE;
           valid = false;
         }
         if ((msg->validity & IMC::GpsFixRtk::RFV_VALID_POS) == 0)
         {
           trace("Message not valid due to invalid position. ");
+          m_currentRtk.msg.validity &= ~IMC::GpsFixRtk::RFV_VALID_POS;
           valid = false;
         }
 
@@ -196,7 +198,7 @@ namespace Navigation
 
         m_currentRtk.tov += deltat;
 
-
+        m_currentRtk.msg.setSourceEntity(getEntityId());
         dispatch(m_currentRtk.msg);
       }
 
