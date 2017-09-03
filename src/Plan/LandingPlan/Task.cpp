@@ -430,7 +430,7 @@ namespace Plan
         Matrix Xs = Matrix(4,1,0.0);
 
         //! Set the reference lat/lon/height for the displacement to be the current position
-        if ( (m_landArg.start_lon != 0) && (m_landArg.start_lon != 0) && (m_landArg.start_lon != 0) && (m_landArg.start_lon != 0) ) //TODO: Add sanity check on starting pos?
+        if ( (m_landArg.start_lon != -1.0) && (m_landArg.start_lon != -1.0) && (m_landArg.start_lon != -1.0) && (m_landArg.start_lon != -1.0) ) //TODO: Add sanity check on starting pos?
         {
           //! Starting pose has been manually set; 
           //! Set the reference lat/lon/height for the displacement to be the manually selected position
