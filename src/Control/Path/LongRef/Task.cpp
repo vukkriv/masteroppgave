@@ -1,3 +1,4 @@
+
 //***************************************************************************
 // Copyright 2007-2015 Universidade do Porto - Faculdade de Engenharia      *
 // Laboratório de Sistemas e Tecnologia Subaquática (LSTS)                  *
@@ -22,8 +23,15 @@
 // language governing permissions and limitations at                        *
 // http://ec.europa.eu/idabc/eupl.html.                                     *
 //***************************************************************************
-// Author: Sigurd Olav Nevstad                                              *
+// Author: Kristoffer Gryte                                              *
 //***************************************************************************
+
+// This task is to be used in tuning of the Longitudinal path controller, by feeding it
+// sinusodal references around the setpoint defined by the path.
+// The sinus amplitude and frequency is controlled by the user through Neptus
+// Consumes 
+// Dispatches desiredZ and desired vertical rate
+
 
 // ISO C++ 98 headers.
 #include <cmath>
@@ -35,7 +43,7 @@ namespace Control
 {
   namespace Path
   {
-    namespace HeightGlideslope
+    namespace LongRef
     {
       using DUNE_NAMESPACES;
 
@@ -162,6 +170,13 @@ namespace Control
         double zeta; //Relative damping ratio
       };
 
+      struct waypoint
+      {
+        double x;
+        double y;
+        double z;
+      };
+
       struct Task: public DUNE::Control::PathController
       {
         Arguments m_args;
@@ -170,6 +185,7 @@ namespace Control
         IMC::DesiredLinearState ref_nofilter; //Used for non-filtered height and glideslope_angle reference filtered and gldeslope_angle, for live plotting in Neptus
         IMC::ControlParcel m_parcel_los;
         IMC::RelativeState m_hdiff;
+        waypoint m_last_end_wp;
         Delta m_last_step;
 
         double glideslope_range;
@@ -185,6 +201,7 @@ namespace Control
         double start_time;
         double m_last_end_z;
         bool m_last_loitering;
+        bool first_waypoint;
         double state_z_shifting;
         bool m_last_WP_loiter;
         double m_last_loiter_z;
@@ -210,6 +227,7 @@ namespace Control
           start_time(99999),
           m_last_end_z(9999),
           m_last_loitering(false),
+          first_waypoint(true),
           m_prev_unfiltered_height(0),
           m_prev_z(0.0),
           m_prev_gamma(0.0),
@@ -379,6 +397,7 @@ namespace Control
             return;
           // Activate height and height-rate controller
           enableControlLoops(IMC::CL_ALTITUDE | IMC::CL_VERTICAL_RATE);
+          first_waypoint = true; // A new path arrived. Tracking to first waypoint.
           m_integrator = 0.0;
         }
 
@@ -633,6 +652,9 @@ namespace Control
           dispatch(m_parcel_los);
           dispatch(m_hdiff);
 
+          m_last_end_wp.x = ts.end.x;
+          m_last_end_wp.y = ts.end.y;
+          m_last_end_wp.z = ts.end.z;
           m_last_loitering = ts.loitering;
         }
       };
