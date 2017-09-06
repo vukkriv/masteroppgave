@@ -51,12 +51,15 @@ namespace Control
         double k_thr_ph;
         double trim_pitch;
         double trim_throttle;
+        double h_err_min;
+        double h_err_max;
         double thr_max;
         double thr_min;
         double pitch_max_deg;
         double pitch_min_deg;
         // Input filtering
         std::string dz_src;
+        std::string spd_src;
 
       };
 
@@ -147,9 +150,25 @@ namespace Control
           .units(Units::Percentage)
           .description("Throttle integrator is limited to this percentage");
 
+          param("Minimum height error feed forward", m_args.h_err_min)
+          .defaultValue("-2.0")              
+          .units(Units::Meter)
+          .description("Height error for feed forward is limited to this value");
+
+          param("Maximum height error feed forward", m_args.h_err_max)
+          .defaultValue("2.0")              
+          .units(Units::Meter)
+          .description("Height error for feed forward is limited to this value");
+
           param("Desired Vertical Rate source", m_args.dz_src)
+          .values("Glideslope Height Controller, LongRef")
           .defaultValue("Glideslope Height Controller")
           .description("Entity allowed to set DesiredZ and DesiredVerticalRate.");
+
+          param("Desired airspeed source", m_args.spd_src)
+          .values("Glideslope Height Controller, Lateral LOS Control, FBWA Longitudinal Controller, LongRef")
+          .defaultValue("Glideslope Height Controller")
+          .description("Entity allowed to set desired airspeed");
 
           bind<IMC::IndicatedSpeed>(this);
           bind<IMC::DesiredVerticalRate>(this);
@@ -223,6 +242,8 @@ namespace Control
         void
         consume(const IMC::DesiredSpeed* d_speed)
         {
+          if(!(d_speed->getSourceEntity() == resolveEntity(m_args.spd_src)))
+            return;
           m_dspeed = d_speed->value;
         }
 
@@ -269,7 +290,7 @@ namespace Control
 
           if(m_h_err_feedforward){
             m_h_err = (m_dz - (state.height - state.z))*std::cos(glideslope_angle);
-            m_h_err = trimValue(m_h_err,-2,2);
+            m_h_err = trimValue(m_h_err,m_args.h_err_min,m_args.h_err_max);
           }
           else
           {
@@ -279,11 +300,11 @@ namespace Control
 
           //Throttle integrator
           double timestep = m_last_step.getDelta();
-          m_thr_i = m_thr_i + timestep*V_error;
+          m_thr_i += timestep*m_args.k_thr_i*V_error;
           m_thr_i = trimValue(m_thr_i,m_args.thr_min,m_args.thr_max); //Throttle anti wind-up at 
 
           //Calculate desired throttle and pitch
-          double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i*m_thr_i + m_h_err*m_args.k_thr_ph + m_args.trim_throttle;
+          double throttle_desired = m_args.k_thr_p*V_error + m_thr_i + m_h_err*m_args.k_thr_ph + m_args.trim_throttle;
           double pitch_desired = gamma_desired + Angles::radians(m_args.trim_pitch)-gamma_error*m_args.k_gamma_p; //Backstepping,pitch_desired = gamma_desired + alpha_0
           pitch_desired = trimValue(pitch_desired,Angles::radians(m_args.pitch_min_deg),Angles::radians(m_args.pitch_max_deg));
           m_throttle.value = trimValue(throttle_desired, 0, 100);
