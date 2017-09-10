@@ -58,6 +58,7 @@ namespace Navigation
       double receipt_delay;
       //! Output frequency
       double execution_frequency;
+      double deltat_max;
     };
 
     class RtkReceipt
@@ -79,6 +80,7 @@ namespace Navigation
       RtkReceipt m_currentRtk;
       //! Dispatched State
       IMC::EstimatedLocalState m_els;
+      IMC::DesiredLinearState delta_logger;
 
 
 
@@ -97,6 +99,11 @@ namespace Navigation
         .minimumValue("0")
         .defaultValue("25")
         .description("Solution output frequency");
+
+        param("Max time step", m_args.deltat_max)
+        .minimumValue("0")
+        .defaultValue("0.2")
+        .description("Upper limit for Euler forward simulation time step");
 
 
         m_els.clear();
@@ -190,6 +197,14 @@ namespace Navigation
           err("Invalid time delta, %f. Using zero. ", deltat);
           deltat = 0;
         }
+        else if (deltat > m_args.deltat_max)
+        {
+          //err("Too large time delta, %f. Using %f. ", deltat, m_args.deltat_max);
+          deltat = m_args.deltat_max;
+        }
+        // log the actual deltat used
+        delta_logger.x = deltat;
+
 
         m_currentRtk.msg.n += deltat * old.msg.v_n;
         m_currentRtk.msg.e += deltat * old.msg.v_e;
@@ -200,6 +215,7 @@ namespace Navigation
 
         m_currentRtk.msg.setSourceEntity(getEntityId());
         dispatch(m_currentRtk.msg);
+        dispatch(delta_logger);
       }
 
       void
