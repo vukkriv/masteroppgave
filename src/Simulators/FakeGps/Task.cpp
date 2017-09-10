@@ -37,6 +37,9 @@ namespace Simulators
     struct Arguments
     {
       bool valid_pos;
+      double lon_start;
+      double lat_start;
+      double height_start;
     };
 
     struct Task: public DUNE::Tasks::Task
@@ -56,6 +59,24 @@ namespace Simulators
 		.defaultValue("True")
     .visibility(Parameter::VISIBILITY_USER)
 		.description("Chose whether the position is valid or not ");
+
+        param("Start point -- latitude", m_args.lat_start)
+        .units(Units::Degree)
+        .minimumValue("-90")
+        .defaultValue("63.629246")
+        .maximumValue("90");
+
+        param("Start point -- longitude", m_args.lon_start)
+        .units(Units::Degree)
+        .minimumValue("-180")
+        .defaultValue("9.726731")
+        .maximumValue("180");
+
+        param("Start point -- height", m_args.height_start)
+        .units(Units::Meter)
+        .defaultValue("90");
+        //CMAC  -35.363261 149.165230 584.353;
+        
 
         bind<IMC::GpsFixRtk>(this);
 
@@ -116,10 +137,9 @@ namespace Simulators
       void
       onMain(void)
       {
-        //CMAC
-        m_fix.lat = Angles::radians(-35.363261);
-        m_fix.lon = Angles::radians(149.165230);
-        m_fix.height = 584.353;
+        m_fix.lat = Angles::radians(m_args.lat_start);
+        m_fix.lon = Angles::radians(m_args.lon_start);
+        m_fix.height = m_args.height_start;
 
         while (!stopping())
         {
