@@ -35,6 +35,8 @@
 
 // DUNE headers.
 #include <DUNE/Config.hpp>
+#include <DUNE/IO/Handle.hpp>
+#include <DUNE/IO/Poll.hpp>
 
 namespace DUNE
 {
@@ -63,6 +65,14 @@ namespace DUNE
       bool
       getValue(void) { return m_gpio.getValue(); };
 
+      //! Get handle to use with poll
+      DUNE::IO::NativeHandle
+      getNativeHandle(void) { return m_handle; };
+
+      //! Poll for <timeout> seconds
+      bool
+      poll(double timeout) { return IO::Poll::poll(getNativeHandle(), timeout); };
+
     private:
       //! GPIO Handle
       Hardware::GPIO m_gpio;
@@ -70,6 +80,8 @@ namespace DUNE
       unsigned int m_number;
       //! GPIO direction.
       Edge m_edge;
+      //! Internal file handle
+      DUNE::IO::NativeHandle m_handle;
 
       //! Set edge
       void

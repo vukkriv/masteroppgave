@@ -27,6 +27,10 @@
 // Author: Kristian Klausen                                                 *
 //***************************************************************************
 
+// C Headers
+#include <stdio.h>
+#include <fcntl.h>
+
 // ISO C++ 98 headers.
 #include <cerrno>
 
@@ -66,10 +70,15 @@ namespace DUNE
       // Set edge
       setEdge(m_edge);
 
+      // Open value for polling
+      m_handle = open(m_file_val.c_str(), O_RDONLY | O_NONBLOCK);
+      if (m_handle == -1)
+        throw Error(errno, "unable to open gpio value file", m_number);
+
 
       // Lacking implementation.
 #else
-      throw Error("unimplemented feature", "DUNE::Hardware::GPIO");
+      throw Error("unimplemented feature", "DUNE::Hardware::IrqGPIO");
 #endif
     }
 
