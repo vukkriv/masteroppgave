@@ -82,6 +82,10 @@ namespace DUNE
 #endif
     }
 
+    IrqGPIO::~IrqGPIO()
+    {
+      close(m_handle);
+    }
 
     void
     IrqGPIO::setEdge(Edge edge)
@@ -93,10 +97,6 @@ namespace DUNE
         writeToFile(m_file_edge, "rising");
 #endif
     }
-
-
-
-
 
 
 #if defined(DUNE_OS_LINUX)

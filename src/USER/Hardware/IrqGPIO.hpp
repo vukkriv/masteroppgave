@@ -60,6 +60,9 @@ namespace DUNE
       //! @param[in] Edge to trigger interrupt
       IrqGPIO(unsigned int number, Edge edge = GPIO_EDGE_FALLING);
 
+      //! Destructur
+      ~IrqGPIO();
+
       //! Get GPIO value.
       //! @return pin value (false = off, true = on).
       bool
