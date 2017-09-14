@@ -30,16 +30,21 @@
 // C Headers
 #include <stdio.h>
 #include <fcntl.h>
+#include <unistd.h>
+#include <poll.h>
 
 // ISO C++ 98 headers.
 #include <cerrno>
+#include <iostream>
 
 // DUNE headers.
 #include <DUNE/System/Error.hpp>
 #include <DUNE/Streams/Terminal.hpp>
 #include <DUNE/Utils/String.hpp>
 #include <DUNE/Hardware/GPIO.hpp>
+#include <DUNE/Time/Utils.hpp>
 #include <USER/Hardware/IrqGPIO.hpp>
+
 
 
 namespace DUNE
@@ -84,7 +89,9 @@ namespace DUNE
 
     IrqGPIO::~IrqGPIO()
     {
+#if defined(DUNE_OS_LINUX)
       close(m_handle);
+#endif
     }
 
     void
@@ -95,6 +102,54 @@ namespace DUNE
         writeToFile(m_file_edge, "falling");
       else
         writeToFile(m_file_edge, "rising");
+#endif
+    }
+
+    bool
+    IrqGPIO::poll(double timeout)
+    {
+#if defined(DUNE_OS_POSIX)
+
+      int rv = 0;
+
+      pollfd fdlist[1];
+      fdlist[0].fd = m_handle;
+      fdlist[0].events = POLLPRI;
+
+      // TODO: Consider using timeval/timespec
+      if (timeout < 0.0)
+        rv = ::poll(fdlist, 1, -1 );
+      else
+        rv = ::poll(fdlist, 1, (unsigned int) (timeout * 1000.0));
+
+      // Read to clear interrupt
+      if (rv > 0)
+      {
+        char buf[3];
+
+        if (read(m_handle, buf, 2) == -1)
+        {
+          throw Error("reading handle", Error::getLastMessage());
+        }
+
+        // Set seek
+        if (lseek(m_handle, 0, SEEK_SET) == -1)
+        {
+          throw Error("set seek of handle", Error::getLastMessage());
+          return false;
+        }
+      }
+
+      if (rv == -1)
+      {
+        //! Workaround for when we are interrupted by a signal.
+        if (errno == EINTR)
+          return false;
+        else
+          throw Error("polling handle", Error::getLastMessage());
+      }
+
+      return rv > 0;
 #endif
     }
 

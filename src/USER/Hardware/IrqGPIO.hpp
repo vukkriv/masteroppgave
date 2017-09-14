@@ -74,7 +74,7 @@ namespace DUNE
 
       //! Poll for <timeout> seconds
       bool
-      poll(double timeout) { return IO::Poll::poll(getNativeHandle(), timeout); };
+      poll(double timeout);
 
     private:
       //! GPIO Handle
