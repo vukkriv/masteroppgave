@@ -518,9 +518,9 @@ namespace Control
           else if ((m_args.use_ratelim) && (ts.delta < 10))
           {
             //height rate limiter
-              double rate = (m_zref.value - m_prev_z);
-              double upper_lim = ts.delta*m_args.upper_lim_zrate;
-              double lower_lim = ts.delta*m_args.lower_lim_zrate;
+              double rate = (m_zref.value - m_prev_z)/ts.delta;
+              double upper_lim = m_args.upper_lim_zrate;
+              double lower_lim = m_args.lower_lim_zrate;
               spew("Z upper %f, lower %f, rate %f, delta_t %f", upper_lim, lower_lim, rate, ts.delta);
 
               //m_zref.value = trimValue(m_zref.value, m_prev_unfiltered_height
@@ -537,9 +537,9 @@ namespace Control
               //else //unmodified reference
               
             //gamma rate limiter
-              rate = (glideslope_angle - m_prev_gamma);
-              upper_lim = ts.delta*Angles::radians(m_args.upper_lim_gammarate);
-              lower_lim = ts.delta*Angles::radians(m_args.lower_lim_gammarate);
+              rate = (glideslope_angle - m_prev_gamma)/ts.delta;
+              upper_lim = Angles::radians(m_args.upper_lim_gammarate);
+              lower_lim = Angles::radians(m_args.lower_lim_gammarate);
               spew("Gamma upper %f, lower %f, rate %f, delta_t %f", upper_lim, lower_lim, rate, ts.delta);
 
               //m_zref.value = trimValue(m_zref.value, m_prev_unfiltered_height
