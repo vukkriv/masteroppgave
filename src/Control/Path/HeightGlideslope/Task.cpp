@@ -73,6 +73,9 @@ namespace Control
         double lower_lim_zrate;
         double upper_lim_gammarate;
         double lower_lim_gammarate;
+
+        bool use_glideslope_ToA; 
+        double glideslope_ToA; 
       };
 
       class ReferenceModel
@@ -325,6 +328,15 @@ namespace Control
           .units(Units::DegreePerSecond)
           .description("When rate limited, gamma rate is saturated at this value");
 
+          param("Use glideslope height ToA", m_args.use_glideslope_ToA)
+          .defaultValue("false")
+          .description("Flag to use a time of arrival for the height reference");
+
+          param("Glideslope height ToA", m_args.glideslope_ToA)
+          .defaultValue("3")
+          .units(Units::Second)
+          .description("Desired time before waypoint to arrive at reference height"); 
+
           param("Use reference model", m_args.use_refmodel)
           .defaultValue("false")
           .description("Flag to use reference model");
@@ -425,26 +437,44 @@ namespace Control
 
           //m_prev_gamma = atan2((std::abs(end_z) -std::abs(start_z)),ts.track_length); //Negative for decent
 
-
           double speed_g = sqrt(state.vx*state.vx+state.vy*state.vy+state.vz*state.vz);//ground speed
 
+          // Track length used for glideslope angle calculation
+          float glideslope_track_length;
+
+          // Check if expected track completion time is larger than the lookahead distance
+          if (m_args.use_glideslope_ToA && (start_z != end_z) && (ts.track_length > (m_args.glideslope_ToA*ts.speed)))
+          {
+            // Crop track length for glideslope angle calculation
+            glideslope_track_length = ts.track_length - ts.speed*m_args.glideslope_ToA;
+            debug("Track length original/modified: %.2f m, %.2f m",ts.track_length, glideslope_track_length); // TODO: should be spew? 
+          }
+          else
+          {
+            // Use actual track length
+            glideslope_track_length = ts.track_length; 
+          }
+
           // Calculate glide-slope angle
-          glideslope_angle = atan2((std::abs(end_z) -std::abs(start_z)),ts.track_length); //Negative for decent
+          glideslope_angle = atan2((std::abs(end_z) -std::abs(start_z)),glideslope_track_length); //Negative for descent
           double glideslope_angle_nofilter = glideslope_angle;
+          if (m_args.use_glideslope_ToA && (start_z != end_z))
+            debug("Glideslope angle original/modified: %.2f deg, %.2f deg", Angles::degrees(atan2((std::abs(end_z) -std::abs(start_z)),ts.track_length)), Angles::degrees(glideslope_angle));
 
           if(m_last_WP_loiter)
             start_z = m_last_loiter_z;
 
 
-          //Calculate Z_ref based along-track along the glideslope. Endpoint is trimmed in order so Z_ref always is between the waypoints
-          if(std::abs(start_z) < std::abs(end_z)){//Glide-slope upwards
-            m_zref.value = (tan(glideslope_angle)*(ts.track_length - ts.range)) + std::abs(start_z); //Current desired z
-            m_zref.value = trimValue(m_zref.value,std::abs(start_z),tan(glideslope_angle)*(ts.track_length) + std::abs(start_z));
-          }
-          else{ //Glide-slope downwards
-            m_zref.value = (tan(glideslope_angle)*(ts.track_length - ts.range)) + std::abs(start_z); //Current desired z
-            m_zref.value = trimValue(m_zref.value,tan(glideslope_angle)*(ts.track_length)+ std::abs(start_z),std::abs(start_z));
-          }
+          //Calculate Z_ref based along-track along the glideslope.
+          m_zref.value = (tan(glideslope_angle)*(ts.track_length - ts.range)) + std::abs(start_z); //Current desired 
+          
+          //Z reference is trimmed so it is between the waypoint heights
+          if(std::abs(start_z) < std::abs(end_z))//Glide-slope upwards
+            m_zref.value = trimValue(m_zref.value,std::abs(start_z),std::abs(end_z));
+          else //Glide-slope downwards
+            m_zref.value = trimValue(m_zref.value, std::abs(end_z),std::abs(start_z));         
+          
+
           if (m_first_run){
             // Avoid large jumps in the desired height when 
             // going to first WP (since initial x(0,0) = 0)
