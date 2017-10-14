@@ -81,6 +81,7 @@ namespace Control
         IMC::ControlParcel m_parcels[NUM_PARCELS];
 
         double m_airspeed;
+        double m_thr_now;
         double m_dspeed;
         double m_dvrate;
         double m_thr_i;
@@ -92,6 +93,7 @@ namespace Control
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
           m_airspeed(0.0),
+          m_thr_now(0.0),
           m_dspeed(18.0),
           m_dvrate(0.0),
           m_thr_i(0.0),
@@ -174,6 +176,7 @@ namespace Control
           bind<IMC::DesiredVerticalRate>(this);
           bind<IMC::DesiredSpeed>(this);
           bind<IMC::DesiredZ>(this);
+          bind<IMC::Throttle>(this);
 
         }
 
@@ -197,6 +200,10 @@ namespace Control
             return;
           // Activate controller
           enableControlLoops(IMC::CL_THROTTLE | IMC::CL_PITCH);
+          // initialize integrator, to have constant throttle
+          double V_error =  m_dspeed - m_airspeed;
+          m_thr_i = m_thr_now - m_args.k_thr_p*V_error - m_h_err*m_args.k_thr_ph - m_args.trim_throttle;
+          debug("Reset thr integrator to %f",m_thr_i);
         }
 
         virtual void
@@ -237,6 +244,12 @@ namespace Control
         consume(const IMC::IndicatedSpeed* airspeed)
         {
           m_airspeed = airspeed->value;
+        }
+
+        void
+        consume(const IMC::Throttle* thr)
+        {
+          m_thr_now = thr->value;
         }
 
         void
