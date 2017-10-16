@@ -51,12 +51,15 @@ namespace Control
         double k_thr_ph;
         double trim_pitch;
         double trim_throttle;
+        double h_err_min;
+        double h_err_max;
         double thr_max;
         double thr_min;
         double pitch_max_deg;
         double pitch_min_deg;
         // Input filtering
         std::string dz_src;
+        std::string spd_src;
 
       };
 
@@ -78,6 +81,7 @@ namespace Control
         IMC::ControlParcel m_parcels[NUM_PARCELS];
 
         double m_airspeed;
+        double m_thr_now;
         double m_dspeed;
         double m_dvrate;
         double m_thr_i;
@@ -89,6 +93,7 @@ namespace Control
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
           m_airspeed(0.0),
+          m_thr_now(0.0),
           m_dspeed(18.0),
           m_dvrate(0.0),
           m_thr_i(0.0),
@@ -147,14 +152,31 @@ namespace Control
           .units(Units::Percentage)
           .description("Throttle integrator is limited to this percentage");
 
+          param("Minimum height error feed forward", m_args.h_err_min)
+          .defaultValue("-2.0")              
+          .units(Units::Meter)
+          .description("Height error for feed forward is limited to this value");
+
+          param("Maximum height error feed forward", m_args.h_err_max)
+          .defaultValue("2.0")              
+          .units(Units::Meter)
+          .description("Height error for feed forward is limited to this value");
+
           param("Desired Vertical Rate source", m_args.dz_src)
+          .values("Glideslope Height Controller, LongRef")
           .defaultValue("Glideslope Height Controller")
           .description("Entity allowed to set DesiredZ and DesiredVerticalRate.");
+
+          param("Desired airspeed source", m_args.spd_src)
+          .values("Glideslope Height Controller, Lateral LOS Control, FBWA Longitudinal Controller, LongRef")
+          .defaultValue("Glideslope Height Controller")
+          .description("Entity allowed to set desired airspeed");
 
           bind<IMC::IndicatedSpeed>(this);
           bind<IMC::DesiredVerticalRate>(this);
           bind<IMC::DesiredSpeed>(this);
           bind<IMC::DesiredZ>(this);
+          bind<IMC::Throttle>(this);
 
         }
 
@@ -178,6 +200,10 @@ namespace Control
             return;
           // Activate controller
           enableControlLoops(IMC::CL_THROTTLE | IMC::CL_PITCH);
+          // initialize integrator, to have constant throttle
+          double V_error =  m_dspeed - m_airspeed;
+          m_thr_i = m_thr_now - m_args.k_thr_p*V_error - m_h_err*m_args.k_thr_ph - m_args.trim_throttle;
+          debug("Reset thr integrator to %f",m_thr_i);
         }
 
         virtual void
@@ -221,8 +247,16 @@ namespace Control
         }
 
         void
+        consume(const IMC::Throttle* thr)
+        {
+          m_thr_now = thr->value;
+        }
+
+        void
         consume(const IMC::DesiredSpeed* d_speed)
         {
+          if(!(d_speed->getSourceEntity() == resolveEntity(m_args.spd_src)))
+            return;
           m_dspeed = d_speed->value;
         }
 
@@ -253,7 +287,8 @@ namespace Control
           if (!m_args.use_controller)
             return;
 
-          double speed_g = ts.speed; // Ground speed 
+          //double speed_g = ts.speed; // Ground speed 
+          double speed_g = sqrt(state.vx*state.vx+state.vy*state.vy+state.vz*state.vz);//ground speed
           double h_dot = state.u*sin(state.theta) - state.v*sin(state.phi)*cos(state.theta) - state.w*cos(state.phi)*cos(state.theta);
           double gamma_now = asin(h_dot/speed_g);
 
@@ -268,7 +303,7 @@ namespace Control
 
           if(m_h_err_feedforward){
             m_h_err = (m_dz - (state.height - state.z))*std::cos(glideslope_angle);
-            m_h_err = trimValue(m_h_err,-2,2);
+            m_h_err = trimValue(m_h_err,m_args.h_err_min,m_args.h_err_max);
           }
           else
           {
@@ -278,11 +313,11 @@ namespace Control
 
           //Throttle integrator
           double timestep = m_last_step.getDelta();
-          m_thr_i = m_thr_i + timestep*V_error;
+          m_thr_i += timestep*m_args.k_thr_i*V_error;
           m_thr_i = trimValue(m_thr_i,m_args.thr_min,m_args.thr_max); //Throttle anti wind-up at 
 
           //Calculate desired throttle and pitch
-          double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i*m_thr_i + m_h_err*m_args.k_thr_ph + m_args.trim_throttle;
+          double throttle_desired = m_args.k_thr_p*V_error + m_thr_i + m_h_err*m_args.k_thr_ph + m_args.trim_throttle;
           double pitch_desired = gamma_desired + Angles::radians(m_args.trim_pitch)-gamma_error*m_args.k_gamma_p; //Backstepping,pitch_desired = gamma_desired + alpha_0
           pitch_desired = trimValue(pitch_desired,Angles::radians(m_args.pitch_min_deg),Angles::radians(m_args.pitch_max_deg));
           m_throttle.value = trimValue(throttle_desired, 0, 100);
@@ -291,7 +326,8 @@ namespace Control
           m_parcels[PC_THR].p = m_args.k_thr_p*V_error;
           m_parcels[PC_THR].i = m_args.k_thr_i*m_thr_i;
           m_parcels[PC_THR].d = m_h_err*m_args.k_thr_ph ;
-          m_parcels[PC_PTCH].p = gamma_error*m_args.k_gamma_p; 
+          m_parcels[PC_PTCH].p = -gamma_error*m_args.k_gamma_p; 
+          m_parcels[PC_PTCH].i = gamma_desired; //Abuse of notation
 
           spew("pitch desired: %f \t alpha_0: %f",m_pitch.value,Angles::degrees(alpha_now));
 

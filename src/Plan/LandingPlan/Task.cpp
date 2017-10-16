@@ -76,6 +76,14 @@ namespace Plan
       double gamma_d;
       //! Decent angle in approach path
       double approachDecent;
+      //! (Optional) Start orientation
+      double startHeading;
+      //! (Optional) Start lat
+      double start_lat;
+      //! (Optional) Start lon
+      double start_lon;
+      //! (Optional) Start height
+      double start_height;
       //! Net orientation
       double netHeading;
       //! Net lat
@@ -121,9 +129,9 @@ namespace Plan
       Matrix OCF;
       //! Start position
       Matrix Xs;
-      double state_lat;
-      double state_lon;
-      double state_height;
+      double llhref_lat;
+      double llhref_lon;
+      double llhref_height;
       //! Finish turning circle offset height
       double OCFz;
     };
@@ -225,6 +233,10 @@ namespace Plan
         if (msg->plan_id=="land")
         {
 
+          m_landArg.start_lat = msg->start_lat;
+          m_landArg.start_lon = msg->start_lon;
+          m_landArg.startHeading = msg->start_heading;
+          m_landArg.start_height = msg->start_height;
           m_landArg.rightStartTurningDirection = msg->startcounterclockwise;
           m_landArg.rightFinishTurningCircle = msg->finishcounterclockwise;
           m_landArg.net_lat = msg->lat;
@@ -340,10 +352,10 @@ namespace Plan
         //! Create a followPath maneuver which is filled with Dubins path
         IMC::FollowPath fPath;
 
-        // Start from the current position
-        fPath.lat = m_landParameteres.state_lat;
-        fPath.lon = m_landParameteres.state_lon;
-        fPath.z = m_landParameteres.state_height;
+        // Set starting point as NED reference for the path
+        fPath.lat = m_landParameteres.llhref_lat;
+        fPath.lon = m_landParameteres.llhref_lon;
+        fPath.z = m_landParameteres.llhref_height;
 
         debug("Current lat: %f current lon: %f current height: %f",fPath.lat,fPath.lon,fPath.z);
         fPath.z_units = IMC::Z_HEIGHT;
@@ -387,13 +399,6 @@ namespace Plan
       bool
       createPath(std::vector<Matrix>& path)
       {
-        //! Initialize the start pose
-        Matrix Xs = Matrix(4,1,0.0);
-        Xs(0,0) = m_estate.x;
-        Xs(1,0) = m_estate.y;
-        Xs(2,0) = m_estate.z;
-        Xs(3,0) = m_estate.psi;
-
         //! Direction of end turn
         bool CounterClockwiseF;
         //! Center of final turning circle
@@ -406,40 +411,74 @@ namespace Plan
         Xf(2,0) = m_landParameteres.WP1(2,0);
         Xf(3,0) = Angles::normalizeRadian(m_landArg.netHeading-Math::c_pi);
 
+        //! Set the reference lat/lon/height for the displacement to be the net position
         double wp1_lat = m_landArg.net_lat;
         double wp1_lon = m_landArg.net_lon;
         double wp1_h = m_landArg.net_WGS84_height - m_landParameteres.WP1(2,0);
-
-        double state_lat = m_estate.lat;
-        double state_lon = m_estate.lon;
-        double state_height = m_estate.height;
-
-        //! Find WP1 lat lon from the net position
+        //! Find WP1 lat lon by displacing the WP1 NED position from the net position
         Coordinates::WGS84_Accurate::displace(m_landParameteres.WP1(0,0),m_landParameteres.WP1(1,0),
                                               &wp1_lat,&wp1_lon);
-        Coordinates::WGS84_Accurate::displace(m_estate.x,m_estate.y,m_estate.z,
-                                              &state_lat,&state_lon,&state_height);
 
-        //! Find NED displacement between m_estate (WGS84) and net lat lon (WGS84)
+
+
+        //! Initialize the start pose
+        //! llh
+        double startpoint_lat = 0.0;
+        double startpoint_lon = 0.0;
+        double startpoint_height = 0.0;
+        //! NED
+        Matrix Xs = Matrix(4,1,0.0);
+
+        //! Set the reference lat/lon/height for the displacement to be the current position
+        if ( (m_landArg.start_lon != -1.0) && (m_landArg.start_lon != -1.0) && (m_landArg.start_lon != -1.0) && (m_landArg.start_lon != -1.0) ) //TODO: Add sanity check on starting pos?
+        {
+          //! Starting pose has been manually set; 
+          //! Set the reference lat/lon/height for the displacement to be the manually selected position
+          startpoint_lat = m_landArg.start_lat;
+          startpoint_lon = m_landArg.start_lon;
+          startpoint_height = m_landArg.start_height;
+          //TODO: WHY? They are overwritten by displacement() as long as they are not zero(?)
+          Xs(0,0) = 1.0;
+          Xs(1,0) = 1.0;
+          Xs(2,0) = 1.0;
+          Xs(3,0) = m_landArg.startHeading;
+        }
+        else
+        {
+          //! Set the reference lat/lon/height for the displacement to be the current position
+          startpoint_lat = m_estate.lat;
+          startpoint_lon = m_estate.lon;
+          startpoint_height = m_estate.height;
+          //TODO: WHY? They are overwritten by displacement() as long as they are not zero(?)
+          Xs(0,0) = m_estate.x;
+          Xs(1,0) = m_estate.y;
+          Xs(2,0) = m_estate.z;
+          Xs(3,0) = m_estate.psi;
+        }
+        //! Find WP1 lat lon by displacing the WP1 NED position from the net position
+        Coordinates::WGS84_Accurate::displace(m_estate.x,m_estate.y,m_estate.z,
+                                              &startpoint_lat,&startpoint_lon,&startpoint_height);
+
+        //! Find NED position of startpoint_lat/lon/height (WGS84), referenced in m_landArg.net_lat/lon/height (WGS84) and place it in Xs
         Coordinates::WGS84::displacement(m_landArg.net_lat,m_landArg.net_lon,m_landArg.net_height,
-                                          state_lat,state_lon,state_height,
+                                          startpoint_lat,startpoint_lon,startpoint_height,
                                           &Xs(0,0),&Xs(1,0),&Xs(2,0));
-        //! Find NED displacement between m_estate (WGS84) and WP1 lat lon (WGS84)
-        Coordinates::WGS84::displacement(state_lat,state_lon,state_height,
+        //! Find NED position of startpoint_lat/lon/height (WGS84), referenced in wp1_lat/lon/height (WGS84) and place it in Xf
+        Coordinates::WGS84::displacement(startpoint_lat,startpoint_lon,startpoint_height,
                                           wp1_lat,wp1_lon,wp1_h,
                                           &Xf(0,0),&Xf(1,0),&Xf(2,0));
 
         debug("Xf x=%f y=%f z=%f psi=%f",Xf(0,0),Xf(1,0),Xf(2,0),Xf(3,0));
         debug("Xs x=%f y=%f z=%f psi=%f",Xs(0,0),Xs(1,0),Xs(2,0),Xs(3,0));
         debug("m_estate height: %f net height: %f",m_estate.height,m_landArg.net_WGS84_height);
-        debug("State: lat %f lon %f height %f",state_lat,state_lon,state_height);
+        debug("State: lat %f lon %f height %f",startpoint_lat,startpoint_lon,startpoint_height);
 
-        m_landParameteres.Xs = Xs;
-        m_landParameteres.state_lat = state_lat;
-        m_landParameteres.state_lon = state_lon;
-        m_landParameteres.state_height = state_height;
-
-        // Set the start position to zero
+        // Set the reference lat/lon/height to be the starting point
+        // and set the NED start position to zero, accordingly
+        m_landParameteres.Xs = Xs; //TODO: why is this set? It is never used...
+        m_landParameteres.llhref_lat = startpoint_lat;
+        m_landParameteres.llhref_lon = startpoint_lon;
+        m_landParameteres.llhref_height = startpoint_height;
         Xs(0,0) = 0.0;
         Xs(1,0) = 0.0;
         Xs(2,0) = 0.0;
@@ -554,9 +593,9 @@ namespace Plan
       addLoiter(IMC::MessageList<IMC::Maneuver>& maneuverList)
       {
         IMC::Loiter loiter;
-        double loiter_lat = m_landParameteres.state_lat;
-        double loiter_lon = m_landParameteres.state_lon;
-        double loiter_h = m_landParameteres.state_height;
+        double loiter_lat = m_landParameteres.llhref_lat;
+        double loiter_lon = m_landParameteres.llhref_lon;
+        double loiter_h = m_landParameteres.llhref_height;
         debug("loiter_h %f OCFz %f ",loiter_h,m_landParameteres.OCFz);
         Coordinates::WGS84_Accurate::displace(m_landParameteres.OCF(0,0),m_landParameteres.OCF(1,0),m_landParameteres.OCFz,
                                               &loiter_lat,&loiter_lon,&loiter_h);

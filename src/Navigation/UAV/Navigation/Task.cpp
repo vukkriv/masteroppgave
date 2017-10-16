@@ -178,7 +178,7 @@ namespace Navigation
         int shortRtkLoss_max_time_frequency_multiplier;
         int shortRtkLoss_n_samples;
         int rtkMessageFrequency_n_samples;
-
+        std::string rtk_src_ent;
       };
 
       struct Task: public DUNE::Tasks::Task
@@ -286,6 +286,11 @@ namespace Navigation
           .defaultValue("10")
           .minimumValue("1");
 
+          param("RTK - source entity", m_args.rtk_src_ent)
+          .values("RTKLIB,RTKCompensator")
+          .defaultValue("RTKLIB");
+
+
           // Default, we use full external state
           m_navsources.mask = (NS_EXTERNAL_FULLSTATE | NS_EXTERNAL_AHRS | NS_EXTERNAL_POSREF);
           m_navsources.available_mask = (NS_EXTERNAL_FULLSTATE | NS_EXTERNAL_AHRS | NS_EXTERNAL_POSREF);
@@ -372,6 +377,10 @@ namespace Navigation
           if (rtkfix->getSource() != getSystemId())
             return;
 
+          // Only care about fixes from desired entity
+          if (resolveEntity(rtkfix->getSourceEntity()) != m_args.rtk_src_ent)
+            return;
+          //
           // Only care if position is valid
           if (!(rtkfix->validity & IMC::GpsFixRtk::RFV_VALID_POS))
             return;
