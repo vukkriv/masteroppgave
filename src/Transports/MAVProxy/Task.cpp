@@ -52,6 +52,8 @@ namespace Transports
       uint8_t trate;
       //! Convert MSL to WGS84 height
       bool convert_msl;
+      //! Name of Target
+      std::string target;
     };
 
     struct Task: public DUNE::Tasks::Task
@@ -119,8 +121,12 @@ namespace Transports
         .description("Telemetry output rate from Ardupilot");
 
         param("Convert MSL to WGS84 height", m_args.convert_msl)
-         .defaultValue("false")
-         .description("Convert altitude extracted from the Ardupilot to WGS84 height");
+        .defaultValue("false")
+        .description("Convert altitude extracted from the Ardupilot to WGS84 height");
+ 	
+	param("Target System", m_args.target)
+        .description("System to be tracked")
+        .defaultValue("ntnu-ghost");
 
         // Setup packet handlers
         // IMPORTANT: set up function to handle each type of MAVLINK packet here
@@ -133,7 +139,7 @@ namespace Transports
         //! Misc. initialization
         m_last_pkt_time = 0; //! time of last packet from Ardupilot
         m_estate.clear();
-        m_estate.setSource(resolveSystemName("ntnu-ghost")); //ntnu-ghost - 0x2cff
+        m_estate.setSource(resolveSystemName(m_args.target)); //ntnu-ghost - 0x2cff
       }
 
       //! Update internal state with new parameter values.
