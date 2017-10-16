@@ -133,7 +133,7 @@ namespace Transports
         //! Misc. initialization
         m_last_pkt_time = 0; //! time of last packet from Ardupilot
         m_estate.clear();
-        m_estate.setSource(0x2cff); //ntnu-ghost
+        m_estate.setSource(resolveSystemName("ntnu-ghost")); //ntnu-ghost - 0x2cff
       }
 
       //! Update internal state with new parameter values.
