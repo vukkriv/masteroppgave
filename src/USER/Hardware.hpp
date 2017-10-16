@@ -38,6 +38,7 @@ namespace DUNE
 
 
 #include <USER/Hardware/IrqGPIO.hpp>
+#include <USER/Hardware/PWM.hpp>
 
 
 
