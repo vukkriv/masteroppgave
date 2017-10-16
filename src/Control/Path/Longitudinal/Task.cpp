@@ -326,7 +326,7 @@ namespace Control
           m_parcels[PC_THR].p = m_args.k_thr_p*V_error;
           m_parcels[PC_THR].i = m_args.k_thr_i*m_thr_i;
           m_parcels[PC_THR].d = m_h_err*m_args.k_thr_ph ;
-          m_parcels[PC_PTCH].p = gamma_error*m_args.k_gamma_p; 
+          m_parcels[PC_PTCH].p = -gamma_error*m_args.k_gamma_p; 
           m_parcels[PC_PTCH].i = gamma_desired; //Abuse of notation
 
           spew("pitch desired: %f \t alpha_0: %f",m_pitch.value,Angles::degrees(alpha_now));
