@@ -153,6 +153,10 @@ namespace Navigation
       void
       consume(const IMC::GpsFixRtk* msg)
       {
+        // Only care about fixes from ourselves
+        if (msg->getSource() != getSystemId())
+          return;
+
         bool valid = true;
 
         if ((msg->validity & IMC::GpsFixRtk::RFV_VALID_BASE) == 0)
