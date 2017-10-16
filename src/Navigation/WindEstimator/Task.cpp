@@ -162,7 +162,7 @@ namespace Navigation
           //Find normalized observability gramian
           m_G = m_G + m_dt * transpose(m_C) * m_C / m_n_samples;
 
-          double temp[] = {m_air_speed,0,0};
+          //double temp[] = {m_air_speed,0,0};
 
 //          // Measured wind velocity
 //          m_wind_at_the_moment.x = (m_vn - (transpose(m_R_bn) * Matrix(temp,3,1))).element(0,0);

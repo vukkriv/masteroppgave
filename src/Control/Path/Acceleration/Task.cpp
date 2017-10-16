@@ -1324,7 +1324,7 @@ namespace Control
 
           double pL = m_args.suspended_rope_length;
 
-          trace("Angle history size: %lu", m_anglehistory.size());
+          trace("Angle history size: %u", (unsigned int) m_anglehistory.size());
 
           // Check sigmoid smoothing
           double Gd_orig = Gd;
