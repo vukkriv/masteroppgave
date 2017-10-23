@@ -56,9 +56,10 @@ namespace Navigation
     {
       //! Constant time delay
       double receipt_delay;
-      //! Output frequency
-      double execution_frequency;
+      //! Maximum allowed forward propagation time.
       double deltat_max;
+      //! Dispatch logging of internal states
+      bool dispatch_log_object;
     };
 
     class RtkReceipt
@@ -80,8 +81,6 @@ namespace Navigation
       RtkReceipt m_currentRtk;
       //! Dispatched State
       IMC::EstimatedLocalState m_els;
-      IMC::DesiredLinearState delta_logger;
-
 
 
       //! Constructor.
@@ -95,16 +94,14 @@ namespace Navigation
         .defaultValue("0.1")
         .description("Constant value to use for forward propagation. ");
 
-        param("Output Frequency", m_args.execution_frequency)
-        .minimumValue("0")
-        .defaultValue("25")
-        .description("Solution output frequency");
-
         param("Max time step", m_args.deltat_max)
         .minimumValue("0")
         .defaultValue("0.2")
         .description("Upper limit for Euler forward simulation time step");
 
+        param("Dispatch Internal Log State", m_args.dispatch_log_object)
+        .defaultValue("false")
+        .description("True to dispatch an DesiredLinearState with internal states. ");
 
         m_els.clear();
         m_els.state.set(new IMC::EstimatedState);
@@ -181,10 +178,7 @@ namespace Navigation
 
         // Set the newly received message to the current
         m_currentRtk = m_rtkReceipt;
-
-
       }
-
 
       void
       propagateForward(void)
@@ -203,33 +197,31 @@ namespace Navigation
         }
         else if (deltat > m_args.deltat_max)
         {
-          //err("Too large time delta, %f. Using %f. ", deltat, m_args.deltat_max);
           deltat = m_args.deltat_max;
         }
-        // log the actual deltat used
-        delta_logger.x = deltat;
-
 
         m_currentRtk.msg.n += deltat * old.msg.v_n;
         m_currentRtk.msg.e += deltat * old.msg.v_e;
         m_currentRtk.msg.d += deltat * old.msg.v_d;
-        debug("After\t Pn:\t %f\t Pe:\t %f\t Pd:\t %f",m_currentRtk.msg.n,m_currentRtk.msg.e,m_currentRtk.msg.d);
 
         m_currentRtk.tov += deltat;
 
+        trace("After\t Pn:\t %f\t Pe:\t %f\t Pd:\t %f",
+            m_currentRtk.msg.n,
+            m_currentRtk.msg.e,
+            m_currentRtk.msg.d);
+
         m_currentRtk.msg.setSourceEntity(getEntityId());
         dispatch(m_currentRtk.msg);
-        dispatch(delta_logger);
+
+        if (m_args.dispatch_log_object)
+        {
+          // log the actual deltat used
+          IMC::DesiredLinearState delta_logger;
+          delta_logger.x = deltat;
+          dispatch(delta_logger);
+        }
       }
-
-      void
-      fillState(void)
-      {
-        // TODO: Fill up ELS
-      }
-
-
-
 
       //! Main loop.
       void
