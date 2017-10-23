@@ -60,6 +60,10 @@ namespace Navigation
       double deltat_max;
       //! Dispatch logging of internal states
       bool dispatch_log_object;
+      //! Source of RTK message to propagate
+      std::string rtk_msg_src_ent;
+      //! Timeout of receipt of RTK message.
+      double timeout;
     };
 
     class RtkReceipt
@@ -81,13 +85,18 @@ namespace Navigation
       RtkReceipt m_currentRtk;
       //! Dispatched State
       IMC::EstimatedLocalState m_els;
+      //! ID of source entity to filter for
+      int m_rtk_msg_src_ent_id;
+      //! Watchdog timer for timeout
+      Time::Counter<double> m_watchdog;
 
 
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Periodic(name, ctx)
+        DUNE::Tasks::Periodic(name, ctx),
+        m_rtk_msg_src_ent_id(0)
       {
         param("Receipt Delay", m_args.receipt_delay)
         .minimumValue("0")
@@ -103,6 +112,15 @@ namespace Navigation
         .defaultValue("false")
         .description("True to dispatch an DesiredLinearState with internal states. ");
 
+        param("Source Entity of Incoming Messages", m_args.rtk_msg_src_ent)
+        .defaultValue("RTKLIB")
+        .description("Entity label for incoming messages. ");
+
+        param("Incoming Message Timeout", m_args.timeout)
+        .minimumValue("0.0")
+        .defaultValue("0.6")
+        .description("Timeout to stop sending propagated messages. ");
+
         m_els.clear();
         m_els.state.set(new IMC::EstimatedState);
         m_els.acc.set(new IMC::Acceleration);
@@ -114,6 +132,8 @@ namespace Navigation
       void
       onUpdateParameters(void)
       {
+        if (paramChanged(m_args.timeout))
+          m_watchdog.setTop(m_args.timeout);
       }
 
       //! Reserve entity identifiers.
@@ -126,6 +146,13 @@ namespace Navigation
       void
       onEntityResolution(void)
       {
+        try {
+          m_rtk_msg_src_ent_id = this->resolveEntity(m_args.rtk_msg_src_ent);
+        }
+        catch (DUNE::Entities::EntityDataBase::NonexistentLabel &nonlabel)
+        {
+          err("Unable to resolve entity label: %s", nonlabel.what());
+        }
       }
 
       //! Acquire resources.
@@ -154,6 +181,13 @@ namespace Navigation
         if (msg->getSource() != getSystemId())
           return;
 
+        // Check for source
+        if (msg->getSourceEntity() != m_rtk_msg_src_ent_id)
+        {
+          trace("Message not valid due to invalid source entity: %d", msg->getSourceEntity());
+          return;
+        }
+
         bool valid = true;
 
         if ((msg->validity & IMC::GpsFixRtk::RFV_VALID_BASE) == 0)
@@ -171,6 +205,13 @@ namespace Navigation
 
         if (!valid)
           return;
+
+        // Handle watchdog.
+        if (m_watchdog.overflow() && getEntityState() != EntityState::ESTA_BOOT)
+          inf("System recovered after %f s.", m_watchdog.getElapsed());
+
+        m_watchdog.reset();
+        setEntityState(EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
 
         // Store message
         m_rtkReceipt.msg = *msg;
@@ -227,7 +268,14 @@ namespace Navigation
       void
       task(void)
       {
-        propagateForward();
+        if (m_watchdog.overflow())
+        {
+          if (this->getEntityState() != EntityState::ESTA_NORMAL)
+            setEntityState(EntityState::ESTA_ERROR, Status::CODE_MISSING_DATA);
+        }
+        if (this->getEntityState() == EntityState::ESTA_NORMAL)
+          propagateForward();
+
       }
     };
   }
