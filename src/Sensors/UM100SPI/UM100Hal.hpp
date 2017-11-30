@@ -141,33 +141,11 @@ namespace Sensors
     class UM100Hal
     {
     public:
-      UM100Hal(Task* task, std::string device, Role role, UM100_options options):
-        m_task(task),
-        m_device(device),
-        m_role(role),
-        m_options(options),
-        m_maxdev_nb(32)
-      {
-          m_task->inf("HAL constructed.");
+      // Constructor
+      UM100Hal(Task* task, std::string device, Role role, UM100_options options);
 
-          // TODO: Move to resource acq/release. (Release with null check)
-          m_trame_buff = (rng_protocol_header_t*) malloc(c_trame_buff_max_size);
-
-          m_partls_in = NULL;
-
-          // Initialize pool of ARTLS commands
-          m_artls_down_pool = allocate_pool(sizeof(artls_down_t), 50);
-
-          // Init timers
-          time(&curr_time);
-          time(&last_time);
-      }
-
-      ~UM100Hal()
-      {
-        free(m_trame_buff);
-        release_pool(m_artls_down_pool);
-      }
+      // Destructor
+      ~UM100Hal();
 
       // Initialize the UM100
       bool initialize();
@@ -179,7 +157,7 @@ namespace Sensors
       // (Event/timeout/error)
       PollResult poll(double timeout_ms);
 
-      // Returns a mask of events
+      // Returns a mask of events EventType
       unsigned int parse_events();
 
       // Handles network tasks. Should be called after an NETWORK_MANAGEMENT event.
@@ -188,13 +166,11 @@ namespace Sensors
       // Returns new available data. Should be called after an DATA_READY event.
       std::vector<Measurement> read_measurements();
 
-
     private:
       uint32_t getCapabilities(void);
       int _ioctl_w(int fd, int request, void* data, const char* ioctl_name);
       bool isMoving();
       bool read_single_from_buffer(rng_protocol_header_t* header, unsigned char* buffer, OSAL_u16* read_size, Measurement& m);
-
 
       // Task
       Task* m_task;

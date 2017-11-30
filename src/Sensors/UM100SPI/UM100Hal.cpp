@@ -17,6 +17,34 @@ namespace Sensors
   namespace UM100SPI
   {
 
+    UM100Hal::UM100Hal(Task* task, std::string device, Role role, UM100_options options):
+      m_task(task),
+      m_device(device),
+      m_role(role),
+      m_options(options),
+      m_maxdev_nb(32)
+    {
+        m_task->inf("HAL constructed.");
+
+        // TODO: Move to resource acq/release. (Release with null check)
+        m_trame_buff = (rng_protocol_header_t*) malloc(c_trame_buff_max_size);
+
+        m_partls_in = NULL;
+
+        // Initialize pool of ARTLS commands
+        m_artls_down_pool = allocate_pool(sizeof(artls_down_t), 50);
+
+        // Init timers
+        time(&curr_time);
+        time(&last_time);
+    }
+
+    UM100Hal::~UM100Hal()
+    {
+      free(m_trame_buff);
+      release_pool(m_artls_down_pool);
+    }
+
     // Uses available data to calculate distance
     static double
     calculate_distance(
@@ -416,6 +444,7 @@ namespace Sensors
     void
     UM100Hal::handle_network()
     {
+// To avoid BeSpoon SDK hardcode of 32bit pointer warnings.
 #ifndef __x86_64__
       int status = ioctl_w(m_pollfds.fd, PP_IOC_G_ARTLS, &m_artls_out);
       if(status >= 0)
