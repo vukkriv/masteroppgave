@@ -222,7 +222,7 @@ namespace Sensors
 
       // TODO:
       // Set Antenna offset
-      uint16_t antenna_offset = (int16_t)(m_options.antenna_offset * 3333); // Convert m to ps
+      uint16_t antenna_offset = (int16_t)(m_options.antenna_offset * 3333.0); // Convert m to ps
       if(antenna_offset != 0)
       {
         m_partls_in = (artls_down_t*)pool_get_buffer(m_artls_down_pool);

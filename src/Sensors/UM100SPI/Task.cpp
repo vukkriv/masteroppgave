@@ -121,7 +121,8 @@ namespace Sensors
         .description("Slot method increment. Default 0");
 
         param("UM100 - Antenna Offset", m_options.antenna_offset)
-        .defaultValue("0")
+        .defaultValue("0.105")
+        .units(Units::Meter)
         .description("Antenna Offset. ");
 
         // Hardcode datalength in bits for ext for now.

@@ -91,7 +91,7 @@ namespace Sensors
       // External data length in bits.
       uint32_t extDataLenInBits;
       // Antenna offset
-      uint16_t antenna_offset;
+      double antenna_offset;
     };
 
     enum Role
