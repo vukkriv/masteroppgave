@@ -14,6 +14,10 @@
 #include <osal_trace.h>
 #include <osal_stdlib.h>
 
+#ifndef ARM
+#define ARM
+#endif
+
 #include <pinpointer_drv_api.h>
 #include "artls.h"
 
@@ -95,7 +99,7 @@ static void upgrade_device(device_t* dev, OSAL_u8* devMac,OSAL_u32 devHash,devic
 		dev->attach = attach;
 		dev->last_activity = last_activity;
 	}
-	if(dev->friend) upgrade_device(dev->friend,devMac,devHash,attach,last_activity);
+	if(dev->friend_device) upgrade_device(dev->friend_device,devMac,devHash,attach,last_activity);
 }
 
 static OSAL_void reset_device(device_t* dev,OSAL_bool_t allOfThem)
@@ -124,8 +128,8 @@ static OSAL_void reset_device(device_t* dev,OSAL_bool_t allOfThem)
 		dev->last_activity = 0;
 		dev->master = NULL;
 
-		if(dev->friend) reset_device(dev->friend,OSAL_false);
-		dev->friend=NULL;
+		if(dev->friend_device) reset_device(dev->friend_device,OSAL_false);
+		dev->friend_device=NULL;
 		// Do *NOT* reset slot description
 	}
 }
@@ -167,7 +171,7 @@ static device_t* find_free_slot(OSAL_u8* mac, OSAL_u32 startIndex)
 		//now try to get nearest config of option_slotMethod_nb, option_slotMethod_increment;
 		new_ranging_slot = max_u32;
 		current_tag->sent_slotMethod_increment = current_tag->option_slotMethod_increment;
-		current_tag->friend = NULL;
+		current_tag->friend_device = NULL;
 		i+=current_tag->sent_slotMethod_increment;
 		lastfriend_tag=current_tag;
 		lastfriend_tag->master = current_tag;
@@ -177,7 +181,7 @@ static device_t* find_free_slot(OSAL_u8* mac, OSAL_u32 startIndex)
 			tag = &devices[j];
 			if(tag->addr == DEFAULT_ADDR && tag->position_loc < new_ranging_slot && tag->position_loc > lastfriend_tag->position_loc )
 			{
-				lastfriend_tag->friend = tag;
+				lastfriend_tag->friend_device = tag;
 				lastfriend_tag->master = current_tag;
 				lastfriend_tag = tag;
 				current_tag->sent_slotMethod_nb++;
@@ -237,14 +241,14 @@ OSAL_void init_devices(OSAL_u32* nb_dev_used, superframe_info_t* sfi, OSAL_u32 l
 		devices[i].option_slotMethod_increment = option_slotMethod_increment;
 		devices[i].sent_slotMethod_nb = 1;
 		devices[i].sent_slotMethod_increment = 0;
-		devices[i].friend = NULL;
+		devices[i].friend_device = NULL;
 		devices[i].master = NULL;
 	}
 }
 
 OSAL_void reset_devices(OSAL_u8 option_slotMethod_nb, OSAL_u8 option_slotMethod_increment)
 {
-	int i;
+	unsigned int i;
 	reset_device(NULL,OSAL_true);
 	for(i=0; i < nb_devices; i++)
 	{
@@ -322,7 +326,7 @@ OSAL_error_t simple_pairing_request(artls_pairing_request_t* request, artls_simp
 	friend_tag=current_tag;
 	do{
 		OSAL_trace_noend(TRACE_INFO, "%d,",friend_tag->position_loc);
-		friend_tag=friend_tag->friend;
+		friend_tag=friend_tag->friend_device;
 	}while(friend_tag);
 	OSAL_trace_noend(TRACE_INFO, "\n");
 

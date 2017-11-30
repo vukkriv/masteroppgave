@@ -33,7 +33,8 @@
 	#define TRACE_ENV_VAR "OSAL_TRACE"
 #endif
 
-extern OSAL_s32 TRLEVEL;
+//extern OSAL_s32 TRLEVEL;
+#define TRLEVEL 0
 
 #define TRACE_INIT() do{ \
 		if(getenv(TRACE_ENV_VAR)!=NULL) TRLEVEL=(OSAL_s32) strtol(getenv(TRACE_ENV_VAR),NULL,0);\

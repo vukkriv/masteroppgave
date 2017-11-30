@@ -10,7 +10,23 @@
  * the express prior written authorization of Bespoon.
  */
 
+
+// HACK:
+#ifndef CONFIG_RTLS_PROTOCOL
+#define CONFIG_RTLS_PROTOCOL
+#endif
+
+#ifndef CONFIG_RTLS_FULL_LOC
+#define CONFIG_RTLS_FULL_LOC
+#endif
+
+#ifndef ARM
+#define ARM
+#endif
+
+
 #include "pinpointer_drv_api.h"
+
 #ifndef DEFAULT_SFI_H
 #define DEFAULT_SFI_H
 

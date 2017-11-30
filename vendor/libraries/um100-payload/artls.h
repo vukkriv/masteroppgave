@@ -53,7 +53,7 @@ struct device_tag
 	OSAL_u8 	sent_slotMethod_nb;
 	OSAL_u8 	sent_slotMethod_increment;
 	rng_config_e	rngDataType;
-	device_t*   friend; /**< a same device on multiple slots */
+	device_t*   friend_device; /**< a same device on multiple slots */
 	device_t*   master; /**< for same device on multiple slots, the first one */
 };
 

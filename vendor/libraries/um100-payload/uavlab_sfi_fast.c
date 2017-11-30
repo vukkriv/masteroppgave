@@ -11,7 +11,7 @@
 #include "uavlab_sfi_fast.h"
 
 int nCoord_Slot_Desc = 19;
-static frame_info_t Coord_Slot_Desc[] = {
+frame_info_t Coord_Slot_Desc[] = {
   { .type = FIT_BEACON1,  .act = TX,    .slot_index = 5,  .beacon_id = 0, .zone = DEFAULT_SFI_ZONE_BEACON,  .channel = DEFAULT_SFI_CHANNEL, .rf_path = DEFAULT_SFI_TX_RFPATH, .rngDataType=RNG_CONF_LOC_NRJ_MASK|RNG_CONF_LOC_TOA_MASK|RNG_CONF_LOC_METR_MASK},
   { .type = FIT_BEACON2,  .act = TX,    .slot_index = 11, .beacon_id = 0, .zone = DEFAULT_SFI_ZONE_BEACON,  .channel = DEFAULT_SFI_CHANNEL, .rf_path = DEFAULT_SFI_TX_RFPATH, .rngDataType=RNG_CONF_LOC_NRJ_MASK|RNG_CONF_LOC_TOA_MASK|RNG_CONF_LOC_METR_MASK},
   { .type = FIT_RANGING,  .act = RX,    .slot_index = 15,   .beacon_id = 0, .zone = DEFAULT_SFI_ZONE_RANGING, .channel = DEFAULT_SFI_CHANNEL, .rf_path = DEFAULT_SFI_RX_RFPATH, .rngDataType=RNG_CONF_LOC_NRJ_MASK|RNG_CONF_LOC_TOA_MASK|RNG_CONF_LOC_METR_MASK},
@@ -34,7 +34,7 @@ static frame_info_t Coord_Slot_Desc[] = {
 };
 
 int nBase_Slot_Desc = 29;
-static frame_info_t Base_Slot_Desc[] = {
+frame_info_t Base_Slot_Desc[] = {
   { .type = FIT_BEACON1,  .act = RX,    .slot_index = 0,  .beacon_id = 5, .zone = DEFAULT_SFI_ZONE_BEACON,  .channel = DEFAULT_SFI_CHANNEL, .rf_path = DEFAULT_SFI_RX_RFPATH, .rngDataType=RNG_CONF_LOC_NRJ_MASK|RNG_CONF_LOC_TOA_MASK|RNG_CONF_LOC_METR_MASK},
   { .type = FIT_BEACON1,  .act = RX,    .slot_index = 1,  .beacon_id = 4, .zone = DEFAULT_SFI_ZONE_BEACON,  .channel = DEFAULT_SFI_CHANNEL, .rf_path = DEFAULT_SFI_RX_RFPATH, .rngDataType=RNG_CONF_LOC_NRJ_MASK|RNG_CONF_LOC_TOA_MASK|RNG_CONF_LOC_METR_MASK},
   { .type = FIT_BEACON1,  .act = RX,    .slot_index = 2,  .beacon_id = 3, .zone = DEFAULT_SFI_ZONE_BEACON,  .channel = DEFAULT_SFI_CHANNEL, .rf_path = DEFAULT_SFI_RX_RFPATH, .rngDataType=RNG_CONF_LOC_NRJ_MASK|RNG_CONF_LOC_TOA_MASK|RNG_CONF_LOC_METR_MASK},
@@ -67,7 +67,7 @@ static frame_info_t Base_Slot_Desc[] = {
 };
 
 int nTag_Slot_Desc = 29;
-static frame_info_t Tag_Slot_Desc[] = {
+frame_info_t Tag_Slot_Desc[] = {
   { .type = FIT_BEACON1,  .act = RX,    .slot_index = 0,  .beacon_id = 5, .zone = DEFAULT_SFI_ZONE_BEACON,  .channel = DEFAULT_SFI_CHANNEL, .rf_path = DEFAULT_SFI_RX_RFPATH, .rngDataType=RNG_CONF_LOC_NRJ_MASK|RNG_CONF_LOC_TOA_MASK|RNG_CONF_LOC_METR_MASK},
   { .type = FIT_BEACON1,  .act = RX,    .slot_index = 1,  .beacon_id = 4, .zone = DEFAULT_SFI_ZONE_BEACON,  .channel = DEFAULT_SFI_CHANNEL, .rf_path = DEFAULT_SFI_RX_RFPATH, .rngDataType=RNG_CONF_LOC_NRJ_MASK|RNG_CONF_LOC_TOA_MASK|RNG_CONF_LOC_METR_MASK},
   { .type = FIT_BEACON1,  .act = RX,    .slot_index = 2,  .beacon_id = 3, .zone = DEFAULT_SFI_ZONE_BEACON,  .channel = DEFAULT_SFI_CHANNEL, .rf_path = DEFAULT_SFI_RX_RFPATH, .rngDataType=RNG_CONF_LOC_NRJ_MASK|RNG_CONF_LOC_TOA_MASK|RNG_CONF_LOC_METR_MASK},
