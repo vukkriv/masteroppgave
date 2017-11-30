@@ -93,6 +93,8 @@ namespace Sensors
         m_device_addressbook[2008] = 0;
         m_device_addressbook[3007] = 1;
         m_device_addressbook[3202] = 2;
+        m_device_addressbook[2106] = 3;
+        m_device_addressbook[2923] = 4;
       }
 
       //! Update internal state with new parameter values.
