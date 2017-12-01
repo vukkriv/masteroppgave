@@ -165,7 +165,7 @@ namespace Sensors
             }
           }
 
-          for (auto it = m_device_addressbook.begin(); it != m_device_addressbook.end(); it++)
+          for (std::map<unsigned, unsigned>::iterator it = m_device_addressbook.begin(); it != m_device_addressbook.end(); it++)
           {
             inf("Found: %d, with own id: %d", it->first, it->second);
           }
@@ -179,7 +179,7 @@ namespace Sensors
         for( unsigned int i = 0; i < c_max_num_tags; ++i)
         {
           bool expected = false;
-          for (auto it = m_args.expected_tags.begin(); it != m_args.expected_tags.end(); ++it)
+          for (std::vector<unsigned>::iterator it = m_args.expected_tags.begin(); it != m_args.expected_tags.end(); ++it)
           {
             if (i == *it)
             {
@@ -291,9 +291,9 @@ namespace Sensors
         std::vector<Measurement> res = m_radio->read_measurements();
 
         // Loop to process
-        for (auto it = res.begin(); it != res.end(); it++)
+        for (std::vector<Measurement>::iterator it = res.begin(); it != res.end(); it++)
         {
-          auto m = it;
+          std::vector<Measurement>::iterator m = it;
           unsigned int src = m->src;
           bool deviceInAddreessBook = false;
 
