@@ -235,7 +235,10 @@ namespace Sensors
       onResourceRelease(void)
       {
         if (m_radio != NULL)
+        {
+          m_radio->close();
           delete m_radio;
+        }
       }
 
       //! Main loop.

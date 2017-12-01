@@ -131,6 +131,7 @@ namespace Sensors
     UM100Hal::initialize(void)
     {
 
+      m_task->inf("Trying to open: %s", m_device.c_str());
       m_pollfds.fd = open(m_device.c_str(), O_RDWR);
 
       if (m_pollfds.fd < 0)
