@@ -238,6 +238,7 @@ namespace Sensors
         {
           m_radio->close();
           delete m_radio;
+          m_radio = NULL;
         }
       }
 
