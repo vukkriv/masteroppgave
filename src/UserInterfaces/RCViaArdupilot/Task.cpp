@@ -95,7 +95,7 @@ namespace UserInterfaces
         .defaultValue("10");
 
 
-        m_time_of_previous_packet = Clock::get();
+        m_time_of_previous_packet = Clock::get()-2;
 
         initializePWMContainer();
 
