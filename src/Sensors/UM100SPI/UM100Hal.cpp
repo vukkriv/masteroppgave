@@ -37,6 +37,8 @@ namespace Sensors
         // Init timers
         time(&curr_time);
         time(&last_time);
+        m_time_first_message = -1;
+        m_time_previous_message = -1;
     }
 
     UM100Hal::~UM100Hal()
@@ -405,12 +407,16 @@ namespace Sensors
     {
       std::vector<Measurement> result;
 
+      double now = Clock::get();
+
       size_t cur_size = read( m_pollfds.fd,
         m_trame_buff,
         c_trame_buff_max_size);
 
       if(cur_size > 0)
       {
+
+
         unsigned char* data=(unsigned char*) m_trame_buff;
         OSAL_u16 entrySize=0;
         data+=sizeof(rng_protocol_header_t);
@@ -420,12 +426,27 @@ namespace Sensors
           bool valid_data = read_single_from_buffer(m_trame_buff, data, &entrySize, m);
 
           if (valid_data)
+          {
+            if (m_time_first_message < 0)
+              m_time_first_message = now;
+
+            double diff = 0;
+            if (m_time_previous_message > 0)
+              diff = now - m_time_previous_message;
+
+            //m.time = now - m_time_first_message;
+            m.delta_time = diff;
+
             result.push_back(m);
+          }
 
           // Increment data pointer
           data +=entrySize;
         }
       }
+
+      if (result.size() > 1)
+        m_time_previous_message = now;
 
       return result;
     }

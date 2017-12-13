@@ -195,6 +195,10 @@ namespace Sensors
       pool_t* m_artls_down_pool;
       // Number of devices to use
       OSAL_u32 m_maxdev_nb;
+      // Time of startup
+      double m_time_first_message;
+      // Time of previous package
+      double m_time_previous_message;
     };
 
   } /* namespace UM100SPI */

@@ -331,7 +331,7 @@ namespace Sensors
             m_bdistance[id].rssi = m->RSSI;
             m_bdistance[id].dqf = m->quality_factor;
             m_bdistance[id].time = m->time;
-            m_bdistance[id].dlt = m->delta_time;
+            m_bdistance[id].dlt = m->delta_time * 1E9;
 
             dispatch(m_bdistance[id]);
           }
@@ -344,7 +344,7 @@ namespace Sensors
           bd.rssi = m->RSSI;
           bd.dqf = m->quality_factor;
           bd.time = m->time;
-          bd.dlt = m->delta_time;
+          bd.dlt = m->delta_time * 1E9;
 
           dispatch(bd);
         }
