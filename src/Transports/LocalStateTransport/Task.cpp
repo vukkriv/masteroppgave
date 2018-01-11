@@ -220,9 +220,10 @@ namespace Transports
       void
       consume(const IMC::Acceleration* msg)
       {
-        m_acc.x = msg->x;
-        m_acc.y = msg->y;
-        m_acc.z = msg->z;
+        // Convert to NED and store.
+        BodyFixedFrame::toInertialFrame(m_estate.phi, m_estate.theta, m_estate.psi,
+                                        msg->x, msg->y, msg->z,
+                                        &m_acc.x, &m_acc.y, &m_acc.z);
       }
       //! Main loop.
       void
