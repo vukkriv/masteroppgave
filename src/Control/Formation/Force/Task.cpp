@@ -2068,7 +2068,7 @@ namespace Control
 
           }
           // Add acceleration feed-forward and coordination input u
-          F_i += m_args.mass * (dv_des + m_Gamma*du);// + u;
+          F_i += m_args.mass * (dv_des + 0.1*m_Gamma*du) + u;
 
           // Add optional bias compensation
           if (m_args.enable_bias_compensation)
