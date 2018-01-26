@@ -48,8 +48,6 @@ namespace Control
         bool enable_catch;
         //! Enable this path controller or not
         bool use_controller;
-        //! Enable mean window for aircraft states
-        bool use_mean_window_aircraft;
         //! Disable Z flag, this will utilize new rate controller on some targets
         bool disable_Z;
 
@@ -61,8 +59,6 @@ namespace Control
         double max_px_app;
         // Factor for when to enter approach. Factor ==1 means it will go directly to start.
         double approach_start_factor;
-        //! Moving mean window size
-        double mean_ws;
         //! Desired velocity of net at impact
         double m_ud_impact;
         //! Desired time to accelerate to desired velocity of net at impact
@@ -400,19 +396,13 @@ namespace Control
 
         //! Cross track errors
         std::vector<Matrix> m_p_path;
-        std::vector<std::queue<Matrix> > m_cross_track_window;
-        std::vector<Matrix> m_p_path_mean;
         //! Cross track errors derivative
         std::vector<Matrix> m_v_path;
-        std::vector<std::queue<Matrix> > m_cross_track_d_window;
-        std::vector<Matrix> m_v_path_mean;
 
         //! Position difference along path. Aka difference between centroid net and fixed-wing.
         double m_delta_p_path_x;
-        double m_delta_p_path_x_mean;
         //! Velocity difference along path
         double m_delta_v_path_x;
-        double m_delta_v_path_x_mean;
 
         Matrix m_p_ref_path;
         Matrix m_v_ref_path;
@@ -479,9 +469,7 @@ namespace Control
           m_coordinatorEnabled(false),
           m_initializedCoord(false),
           m_delta_p_path_x(0),
-          m_delta_p_path_x_mean(0),
           m_delta_v_path_x(0),
-          m_delta_v_path_x_mean(0),
           m_p_ref_path(3, 1, 0.0),
           m_v_ref_path(3, 1, 0.0),
           m_a_des_path(3, 1, 0.0),
@@ -513,19 +501,6 @@ namespace Control
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .defaultValue("0.0")
           .description("Cross-track offset, subtract the offset from the y-position of the airplane in the path frame");
-
-          param("Mean Window Aircraft -- Enable", m_args.use_mean_window_aircraft)
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .defaultValue("false")
-          .description("Use mean window on aircraft states");
-
-          param("Mean Window Aircraft -- Size", m_args.mean_ws)
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .defaultValue("1.0")
-          .description("Number of samples in moving average window");
-
-
-
 
           param("Approach -- Factor pos x", m_args.approach_start_factor)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -977,8 +952,6 @@ namespace Control
 
           //spew("calcpath");
           calcPathErrors(p, v, s);
-          //spew("updateMean");
-          updateMeanValues(s);
           //spew("switch state");
 
           // Check and update control profile.
@@ -1022,7 +995,6 @@ namespace Control
               }
             case IMC::NetRecoveryState::NR_STANDBY:
               {
-                updateMeanValues(s);
                 updateStartRadius();
                 if (aircraftApproaching() && m_args.enable_catch)
                 {
@@ -1044,7 +1016,6 @@ namespace Control
               }
             case IMC::NetRecoveryState::NR_APPROACH:
               {
-                updateMeanValues(s);
                 updateStartRadius();
                 if (startNetRecovery())
                 {
@@ -1055,7 +1026,6 @@ namespace Control
               }
             case IMC::NetRecoveryState::NR_START:
               {
-                updateMeanValues(s);
                 m_ud = getPathVelocity(0, m_u_ref, m_ad, false);
 
                 if (catched())
@@ -1205,10 +1175,6 @@ namespace Control
 
           m_p_path = std::vector<Matrix>(no_vehicles);
           m_v_path = std::vector<Matrix>(no_vehicles);
-          m_p_path_mean = std::vector<Matrix>(no_vehicles);
-          m_v_path_mean = std::vector<Matrix>(no_vehicles);
-          m_cross_track_window = std::vector<std::queue<Matrix> >(no_vehicles);
-          m_cross_track_d_window = std::vector<std::queue<Matrix> >(no_vehicles);
           m_initialized = std::vector<bool>(no_vehicles);
           m_connected = std::vector<bool>(no_vehicles);
 
@@ -1218,23 +1184,11 @@ namespace Control
             m_v[i] = Matrix(3, 1, 0);
             m_p_path[i] = Matrix(3, 1, 0);
             m_v_path[i] = Matrix(3, 1, 0);
-            m_p_path_mean[i] = Matrix(3, 1, 0);
-            m_v_path_mean[i] = Matrix(3, 1, 0);
             debug("m_p_path[%d]: Rows: %d, Cols: %d", i, m_p_path[i].rows(),
                   m_p_path[i].columns());
             debug("m_v_path[%d]: Rows: %d, Cols: %d", i, m_v_path[i].rows(),
                   m_v_path[i].columns());
-            debug("m_p_path_mean[%d]: Rows: %d, Cols: %d", i,
-                  m_p_path_mean[i].rows(), m_p_path_mean[i].columns());
-            debug("m_v_path_mean[%d]: Rows: %d, Cols: %d", i,
-                  m_v_path_mean[i].rows(), m_v_path_mean[i].columns());
-            m_cross_track_window[i] = std::queue<Matrix>();
-            m_cross_track_d_window[i] = std::queue<Matrix>();
-            for (unsigned int j = 0; j < m_args.mean_ws; j++)
-            {
-              m_cross_track_window[i].push(Matrix(3, 1, 0));
-              m_cross_track_d_window[i].push(Matrix(3, 1, 0));
-            }
+
             m_initialized[i] = false;
             m_connected[i] = false;
           }
@@ -1454,60 +1408,6 @@ namespace Control
           m_delta_v_path_x = delta_v_path(0);
         }
 
-        void
-        updateMeanValues(int s)
-        {
-          if (m_cross_track_window[s].size() == 0)
-          {
-            err("Mean window queue empty");
-            return;
-          }
-          Matrix weightedAvg = m_p_path[s] / m_args.mean_ws;
-          Matrix firstWeightedAvg = m_cross_track_window[s].front();
-          Matrix newMean = m_p_path_mean[s] + weightedAvg - firstWeightedAvg;
-
-          m_p_path_mean[s] = newMean;
-          m_cross_track_window[s].pop();
-          m_cross_track_window[s].push(weightedAvg);
-          if (m_cross_track_d_window[s].size() == 0)
-          {
-            debug("Mean window d queue empty");
-            return;
-          }
-
-          Matrix weightedAvg_d = m_v_path[s] / m_args.mean_ws;
-          Matrix firstWeightedAvg_d = m_cross_track_d_window[s].front();
-          Matrix newMean_d = m_v_path_mean[s] + weightedAvg_d
-              - firstWeightedAvg_d;
-          m_v_path_mean[s] = newMean_d;
-
-          m_cross_track_d_window[s].pop();
-          m_cross_track_d_window[s].push(weightedAvg_d);
-
-          m_delta_p_path_x_mean = m_delta_p_path_x;
-          m_delta_v_path_x_mean = m_delta_v_path_x;
-        }
-
-        bool
-        abort()
-        {
-          bool aircraftOff = false;
-          bool netOff = false;
-          if (std::abs(m_p_path_mean[FIXEDWING](1)) >= m_args.eps_ct_a(0)
-              || std::abs(m_p_path_mean[FIXEDWING](2)) >= m_args.eps_ct_a(1))
-          {
-            aircraftOff = true;
-          }
-          Matrix p_n = getNetPosition(m_p_path);
-          if (std::abs(p_n(1)) >= m_args.eps_ct_n(0)
-              || std::abs(p_n(2)) >= m_args.eps_ct_n(1))
-          {
-            netOff = true;
-          }
-
-          return (aircraftOff || netOff);
-        }
-
         Vehicle
         getVehicle(const EstimatedLocalState* el)
         {
@@ -1570,8 +1470,6 @@ namespace Control
           // when at a given boundary, start the net-catch mission
           // this requires that the net are stand-by at the first WP at the runway
           double delta_p = m_delta_p_path_x;
-          if (m_args.use_mean_window_aircraft)
-            delta_p = m_delta_p_path_x_mean;
 
           if (std::abs(delta_p) <= m_startCatch_radius)
           {
@@ -2256,16 +2154,8 @@ namespace Control
             }
             else
             {
-              if (m_args.use_mean_window_aircraft)
-              {
-                p_a_path = m_p_path_mean[FIXEDWING];
-                v_a_path = m_v_path_mean[FIXEDWING];
-              }
-              else
-              {
-                p_a_path = m_p_path[FIXEDWING];
-                v_a_path = m_v_path[FIXEDWING];
-              }
+              p_a_path = m_p_path[FIXEDWING];
+              v_a_path = m_v_path[FIXEDWING];
             }
 
             p_n_path = getNetPosition(m_p_path);
