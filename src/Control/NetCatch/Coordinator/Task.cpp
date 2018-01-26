@@ -80,11 +80,6 @@ namespace Control
         double max_norm_v;
         double max_integral;
 
-        //! Maximum cross-track error aircraft
-        Matrix eps_ct_a;
-        //! Maximum cross-track error net
-        Matrix eps_ct_n;
-
         //! Ref-model paramters
         bool refmodel_use;
         bool refmodel_enable_vel_ff;
@@ -521,12 +516,6 @@ namespace Control
           .defaultValue("100.0")
           .units(Units::Meter)
           .description("Desired fixed-wing point to start approach measured along-track from the start point. Is overridden by factor. ");
-
-          param("Safety -- Maximum Cross-Track Error Aircraft", m_args.eps_ct_a)
-          .units(Units::Meter);
-
-          param("Safety -- Maximum Cross-Track Error Net", m_args.eps_ct_n)
-          .units(Units::Meter);
 
           param("Desired collision radius", m_args.m_coll_r)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
