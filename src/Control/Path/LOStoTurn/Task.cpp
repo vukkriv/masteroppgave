@@ -440,6 +440,7 @@ namespace Control
               m_y_int_dot = (lookahead_dist*y_e)/(y_e_*y_e_ + lookahead_dist*lookahead_dist);
               break;
           }
+          lookahead_dist = trimValue(lookahead_dist,m_args.look_min,m_args.look_max);
           log_state.depth = lookahead_dist;
 
           m_parcels[PC_EXTRA4].p = m_y_integrator;
