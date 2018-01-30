@@ -313,11 +313,12 @@ namespace Control
 
           //Throttle integrator
           double timestep = m_last_step.getDelta();
-          m_thr_i += timestep*m_args.k_thr_i*V_error;
+          m_thr_i += timestep*V_error;
           m_thr_i = trimValue(m_thr_i,m_args.thr_min,m_args.thr_max); //Throttle anti wind-up at 
 
           //Calculate desired throttle and pitch
-          double throttle_desired = m_args.k_thr_p*V_error + m_thr_i + m_h_err*m_args.k_thr_ph + m_args.trim_throttle;
+          /* double throttle_desired = m_args.k_thr_p*V_error + m_thr_i + m_h_err*m_args.k_thr_ph + m_args.trim_throttle; */
+          double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i*m_thr_i + m_h_err*m_args.k_thr_ph + m_args.trim_throttle;
           double pitch_desired = gamma_desired + Angles::radians(m_args.trim_pitch)-gamma_error*m_args.k_gamma_p; //Backstepping,pitch_desired = gamma_desired + alpha_0
           pitch_desired = trimValue(pitch_desired,Angles::radians(m_args.pitch_min_deg),Angles::radians(m_args.pitch_max_deg));
           m_throttle.value = trimValue(throttle_desired, 0, 100);
