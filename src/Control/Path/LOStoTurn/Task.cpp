@@ -470,7 +470,7 @@ namespace Control
           /* log_state.pitch = chi_err; */
           /* /1* log_state.yaw = chi_err_dot; *1/ */
 
-          m_bank.value = atan(speed_g/(Math::c_gravity*cos(chi - state.psi))*(m_args.k_chi*chi_tilde + chi_d_dot));
+          m_bank.value = atan(speed_g/(Math::c_gravity*cos(chi - state.psi))*(m_args.k_chi*chi_tilde + m_args.k_chi3*std::pow(chi_tilde,3) + chi_d_dot));
           m_parcels[PC_NORMAL].p = chi_d_dot;
           m_parcels[PC_NORMAL].d = cos(chi-state.psi);
           m_parcels[PC_NORMAL].i = y_e_dot_d_;
