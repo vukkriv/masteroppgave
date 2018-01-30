@@ -65,7 +65,8 @@ namespace Control
       {
         Matrix A; 
         Matrix B; 
-        Matrix C; 
+        Matrix Cvel;
+        Matrix Cacc;
         Matrix x; 
       }; 
 
@@ -77,14 +78,15 @@ namespace Control
         double m_omega_vel;
         double m_desired_speed; 
         double m_last_loop_time; 
+        bool m_using_refmodel;
 
         RefModel m_ref; 
 
         double m_airspeed;
         double m_W_x, m_W_y;
 
-        IMC::EstimatedLocalState centroid_state; 
-        IMC::EstimatedLocalState vehicle_state; 
+        IMC::EstimatedLocalState m_centroid_state;
+        IMC::EstimatedLocalState m_vehicle_state;
         IMC::DesiredHeading heading; 
 
         std::string m_mode;
@@ -159,7 +161,7 @@ namespace Control
           bind<IMC::EstimatedStreamVelocity>(this);
           bind<IMC::AutopilotMode>(this);
           bind<IMC::EstimatedLocalState>(this);
-          bind<IMC::DesiredSpeed>(this); 
+          bind<IMC::DesiredSpeed>(this);
        }
 
         void
@@ -170,6 +172,11 @@ namespace Control
           m_lookahead = m_args.lookahead;
           m_zeta_vel = m_args.zeta_vel;
           m_omega_vel = m_args.omega_vel;
+          if (m_args.use_refmodel && !m_using_refmodel)
+            initRefmodel();
+          else
+            setRefmodelMatrices();
+          m_using_refmodel = m_args.use_refmodel;
         }
 
         void
@@ -257,16 +264,16 @@ namespace Control
             {
               spew("Got EstimatedLocalState from '%s', '%s'  - updating centroid state", resolveSystemId(msg->getSource()),resolveEntity(msg->getSourceEntity()).c_str());
               //Update local centroid variable
-              centroid_state = *msg;
-              spew("Centroid state pos (x,y): (%f,%f)", centroid_state.state->x, centroid_state.state->y);
+              m_centroid_state = *msg;
+              spew("Centroid state pos (x,y): (%f,%f)", m_centroid_state.state->x, m_centroid_state.state->y);
               
             }
             else
             {
               spew("Got EstimatedLocalState from '%s', '%s' - updating vehicle state", resolveSystemId(msg->getSource()),resolveEntity(msg->getSourceEntity()).c_str());
               // Update local vehicle state variable
-              vehicle_state = *msg;
-              spew("Vehicle state pos (x,y): (%f,%f)", vehicle_state.state->x, vehicle_state.state->y);
+              m_vehicle_state = *msg;
+              spew("Vehicle state pos (x,y): (%f,%f)", m_vehicle_state.state->x, m_vehicle_state.state->y);
               
             }
           }
@@ -295,15 +302,15 @@ namespace Control
           spew("Tracking state: %f, %f", ts.track_pos.x, ts.track_pos.y);
           
           // Vector from centroid to vehicle in NED frame
-          double p_centroid_x = vehicle_state.state->x - centroid_state.state->x;
-          double p_centroid_y = vehicle_state.state->y - centroid_state.state->y; 
+          double p_centroid_x = m_vehicle_state.state->x - m_centroid_state.state->x;
+          double p_centroid_y = m_vehicle_state.state->y - m_centroid_state.state->y;
           
           // Rotate centroid to vehicle vector from NED into path frame
           Angles::rotate(ts.track_bearing,false, p_centroid_x, p_centroid_y); 
 
           // Centroid tracking state positions
           double centroid_ts_x = ts.track_pos.x - p_centroid_x;
-          double centroid_ts_y = ts.track_pos.y - p_centroid_y; 
+          double centroid_ts_y = ts.track_pos.y - p_centroid_y;
           spew("Centroid TrackingState: %f, %f", centroid_ts_x, centroid_ts_y);
 
 
@@ -336,7 +343,7 @@ namespace Control
           spew("Formation desired speed (NED frame) %f, %f",v_x,v_y); 
 
           // Rotate vector from NED frame into centroid frame
-          Angles::rotate(centroid_state.state->psi, false, v_x,v_y); 
+          Angles::rotate(m_centroid_state.state->psi, false, v_x,v_y);
           spew("Formation desired speed (centroid frame) %f, %f", v_x,v_y); 
 
           // Calculate length of velocity vector
@@ -362,8 +369,9 @@ namespace Control
           // Filter the velocity reference if filter is activated
           if (m_args.use_refmodel)
           {
-            v_out = stepRefmodel(v_ref, Clock::get()-m_last_loop_time);
-            a_out = m_ref.x.get(2,3,0,0);
+            stepRefmodel(v_ref, Clock::get()-m_last_loop_time);
+            v_out = getRefmodelVel();
+            a_out = getRefmodelAcc();
           }
           else
           {
@@ -383,7 +391,6 @@ namespace Control
           // TODO: do something about z
           desLinState.vz = 0;
 
-          // TODO: insert m_ref model values
           desLinState.ax = a_out(0);
           desLinState.ay = a_out(1);
           desLinState.az = 0;
@@ -400,9 +407,8 @@ namespace Control
 
         }
 
-        // TODO: make an updateRefmodel that updates the matrices but not the state
         void
-        initRefmodel()
+        setRefmodelMatrices()
         {
           double ones[] = {1.0, 1.0};
           double omega_vel_sq = m_omega_vel * m_omega_vel; 
@@ -419,16 +425,43 @@ namespace Control
 
           m_ref.A = A_1.vertCat(A_2); 
           m_ref.B = zero.vertCat(eye) * omega_vel_sq; 
-          m_ref.C = Matrix(ones, 2).horzCat(Matrix(2,2, 0.0)); 
-
-          m_ref.x = Matrix(4, 1, 0.0);
+          m_ref.Cvel = Matrix(ones, 2).horzCat(Matrix(2,2, 0.0));
+          m_ref.Cacc = Matrix(2,2, 0.0).horzCat(Matrix(ones, 2));
         }
 
-        Matrix
+        void
+        initRefmodelstate()
+        {
+          m_ref.x = Matrix(4, 1, 0.0);
+          m_ref.x(0) = m_centroid_state.state->u;
+          m_ref.x(1) = m_centroid_state.state->v;
+          m_ref.x(2) = m_centroid_state.acc->x;
+          m_ref.x(3) = m_centroid_state.acc->y;
+        }
+
+        void
+        initRefmodel()
+        {
+         setRefmodelMatrices();  
+         initRefmodelstate(); 
+        }
+
+        void
         stepRefmodel(Matrix input, double deltaT)
         {
           m_ref.x = m_ref.x + m_ref.A * m_ref.x * deltaT + m_ref.B * input * deltaT; 
-          return m_ref.C * m_ref.x; 
+        }
+
+        Matrix
+        getRefmodelVel()
+        {
+          return m_ref.Cvel * m_ref.x;
+        }
+
+        Matrix
+        getRefmodelAcc()
+        {
+          return m_ref.Cacc * m_ref.x;
         }
 
       };
