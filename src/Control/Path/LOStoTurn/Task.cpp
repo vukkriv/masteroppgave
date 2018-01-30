@@ -92,15 +92,17 @@ namespace Control
         double look_max;
       };
 
-      static const std::string c_parcel_names[] = {DTR_RT(""), DTR_RT("Extra1"), DTR_RT("Extra2")};
+      static const std::string c_parcel_names[] = {DTR_RT(""), DTR_RT("Extra1"),DTR_RT("Extra2"),DTR_RT("Extra3"),DTR_RT("Extra4")};
 
       enum Parcel {
         PC_NORMAL = 0,
         PC_EXTRA1 = 1,
-        PC_EXTRA2 = 2
+        PC_EXTRA2 = 2,
+        PC_EXTRA3 = 3,
+        PC_EXTRA4 = 4
       };
 
-      static const int NUM_PARCELS = 3;
+      static const int NUM_PARCELS = 5;
 
       struct Task: public DUNE::Control::PathController
       {
@@ -440,6 +442,11 @@ namespace Control
           }
           log_state.depth = lookahead_dist;
 
+          m_parcels[PC_EXTRA4].p = m_y_integrator;
+          m_parcels[PC_EXTRA4].d = m_y_int_dot;
+          m_parcels[PC_EXTRA4].i = y_e_;
+          m_parcels[PC_EXTRA4].a = y_e;
+
           double chi_d = -std::atan(y_e_/lookahead_dist) + chi_p;
           
           //desired cross track error speed
@@ -447,6 +454,10 @@ namespace Control
           double chi_d_dot = -(lookahead_dist/(lookahead_dist*lookahead_dist + y_e_*y_e_)) * y_e_dot + (y_e_/(lookahead_dist*lookahead_dist + y_e_*y_e_)) * lookahead_dist_dot + chi_p_dot; 
           /* double chi_d_dot = -(lookahead_dist/(lookahead_dist*lookahead_dist + y_e_*y_e_)) * y_e_dot_d_ + (y_e_/(lookahead_dist*lookahead_dist + y_e_*y_e_)) * lookahead_dist_dot + chi_p_dot; */ 
           double chi_tilde = Angles::normalizeRadian(chi_d - chi);
+          m_parcels[PC_EXTRA3].p = chi_d;
+          m_parcels[PC_EXTRA3].d = lookahead_dist_dot;
+          m_parcels[PC_EXTRA3].i = y_e_dot_d_;
+          m_parcels[PC_EXTRA3].a = y_e_dot;
 
 
           /* double chi_err = chi - chi_d; */
@@ -461,7 +472,7 @@ namespace Control
           m_bank.value = atan(speed_g/(Math::c_gravity*cos(chi - state.psi))*(m_args.k_chi*chi_tilde + chi_d_dot));
           m_parcels[PC_NORMAL].p = chi_d_dot;
           m_parcels[PC_NORMAL].d = cos(chi-state.psi);
-          m_parcels[PC_NORMAL].i = y_e_dot_d;
+          m_parcels[PC_NORMAL].i = y_e_dot_d_;
           m_parcels[PC_NORMAL].a = chi_tilde;
 
           /* m_parcels[PC_EXTRA3].p = chi_d; */
