@@ -50,16 +50,6 @@ namespace Control
         double acc_radius;
         //! Look ahead time for line-of-sight
         double lookahead;
-        //! Sliding surface gain
-        double rho;
-        //! Course error gain
-        double lambda;
-        //! K_d gain
-        double k_d;
-        //! Sliding surface bandwidth
-        double bandwidth;
-        //! Estimated aircraft roll time constant
-        double roll_tc;
         //! Flag to enable controller
         bool use_controller;
         //! Flag to enable Z controller
@@ -112,7 +102,6 @@ namespace Control
         double m_airspeed;
         double m_bank_lim;
         double m_lookahead, m_lookahead_sq;
-        double m_W_x, m_W_y;
         double m_bank_prev;
         double m_bank_dot;
         double m_y_integrator;
@@ -126,8 +115,6 @@ namespace Control
           m_bank_lim(0.0),
           m_lookahead(0.0),
           m_lookahead_sq(0.0),
-          m_W_x(0.0),
-          m_W_y(0.0),
           m_bank_prev(0.0),
           m_bank_dot(0.0),
           m_y_integrator(0.0),
@@ -141,26 +128,6 @@ namespace Control
           param("Lookahead time", m_args.lookahead)
           .defaultValue("3.0")
           .description("Lookahead time in seconds");
-
-          param("Rho", m_args.rho)
-          .defaultValue("4.0")
-          .description("Sliding surface gain");
-
-          param("Lambda", m_args.lambda)
-          .defaultValue("2.0")
-          .description("Course error gain");
-
-          param("Kd", m_args.k_d)
-          .defaultValue("3.0")
-          .description("Kd gain");
-
-          param("Bandwidth", m_args.bandwidth)
-          .defaultValue("5.0")
-          .description("Sliding surface bandwidth");
-
-          param("Roll Time Const", m_args.roll_tc)
-          .defaultValue("0.1")
-          .description("Estimated aircraft roll time constant");
 
           param("Maximum Bank", m_args.max_bank)
           .units(Units::Degree)
@@ -220,7 +187,6 @@ namespace Control
           param("Lookahead type", m_args.lookahead_type)
           .minimumValue("1")
           .defaultValue("1")
-          .maximumValue("3")
           .description("Choose how the lookahead distance is calculated: 1; lookahead time, 2; radius of acceptance, 3; speed-dependant radius of acceptance");
 
           param("Kp_chi", m_args.k_chi)
@@ -251,7 +217,6 @@ namespace Control
           .description("Limit lookahead");
 
           bind<IMC::IndicatedSpeed>(this);
-          bind<IMC::EstimatedStreamVelocity>(this);
 
           m_delta.reset();
        }
@@ -312,13 +277,6 @@ namespace Control
         }
 
         void
-        consume(const IMC::EstimatedStreamVelocity* wind)
-        {
-          m_W_x = wind->x;
-          m_W_y = wind->y;
-        }
-        
-        void
         onEntityReservation(void)
         {
           PathController::onEntityReservation();
@@ -372,8 +330,8 @@ namespace Control
 
           /* log_state.roll = chi_dot; */
 
-          double y_e = ts.track_pos.y; //does not account for path angle
-          double x_e = ts.track_pos.x; //does not account for path angle
+          double y_e = ts.track_pos.y; 
+          double x_e = ts.track_pos.x; 
           double y_e_sq = y_e * y_e;
           /* double y_dot = ts.track_vel.y; */ //does not account for vertical speed
           double y_dot   = speed_g*sin ( chi         ) ;
