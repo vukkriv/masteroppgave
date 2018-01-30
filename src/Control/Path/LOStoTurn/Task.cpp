@@ -78,6 +78,18 @@ namespace Control
         double delta_t_lim;
         //! Choose how the lookahead distance should be selected: 1; lookahead time 2; radius of acceptance, 3; speed-dependant radius of acceptance
         int lookahead_type;
+        //! Proportional gain for the commanded roll
+        double k_chi;
+        //! Proportional gain for the commanded roll, cubic term
+        double k_chi3;
+        //! Integral LOS gain
+        double k_i;
+        //! Integral LOS limit
+        double k_i_lim;
+        //! minimum lookahead distance
+        double look_min;
+        //! maximum lookahead distance
+        double look_max;
       };
 
       static const std::string c_parcel_names[] = {DTR_RT(""), DTR_RT("Extra1"), DTR_RT("Extra2")};
@@ -101,6 +113,8 @@ namespace Control
         double m_W_x, m_W_y;
         double m_bank_prev;
         double m_bank_dot;
+        double m_y_integrator;
+        double m_y_int_dot;
         //! Time difference in seconds used in Eulers method
         Time::Delta m_delta;
 
@@ -113,7 +127,9 @@ namespace Control
           m_W_x(0.0),
           m_W_y(0.0),
           m_bank_prev(0.0),
-          m_bank_dot(0.0)
+          m_bank_dot(0.0),
+          m_y_integrator(0.0),
+          m_y_int_dot(0.0)
         {
           param("Radius of acceptance", m_args.acc_radius)
           .defaultValue("30.0")
@@ -205,6 +221,33 @@ namespace Control
           .maximumValue("3")
           .description("Choose how the lookahead distance is calculated: 1; lookahead time, 2; radius of acceptance, 3; speed-dependant radius of acceptance");
 
+          param("Kp_chi", m_args.k_chi)
+          .defaultValue("0.5")
+          .description("Proportional gain for converging chi_d to chi ");
+          
+          param("Kp_chi3", m_args.k_chi3)
+          .defaultValue("0.0")
+          .description("Proportional gain for converging chi_d to chi, cubic term");
+          
+          param("Ki_y", m_args.k_i)
+          .defaultValue("0")
+          .description("integral gain for LOS");
+
+          param("Ki_y_lim", m_args.k_i_lim)
+          .minimumValue("0")
+          .defaultValue("1000")
+          .description("limit for LOS integral");
+
+          param("Minimum lookahead distance", m_args.look_min)
+          .minimumValue("0")
+          .defaultValue("0")
+          .description("Limit lookahead, e.g. when Vg->0");
+
+          param("Maximum lookahead distance", m_args.look_max)
+          .minimumValue("0")
+          .defaultValue("1000")
+          .description("Limit lookahead");
+
           bind<IMC::IndicatedSpeed>(this);
           bind<IMC::EstimatedStreamVelocity>(this);
 
@@ -224,6 +267,12 @@ namespace Control
           { //controller should no longer be used
             disableControlLoops(IMC::CL_ROLL);
           }
+          // Reset integrator upon change in integrator gains
+          if (paramChanged(m_args.k_i))
+          {
+            m_y_integrator = 0.0;
+            m_y_int_dot = 0.0;
+          }
         }
 
         void
@@ -233,6 +282,8 @@ namespace Control
             return;
           // Activate bank (roll) controller.
           enableControlLoops(IMC::CL_ROLL);
+          m_y_integrator = 0.0;
+          m_y_int_dot = 0.0;
         }
 
         void
@@ -331,36 +382,70 @@ namespace Control
           m_parcels[PC_EXTRA2].i = y_e_dot;
           m_parcels[PC_EXTRA2].a = ts.track_vel.y;
 
-          double lookahead_dist, lookahead_dist_sq, y_trimmed;
+          double lookahead_dist,lookahead_dist_dot, y_e_trimmed;
+          //pseudo crosstrack error to allow for selection of different LOS principles
+          //and to simplify calculation of chi_d_dot
+          //defined as the input to chi_d = -atan(y_e_/lookahead_dist_)
+          double y_e_, y_e_dot_;
+          double delta_t = trimValue(m_delta.getDelta(),0.0, m_args.delta_t_lim); //Avoid large delta if e.g. module has been inactive
           // LOS
           switch (m_args.lookahead_type) {
             default:
             case 1:
               // lokahead time
-              
+              m_y_integrator = 0;
+              y_e_ = y_e;
               lookahead_dist = m_lookahead*speed_g;
-              lookahead_dist_sq = m_lookahead_sq*g_speed_sq;
+              lookahead_dist_dot = 0;//assuming m_lookahead*acc_g = 0;
+              m_y_int_dot = 0;
               break;
             case 2:
               //radius of acceptance
-              y_trimmed = trimValue(std::abs(y_e),0.0,m_args.acc_radius*0.9); //Force the look-ahead distance to be within a circle with radius acc_radius
-              lookahead_dist = sqrt(m_args.acc_radius*m_args.acc_radius - y_trimmed*y_trimmed);
-              lookahead_dist_sq = lookahead_dist*lookahead_dist;
+              m_y_integrator = 0;
+              y_e_ = y_e;
+              y_e_trimmed = trimValue(std::abs(y_e_),0.0,m_args.acc_radius*0.9); //Force the look-ahead distance to be within a circle with radius acc_radius
+              lookahead_dist = sqrt(m_args.acc_radius*m_args.acc_radius - y_e_trimmed*y_e_trimmed);
+              lookahead_dist_dot = 0;
+              m_y_int_dot = 0;
               break;
             case 3:
               //speed-depentant radius of acceptance
-              y_trimmed = trimValue(std::abs(y_e),0.0,m_args.lookahead*speed_g*0.9); //Force the look-ahead distance to be within a circle with radius acc_radius
-              lookahead_dist = sqrt((m_args.lookahead*speed_g)*(m_args.lookahead*speed_g) - y_trimmed*y_trimmed);
-              lookahead_dist_sq = lookahead_dist*lookahead_dist;
+              m_y_integrator = 0;
+              y_e_trimmed = trimValue(std::abs(y_e),0.0,m_args.lookahead*speed_g*0.9); //Force the look-ahead distance to be within a circle with radius acc_radius
+              lookahead_dist = sqrt((m_args.lookahead*speed_g)*(m_args.lookahead*speed_g) - y_e_trimmed*y_e_trimmed);
+              lookahead_dist_dot = (y_e*y_e_dot)/lookahead_dist;// this assumes that acc_g is zero, if not; add: (m_args.lookahead*m_args.lookahead*speed_g*acc_g)/lookahead_dist;
+              m_y_int_dot = 0;
+              break;
+            case 4:
+              //Boerhaug integral effect
+              m_y_integrator += delta_t*m_y_int_dot;
+              m_y_integrator = trimValue(m_y_integrator,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
+              y_e_ = y_e + m_args.k_i*m_y_integrator;
+              y_e_dot_ = y_e_dot + m_args.k_i*m_y_int_dot;
+              lookahead_dist = m_lookahead*speed_g;
+              lookahead_dist_dot = 0;//assuming m_lookahead*acc_g = 0;
+              m_y_int_dot = (lookahead_dist*y_e)/(y_e_*y_e_ + lookahead_dist*lookahead_dist);
+              break;
+            case 5:
+              //Boerhaug w/speed-depentant radius of acceptance
+              y_e_trimmed = trimValue(std::abs(y_e),0.0,m_args.lookahead*speed_g*0.9); //Force the look-ahead distance to be within a circle with radius acc_radius
+              m_y_integrator += delta_t*m_y_int_dot;
+              m_y_integrator = trimValue(m_y_integrator,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
+              y_e_ = y_e + m_args.k_i*m_y_integrator;
+              y_e_dot_ = y_e_dot + m_args.k_i*m_y_int_dot;
+              lookahead_dist = sqrt((m_args.lookahead*speed_g)*(m_args.lookahead*speed_g) - y_e_trimmed*y_e_trimmed);
+              lookahead_dist_dot = (y_e*y_e_dot)/lookahead_dist;// this assumes that acc_g is zero, if not; add: (m_args.lookahead*m_args.lookahead*speed_g*acc_g)/lookahead_dist;
+              m_y_int_dot = (lookahead_dist*y_e)/(y_e_*y_e_ + lookahead_dist*lookahead_dist);
               break;
           }
           log_state.depth = lookahead_dist;
 
-          double chi_d = -std::atan(y_e/lookahead_dist) + chi_p;
+          double chi_d = -std::atan(y_e_/lookahead_dist) + chi_p;
           
           //desired cross track error speed
-          double y_e_dot_d = speed_g*sin ( chi_d - chi_p ) ;
-          double chi_d_dot = -(lookahead_dist/(lookahead_dist_sq + y_e_sq)) * y_e_dot_d + (y_e/(lookahead_dist_sq + y_e_sq)) * lookahead_dist_dot + chi_p_dot;
+          double y_e_dot_d_ = speed_g*sin ( chi_d - chi_p ) ;
+          double chi_d_dot = -(lookahead_dist/(lookahead_dist*lookahead_dist + y_e_*y_e_)) * y_e_dot + (y_e_/(lookahead_dist*lookahead_dist + y_e_*y_e_)) * lookahead_dist_dot + chi_p_dot; 
+          /* double chi_d_dot = -(lookahead_dist/(lookahead_dist*lookahead_dist + y_e_*y_e_)) * y_e_dot_d_ + (y_e_/(lookahead_dist*lookahead_dist + y_e_*y_e_)) * lookahead_dist_dot + chi_p_dot; */ 
           double chi_tilde = Angles::normalizeRadian(chi_d - chi);
 
 
@@ -386,8 +471,6 @@ namespace Control
           for (int i = 0; i < NUM_PARCELS; ++i) {
             dispatch(m_parcels[i]);
           }
-
-          double delta_t = trimValue(m_delta.getDelta(),0.0, m_args.delta_t_lim); //Avoid large delta if e.g. module has been inactive
           
           if ((m_args.use_filter_roll) && (std::abs(Math::Angles::minSignedAngle(m_bank.value, m_bank_prev)) > Math::Angles::radians(m_args.smooth_lim)))
           {
