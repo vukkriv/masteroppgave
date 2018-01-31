@@ -123,11 +123,11 @@ namespace Control
           param("Radius of acceptance", m_args.acc_radius)
           .defaultValue("30.0")
           .units(Units::Meter)
-          .description("Radius of acceptance for finding lookahead");
+          .description("Radius of acceptance for finding lookahead (Only used when lookahead type is 2; radius of acceptance)");
 
           param("Lookahead time", m_args.lookahead)
           .defaultValue("3.0")
-          .description("Lookahead time in seconds");
+          .description("Lookahead time in seconds (Used for lookahead type 1, 3, 4, 5)");
 
           param("Maximum Bank", m_args.max_bank)
           .units(Units::Degree)
@@ -187,7 +187,7 @@ namespace Control
           param("Lookahead type", m_args.lookahead_type)
           .minimumValue("1")
           .defaultValue("1")
-          .description("Choose how the lookahead distance is calculated: 1; lookahead time, 2; radius of acceptance, 3; speed-dependant radius of acceptance");
+          .description("Choose how the lookahead distance is calculated: 1; lookahead time, 2; radius of acceptance, 3; speed-dependant radius of acceptance, 4; Boerhaug integral effect, 5; Boerhaug w/speed-depentant radius of acceptance");
 
           param("Kp_chi", m_args.k_chi)
           .defaultValue("0.5")
@@ -199,12 +199,12 @@ namespace Control
           
           param("Ki_y", m_args.k_i)
           .defaultValue("0")
-          .description("integral gain for LOS");
+          .description("integral gain for LOS when using Boerhaug lookahead");
 
           param("Ki_y_lim", m_args.k_i_lim)
           .minimumValue("0")
           .defaultValue("1000")
-          .description("limit for LOS integral");
+          .description("limit for LOS integral when using Boerhaug lookahead");
 
           param("Minimum lookahead distance", m_args.look_min)
           .minimumValue("0")
