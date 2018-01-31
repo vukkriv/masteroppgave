@@ -345,6 +345,10 @@ namespace Control
           .defaultValue("true")
           .description("Flag to use rate limiter (when ref model is not used)");
 
+          param("Use Borhaug integral effect", m_args.use_borhaug_i)
+          .defaultValue("false")
+          .description("Flag to use Borhaug integral effect (as opposed to normal ILOS)");
+
           param("Use controller", m_args.use_controller)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
@@ -607,7 +611,15 @@ namespace Control
             double h_error_trimmed = trimValue(std::abs(h_error),0.0,m_args.k_r_up-0.5); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             double h_app = sqrt(m_args.k_r_up*m_args.k_r_up - h_error_trimmed*h_error_trimmed);
             m_parcel_los.a = h_app;
-            m_integrator += timestep*h_error;
+            if(m_args.use_borhaug_i)
+            {
+              m_integrator += delta_t*m_h_int_dot;
+              m_h_int_dot = (h_app*h_error)/((h_error + m_args.k_ih_up)*(h_error + m_args.k_ih_up) + h_app*h_app);
+            }
+            else
+            {
+              m_integrator += timestep*h_error;
+            }
             m_integrator = trimValue(m_integrator,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
             los_angle = atan(m_args.k_ph_up*h_error + m_integrator + m_args.k_dh_up*h_dot/h_app); //Calculate LOS-angle glideslope up
             m_parcel_los.p = m_args.k_ph_up*h_error;
@@ -619,7 +631,15 @@ namespace Control
             double h_error_trimmed = trimValue(std::abs(h_error),0.0,m_args.k_r_down-0.5); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             double h_app = sqrt(m_args.k_r_down*m_args.k_r_down - h_error_trimmed*h_error_trimmed);
             m_parcel_los.a = h_app;
-            m_integrator += timestep*h_error;
+            if(m_args.use_borhaug_i)
+            {
+              m_integrator += delta_t*m_h_int_dot;
+              m_h_int_dot = (h_app*h_error)/((h_error + m_args.k_ih_down)*(h_error + m_args.k_ih_down) + h_app*h_app);
+            }
+            else
+            {
+              m_integrator += timestep*h_error;
+            }
             m_integrator = trimValue(m_integrator,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
             los_angle = atan(m_args.k_ph_down*h_error + m_integrator*m_args.k_ih_down + m_args.k_dh_down*h_dot/h_app); //Calculate LOS-angle glideslope down
             m_parcel_los.p = m_args.k_ph_down*h_error;
@@ -631,7 +651,15 @@ namespace Control
             double h_error_trimmed = trimValue(std::abs(h_error),0.0,m_args.k_r_line-0.5); //Force the look-ahead distance to be within a circle with radius m_args.k_r
             double h_app = sqrt(m_args.k_r_line*m_args.k_r_line - h_error_trimmed*h_error_trimmed);
             m_parcel_los.a = h_app;
-            m_integrator += timestep*h_error;
+            if(m_args.use_borhaug_i)
+            {
+              m_integrator += delta_t*m_h_int_dot;
+              m_h_int_dot = (h_app*h_error)/((h_error + m_args.k_ih_line)*(h_error + m_args.k_ih_line) + h_app*h_app);
+            }
+            else
+            {
+              m_integrator += timestep*h_error;
+            }
             m_integrator = trimValue(m_integrator,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
             los_angle = atan(m_args.k_ph_line*h_error + m_integrator*m_args.k_ih_line + m_args.k_dh_line*h_dot/h_app); //Calculate LOS-angle glideslope line
             m_parcel_los.p = m_args.k_ph_line*h_error;
