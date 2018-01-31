@@ -294,6 +294,21 @@ namespace Control
             return false;
         }
 
+        // override PathController getEta, to signal maneuver 
+        // completion upon passing the line perpendicular to the WP
+        double
+        getEta(const TrackingState& ts)
+        {
+          double speed = getSpeed();
+          double time_factor = getTimeFactor();
+
+          double errx = ts.track_length - ts.track_pos.x;
+          double eta = errx/speed;
+          spew("getEta");
+
+          return std::min(65535.0,eta - time_factor);
+        }
+
 
         void
         step(const IMC::EstimatedState& state, const TrackingState& ts)
