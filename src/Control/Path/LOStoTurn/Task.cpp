@@ -355,7 +355,8 @@ namespace Control
           //pseudo crosstrack error to allow for selection of different LOS principles
           //and to simplify calculation of chi_d_dot
           //defined as the input to chi_d = -atan(y_e_/lookahead_dist_)
-          double y_e_, y_e_dot_;
+          double y_e_ = 0.0;
+          double y_e_dot_ = 0.0;
           double delta_t = trimValue(m_delta.getDelta(),0.0, m_args.delta_t_lim); //Avoid large delta if e.g. module has been inactive
           // LOS
           switch (m_args.lookahead_type) {
