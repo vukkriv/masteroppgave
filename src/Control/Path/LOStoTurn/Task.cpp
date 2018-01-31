@@ -315,10 +315,8 @@ namespace Control
           IMC::ReportedState log_state;
 
           double speed_g = Math::norm(Math::norm(state.vx,state.vy),state.vz);//ts.speed;
-          double g_speed_sq = speed_g * speed_g;
 
           double chi = ts.course;
-          double phi = state.phi;
 
           double chi_p = ts.track_bearing; //path angle
           double chi_p_dot = 0; // path derivative
@@ -331,10 +329,6 @@ namespace Control
           /* log_state.roll = chi_dot; */
 
           double y_e = ts.track_pos.y; 
-          double x_e = ts.track_pos.x; 
-          double y_e_sq = y_e * y_e;
-          /* double y_dot = ts.track_vel.y; */ //does not account for vertical speed
-          double y_dot   = speed_g*sin ( chi         ) ;
           double y_e_dot = speed_g*sin ( chi - chi_p ) ;
 
           m_parcels[PC_EXTRA2].p = y_e;
@@ -358,6 +352,7 @@ namespace Control
               lookahead_dist = m_lookahead*speed_g;
               lookahead_dist_dot = 0;//assuming m_lookahead*acc_g = 0;
               m_y_int_dot = 0;
+              y_e_dot_ = y_e_dot;
               break;
             case 2:
               //radius of acceptance
@@ -367,6 +362,7 @@ namespace Control
               lookahead_dist = sqrt(m_args.acc_radius*m_args.acc_radius - y_e_trimmed*y_e_trimmed);
               lookahead_dist_dot = 0;
               m_y_int_dot = 0;
+              y_e_dot_ = y_e_dot;
               break;
             case 3:
               //speed-depentant radius of acceptance
@@ -375,6 +371,7 @@ namespace Control
               lookahead_dist = sqrt((m_args.lookahead*speed_g)*(m_args.lookahead*speed_g) - y_e_trimmed*y_e_trimmed);
               lookahead_dist_dot = (y_e*y_e_dot)/lookahead_dist;// this assumes that acc_g is zero, if not; add: (m_args.lookahead*m_args.lookahead*speed_g*acc_g)/lookahead_dist;
               m_y_int_dot = 0;
+              y_e_dot_ = y_e_dot;
               break;
             case 4:
               //Boerhaug integral effect
@@ -410,7 +407,7 @@ namespace Control
           
           //desired cross track error speed
           double y_e_dot_d_ = speed_g*sin ( chi_d - chi_p ) ;
-          double chi_d_dot = -(lookahead_dist/(lookahead_dist*lookahead_dist + y_e_*y_e_)) * y_e_dot + (y_e_/(lookahead_dist*lookahead_dist + y_e_*y_e_)) * lookahead_dist_dot + chi_p_dot; 
+          double chi_d_dot = -(lookahead_dist/(lookahead_dist*lookahead_dist + y_e_*y_e_)) * y_e_dot_ + (y_e_/(lookahead_dist*lookahead_dist + y_e_*y_e_)) * lookahead_dist_dot + chi_p_dot; 
           /* double chi_d_dot = -(lookahead_dist/(lookahead_dist*lookahead_dist + y_e_*y_e_)) * y_e_dot_d_ + (y_e_/(lookahead_dist*lookahead_dist + y_e_*y_e_)) * lookahead_dist_dot + chi_p_dot; */ 
           double chi_tilde = Angles::normalizeRadian(chi_d - chi);
           m_parcels[PC_EXTRA3].p = chi_d;
