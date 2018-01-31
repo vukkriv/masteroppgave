@@ -382,9 +382,9 @@ namespace Control
             case 3:
               //speed-depentant radius of acceptance
               m_y_integrator = 0;
-              y_e_trimmed = trimValue(std::abs(y_e),0.0,m_args.lookahead*speed_g*0.9); //Force the look-ahead distance to be within a circle with radius acc_radius
-              lookahead_dist = sqrt((m_args.lookahead*speed_g)*(m_args.lookahead*speed_g) - y_e_trimmed*y_e_trimmed);
-              lookahead_dist_dot = (y_e*y_e_dot)/lookahead_dist;// this assumes that acc_g is zero, if not; add: (m_args.lookahead*m_args.lookahead*speed_g*acc_g)/lookahead_dist;
+              y_e_trimmed = trimValue(std::abs(y_e),0.0,m_lookahead*speed_g*0.9); //Force the look-ahead distance to be within a circle with radius acc_radius
+              lookahead_dist = sqrt((m_lookahead_sq*speed_g*speed_g) - y_e_trimmed*y_e_trimmed);
+              lookahead_dist_dot = (y_e*y_e_dot)/lookahead_dist;// this assumes that acc_g is zero, if not; add: (m_lookahead_sq*speed_g*acc_g)/lookahead_dist;
               m_y_int_dot = 0;
               y_e_dot_ = y_e_dot;
               break;
@@ -400,13 +400,13 @@ namespace Control
               break;
             case 5:
               //Boerhaug w/speed-depentant radius of acceptance
-              y_e_trimmed = trimValue(std::abs(y_e),0.0,m_args.lookahead*speed_g*0.9); //Force the look-ahead distance to be within a circle with radius acc_radius
+              y_e_trimmed = trimValue(std::abs(y_e),0.0,m_lookahead*speed_g*0.9); //Force the look-ahead distance to be within a circle with radius acc_radius
               m_y_integrator += delta_t*m_y_int_dot;
               m_y_integrator = trimValue(m_y_integrator,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
               y_e_ = y_e + m_args.k_i*m_y_integrator;
               y_e_dot_ = y_e_dot + m_args.k_i*m_y_int_dot;
-              lookahead_dist = sqrt((m_args.lookahead*speed_g)*(m_args.lookahead*speed_g) - y_e_trimmed*y_e_trimmed);
-              lookahead_dist_dot = (y_e*y_e_dot)/lookahead_dist;// this assumes that acc_g is zero, if not; add: (m_args.lookahead*m_args.lookahead*speed_g*acc_g)/lookahead_dist;
+              lookahead_dist = sqrt((m_lookahead_sq*speed_g*speed_g) - y_e_trimmed*y_e_trimmed);
+              lookahead_dist_dot = (y_e*y_e_dot)/lookahead_dist;// this assumes that acc_g is zero, if not; add: (m_lookahead_sq*speed_g*acc_g)/lookahead_dist;
               m_y_int_dot = (lookahead_dist*y_e)/(y_e_*y_e_ + lookahead_dist*lookahead_dist);
               break;
           }
