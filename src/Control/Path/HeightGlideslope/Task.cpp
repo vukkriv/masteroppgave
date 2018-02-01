@@ -356,7 +356,7 @@ namespace Control
           
           param("Lookahead type", m_args.lookahead_type)
           .minimumValue("1")
-          .defaultValue("1")
+          .defaultValue("3")
           .description("Choose how the lookahead distance is calculated: 1; lookahead dist, 2; lookahead time, 3; radius of acceptance, 4; speed-dependant radius of acceptance");
 
           param("Use controller", m_args.use_controller)
