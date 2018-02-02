@@ -44,6 +44,7 @@ namespace Control
         bool use_controller; //Flag to enable controller
         bool use_refmodel;
         bool use_ratelim;
+        bool common_integrator;
         double k_ph_down;
         double k_ih_down;
         double k_dh_down;
@@ -189,7 +190,10 @@ namespace Control
         double glideslope_range;
         double glideslope_bearing;
         double glideslope_angle;
-        double m_integrator;
+        double m_integrator_line;
+        double m_integrator_up;
+        double m_integrator_down;
+        double m_integrator_prev;
         double m_h_int_dot;
         double glideslope_start_z;
         bool glideslope_up;
@@ -216,7 +220,10 @@ namespace Control
           glideslope_range(0.0),
           glideslope_bearing(0.0),
           glideslope_angle(1.0),
-          m_integrator(0.0),
+          m_integrator_line(0.0),
+          m_integrator_up(0.0),
+          m_integrator_down(0.0),
+          m_integrator_prev(0.0),
           m_h_int_dot(0.0),
           glideslope_start_z(0.0),
           glideslope_up(0),
@@ -363,6 +370,10 @@ namespace Control
           param("Use Borhaug integral effect", m_args.use_borhaug_i)
           .defaultValue("false")
           .description("Flag to use Borhaug integral effect (as opposed to normal ILOS)");
+
+          param("Common integrator", m_args.common_integrator)
+          .defaultValue("true")
+          .description("By disabling, there are three speparate integrators; one for up, down and line. Since different flight paths require different AoA");
           
           param("Lookahead type", m_args.lookahead_type)
           .minimumValue("1")
@@ -409,7 +420,10 @@ namespace Control
           // Reset integrator upon change in integrator gains
           if (paramChanged(m_args.k_ih_up) || paramChanged(m_args.k_ih_down) || paramChanged(m_args.k_ih_line) )
           {
-            m_integrator = 0.0;
+            m_integrator_line = 0.0;
+            m_integrator_up = 0.0;
+            m_integrator_down = 0.0;
+            m_integrator_prev = 0.0;
             m_h_int_dot = 0.0;
           }
 
@@ -426,7 +440,10 @@ namespace Control
             return;
           // Activate height and height-rate controller
           enableControlLoops(IMC::CL_ALTITUDE | IMC::CL_VERTICAL_RATE);
-          m_integrator = 0.0;
+          m_integrator_line = 0.0;
+          m_integrator_up = 0.0;
+          m_integrator_down = 0.0;
+          m_integrator_prev = 0.0;
           m_h_int_dot = 0.0;
         }
 
@@ -641,23 +658,31 @@ namespace Control
 
           double h_app = 1000;
 
+          if(m_args.common_integrator)
+          {
+            m_integrator_up = m_integrator_prev;
+            m_integrator_down = m_integrator_prev;
+            m_integrator_line = m_integrator_prev;
+          }
+
           //Calculate look-ahead distance based on glide-slope up, down or straight line
           if(glideslope_angle_nofilter > 0){ //Glideslope up
             h_app = getLookdist(m_args.k_r_up,h_error, speed_g);
             m_parcels[PC_LOS].a = h_app;
             if(m_args.use_borhaug_i)
             {
-              m_integrator += ts.delta*m_h_int_dot;
+              m_integrator_up += ts.delta*m_h_int_dot;
               m_h_int_dot = (h_app*h_error)/((h_error + m_args.k_ih_up)*(h_error + m_args.k_ih_up) + h_app*h_app);
             }
             else
             {
-              m_integrator += ts.delta*h_error;
+              m_integrator_up += ts.delta*h_error;
             }
-            m_integrator = trimValue(m_integrator,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
-            los_angle = atan(m_args.k_ph_up*h_error + m_integrator*m_args.k_ih_up + m_args.k_dh_up*h_dot/h_app); //Calculate LOS-angle glideslope up
+            m_integrator_up = trimValue(m_integrator_up,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
+            m_integrator_prev = m_integrator_up;
+            los_angle = atan(m_args.k_ph_up*h_error + m_integrator_up*m_args.k_ih_up + m_args.k_dh_up*h_dot/h_app); //Calculate LOS-angle glideslope up
             m_parcels[PC_LOS].p = m_args.k_ph_up*h_error/h_app;
-            m_parcels[PC_LOS].i = m_integrator*m_args.k_ih_up/h_app;
+            m_parcels[PC_LOS].i = m_integrator_up*m_args.k_ih_up/h_app;
             m_parcels[PC_LOS].d = m_args.k_dh_up*h_dot/h_app;
             spew("Glideslope UP! %f",glideslope_angle);
           }
@@ -666,17 +691,18 @@ namespace Control
             m_parcels[PC_LOS].a = h_app;
             if(m_args.use_borhaug_i)
             {
-              m_integrator += ts.delta*m_h_int_dot;
+              m_integrator_down += ts.delta*m_h_int_dot;
               m_h_int_dot = (h_app*h_error)/((h_error + m_args.k_ih_down)*(h_error + m_args.k_ih_down) + h_app*h_app);
             }
             else
             {
-              m_integrator += ts.delta*h_error;
+              m_integrator_down += ts.delta*h_error;
             }
-            m_integrator = trimValue(m_integrator,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
-            los_angle = atan(m_args.k_ph_down*h_error + m_integrator*m_args.k_ih_down + m_args.k_dh_down*h_dot/h_app); //Calculate LOS-angle glideslope down
+            m_integrator_down = trimValue(m_integrator_down,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
+            m_integrator_prev = m_integrator_down;
+            los_angle = atan(m_args.k_ph_down*h_error + m_integrator_down*m_args.k_ih_down + m_args.k_dh_down*h_dot/h_app); //Calculate LOS-angle glideslope down
             m_parcels[PC_LOS].p = m_args.k_ph_down*h_error/h_app;
-            m_parcels[PC_LOS].i = m_integrator*m_args.k_ih_down/h_app;
+            m_parcels[PC_LOS].i = m_integrator_down*m_args.k_ih_down/h_app;
             m_parcels[PC_LOS].d = m_args.k_dh_down*h_dot/h_app;
             spew("Glideslope DOWN! %f",glideslope_angle);
           }
@@ -685,17 +711,18 @@ namespace Control
             m_parcels[PC_LOS].a = h_app;
             if(m_args.use_borhaug_i)
             {
-              m_integrator += ts.delta*m_h_int_dot;
+              m_integrator_line += ts.delta*m_h_int_dot;
               m_h_int_dot = (h_app*h_error)/((h_error + m_args.k_ih_line)*(h_error + m_args.k_ih_line) + h_app*h_app);
             }
             else
             {
-              m_integrator += ts.delta*h_error;
+              m_integrator_line += ts.delta*h_error;
             }
-            m_integrator = trimValue(m_integrator,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
-            los_angle = atan(m_args.k_ph_line*h_error + m_integrator*m_args.k_ih_line + m_args.k_dh_line*h_dot/h_app); //Calculate LOS-angle glideslope line
+            m_integrator_line = trimValue(m_integrator_line,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
+            m_integrator_prev = m_integrator_line;
+            los_angle = atan(m_args.k_ph_line*h_error + m_integrator_line*m_args.k_ih_line + m_args.k_dh_line*h_dot/h_app); //Calculate LOS-angle glideslope line
             m_parcels[PC_LOS].p = m_args.k_ph_line*h_error/h_app;
-            m_parcels[PC_LOS].i = m_integrator*m_args.k_ih_line/h_app;
+            m_parcels[PC_LOS].i = m_integrator_line*m_args.k_ih_line/h_app;
             m_parcels[PC_LOS].d = m_args.k_dh_line*h_dot/h_app;
             spew("Glideslope LINE ! %f",glideslope_angle);
           }
