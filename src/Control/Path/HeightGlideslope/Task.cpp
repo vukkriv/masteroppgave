@@ -206,6 +206,7 @@ namespace Control
         double m_prev_unfiltered_height;
         double m_prev_z;
         double m_prev_gamma;
+        double m_prev_gamma_cmd;
         bool m_last_filter_ramp;
         ReferenceModel m_refmodel_z;
         ReferenceModel m_refmodel_gamma;
@@ -229,6 +230,7 @@ namespace Control
           m_prev_unfiltered_height(0),
           m_prev_z(0.0),
           m_prev_gamma(0.0),
+          m_prev_gamma_cmd(0.0),
           m_last_filter_ramp(false)
 
         {
@@ -478,6 +480,27 @@ namespace Control
           }
         }
 
+        double
+        rateLimit(double val, double prev, double up_lim, double low_lim, double dt)
+        {
+          //gamma rate limiter
+          double rate = (val - prev)/dt;
+          double rval = val;
+
+          if (rate > up_lim) 
+          {
+            rval = prev + dt*up_lim;
+            debug("Limiting rate to upper lim: limited val = %f\t orig val = %f", rval, val);
+          }
+          else if (rate < low_lim)
+          {
+            rval = prev + dt*low_lim;
+            debug("Limiting rate to lower lim: limited val = %f\t orig val = %f", rval, val);
+          } 
+          //else //unmodified reference
+          return rval;
+        }
+
         void
         step(const IMC::EstimatedState& state, const TrackingState& ts)
         {
@@ -564,6 +587,7 @@ namespace Control
           //****************************************************
           // Reference model for desired Z and flight-path angle
           //****************************************************
+          m_prev_unfiltered_height = m_zref.value;
 
           if((m_args.use_refmodel) && (ts.delta < 10))
           {
@@ -599,42 +623,10 @@ namespace Control
           else if ((m_args.use_ratelim) && (ts.delta < 10))
           {
             //height rate limiter
-              double rate = (m_zref.value - m_prev_z)/ts.delta;
-              double upper_lim = m_args.upper_lim_zrate;
-              double lower_lim = m_args.lower_lim_zrate;
-              spew("Z upper %f, lower %f, rate %f, delta_t %f", upper_lim, lower_lim, rate, ts.delta);
-
-              //m_zref.value = trimValue(m_zref.value, m_prev_unfiltered_height
-              if (rate > upper_lim) 
-              {
-                m_zref.value = m_prev_z + ts.delta*upper_lim;
-                debug("Limiting z rate to upper lim: zref = %f", m_zref.value);
-              }
-              else if (rate < lower_lim)
-              {
-                m_zref.value = m_prev_z + ts.delta*lower_lim;
-                debug("Limiting z rate to lower lim: zref = %f", m_zref.value);
-              } 
-              //else //unmodified reference
+              m_zref.value = rateLimit(m_zref.value, m_prev_z, m_args.upper_lim_zrate, m_args.lower_lim_zrate, ts.delta);
               
-            //gamma rate limiter
-              rate = (glideslope_angle - m_prev_gamma)/ts.delta;
-              upper_lim = Angles::radians(m_args.upper_lim_gammarate);
-              lower_lim = Angles::radians(m_args.lower_lim_gammarate);
-              spew("Gamma upper %f, lower %f, rate %f, delta_t %f", upper_lim, lower_lim, rate, ts.delta);
-
-              //m_zref.value = trimValue(m_zref.value, m_prev_unfiltered_height
-              if (rate > upper_lim) 
-              {
-                glideslope_angle = m_prev_gamma + ts.delta*upper_lim;
-                debug("Limiting gamma rate to upper lim: gammaref = %f", glideslope_angle);
-              }
-              else if (rate < lower_lim)
-              {
-                glideslope_angle = m_prev_gamma + ts.delta*lower_lim;
-                debug("Limiting gamma rate to lower lim: gammaref = %f", glideslope_angle);
-              } 
-              //else //unmodified reference
+              //gamma rate limiter
+              glideslope_angle = rateLimit(glideslope_angle, m_prev_gamma, Angles::radians(m_args.upper_lim_gammarate), Angles::radians(m_args.lower_lim_gammarate), ts.delta);
           }
 
           m_prev_z = m_zref.value;
@@ -714,6 +706,9 @@ namespace Control
 
           double gamma_cmd = glideslope_angle + los_angle; //Commanded flight path angle
           double h_dot_desired = speed_g*sin(gamma_cmd);        //Convert commanded flight path angle to demanded vertical-rate.
+
+          gamma_cmd = rateLimit(gamma_cmd, m_prev_gamma_cmd, Angles::radians(m_args.upper_lim_gammarate), Angles::radians(m_args.lower_lim_gammarate), ts.delta);
+          m_prev_gamma_cmd = gamma_cmd;
 
           m_parcels[PC_GAM].p = glideslope_angle; // path angle
           m_parcels[PC_GAM].i = glideslope_angle_nofilter; //unfiltered path angle
