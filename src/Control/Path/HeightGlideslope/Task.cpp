@@ -81,6 +81,16 @@ namespace Control
         int lookahead_type;
       };
 
+      static const std::string c_parcel_names[] = {DTR_RT(""), DTR_RT("Gamma"),DTR_RT("Height")};
+
+      enum Parcel {
+        PC_LOS = 0,
+        PC_GAM = 1,
+        PC_H = 2
+      };
+
+      static const int NUM_PARCELS = 3;
+
       class ReferenceModel
       {
       public:
@@ -173,9 +183,7 @@ namespace Control
         Arguments m_args;
         IMC::DesiredVerticalRate m_vrate;
         IMC::DesiredZ m_zref;
-        IMC::DesiredLinearState ref_nofilter; //Used for non-filtered height and glideslope_angle reference filtered and gldeslope_angle, for live plotting in Neptus
-        IMC::ControlParcel m_parcel_los;
-        IMC::RelativeState m_hdiff;
+        IMC::ControlParcel m_parcels[NUM_PARCELS];
         Delta m_last_step;
 
         double glideslope_range;
@@ -367,6 +375,14 @@ namespace Control
 
         }
 
+        void
+        onEntityReservation(void)
+        {
+          PathController::onEntityReservation();
+
+          for (unsigned i = 0; i < NUM_PARCELS; ++i)
+            m_parcels[i].setSourceEntity(reserveEntity(this->getEntityLabel() + c_parcel_names[i] + " Parcel"));
+        }
         
         void
         onUpdateParameters(void)
@@ -548,8 +564,6 @@ namespace Control
           //****************************************************
           // Reference model for desired Z and flight-path angle
           //****************************************************
-          ref_nofilter.z = m_zref.value;
-          ref_nofilter.ay = glideslope_angle;
 
           if((m_args.use_refmodel) && (ts.delta < 10))
           {
@@ -623,13 +637,11 @@ namespace Control
               //else //unmodified reference
           }
 
-          ref_nofilter.vy = glideslope_angle; //store filtered value, for plot
           m_prev_z = m_zref.value;
           m_prev_gamma = glideslope_angle;
 
           //Calculate height error along glideslope
           double h_error = (m_zref.value - (state.height - state.z))*cos(glideslope_angle);
-          m_hdiff.err_z = h_error;
           spew("H_error: %f",h_error);
 
           //Derivative term
@@ -640,7 +652,7 @@ namespace Control
           //Calculate look-ahead distance based on glide-slope up, down or straight line
           if(glideslope_angle_nofilter > 0){ //Glideslope up
             h_app = getLookdist(m_args.k_r_up,h_error, speed_g);
-            m_parcel_los.a = h_app;
+            m_parcels[PC_LOS].a = h_app;
             if(m_args.use_borhaug_i)
             {
               m_integrator += ts.delta*m_h_int_dot;
@@ -652,14 +664,14 @@ namespace Control
             }
             m_integrator = trimValue(m_integrator,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
             los_angle = atan(m_args.k_ph_up*h_error + m_integrator + m_args.k_dh_up*h_dot/h_app); //Calculate LOS-angle glideslope up
-            m_parcel_los.p = m_args.k_ph_up*h_error;
-            m_parcel_los.i = m_integrator;
-            m_parcel_los.d = m_args.k_dh_up*h_dot;
+            m_parcels[PC_LOS].p = m_args.k_ph_up*h_error/h_app;
+            m_parcels[PC_LOS].i = m_integrator*m_args.k_ih_up/h_app;
+            m_parcels[PC_LOS].d = m_args.k_dh_up*h_dot/h_app;
             spew("Glideslope UP! %f",glideslope_angle);
           }
           else if(glideslope_angle_nofilter < 0){ //Glideslope down
             h_app = getLookdist(m_args.k_r_down,h_error, speed_g);
-            m_parcel_los.a = h_app;
+            m_parcels[PC_LOS].a = h_app;
             if(m_args.use_borhaug_i)
             {
               m_integrator += ts.delta*m_h_int_dot;
@@ -671,14 +683,14 @@ namespace Control
             }
             m_integrator = trimValue(m_integrator,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
             los_angle = atan(m_args.k_ph_down*h_error + m_integrator*m_args.k_ih_down + m_args.k_dh_down*h_dot/h_app); //Calculate LOS-angle glideslope down
-            m_parcel_los.p = m_args.k_ph_down*h_error;
-            m_parcel_los.i = m_integrator;
-            m_parcel_los.d = m_args.k_dh_down*h_dot;
+            m_parcels[PC_LOS].p = m_args.k_ph_down*h_error/h_app;
+            m_parcels[PC_LOS].i = m_integrator*m_args.k_ih_down/h_app;
+            m_parcels[PC_LOS].d = m_args.k_dh_down*h_dot/h_app;
             spew("Glideslope DOWN! %f",glideslope_angle);
           }
           else{//Straight line
             h_app = getLookdist(m_args.k_r_line,h_error, speed_g);
-            m_parcel_los.a = h_app;
+            m_parcels[PC_LOS].a = h_app;
             if(m_args.use_borhaug_i)
             {
               m_integrator += ts.delta*m_h_int_dot;
@@ -690,19 +702,29 @@ namespace Control
             }
             m_integrator = trimValue(m_integrator,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
             los_angle = atan(m_args.k_ph_line*h_error + m_integrator*m_args.k_ih_line + m_args.k_dh_line*h_dot/h_app); //Calculate LOS-angle glideslope line
-            m_parcel_los.p = m_args.k_ph_line*h_error;
-            m_parcel_los.i = m_integrator;
-            m_parcel_los.d = m_args.k_dh_line*h_dot;
+            m_parcels[PC_LOS].p = m_args.k_ph_line*h_error/h_app;
+            m_parcels[PC_LOS].i = m_integrator*m_args.k_ih_line/h_app;
+            m_parcels[PC_LOS].d = m_args.k_dh_line*h_dot/h_app;
             spew("Glideslope LINE ! %f",glideslope_angle);
           }
 
 
           los_angle = trimValue(los_angle,Angles::radians(m_args.los_min_deg),Angles::radians(m_args.los_max_deg));
-          m_parcel_los.a = los_angle; // dispatch los angle as the derivative los parcel, for plotting
           debug("Los_angle: %f",Angles::degrees(los_angle));
 
           double gamma_cmd = glideslope_angle + los_angle; //Commanded flight path angle
           double h_dot_desired = speed_g*sin(gamma_cmd);        //Convert commanded flight path angle to demanded vertical-rate.
+
+          m_parcels[PC_GAM].p = glideslope_angle; // path angle
+          m_parcels[PC_GAM].i = glideslope_angle_nofilter; //unfiltered path angle
+          m_parcels[PC_GAM].d = los_angle; //gamma_los
+          m_parcels[PC_GAM].a = gamma_cmd;
+
+          m_parcels[PC_H].p = h_error;
+          m_parcels[PC_H].i = m_zref.value;
+          m_parcels[PC_H].a = m_prev_unfiltered_height;
+          m_parcels[PC_H].d = h_dot;
+
 
           m_vrate.value = h_dot_desired;
 
@@ -710,14 +732,12 @@ namespace Control
           //h_dot_desired = speed_g*sin(2*(M_PI/180));
           //m_vrate.value= h_dot_desired;
 
-          m_prev_unfiltered_height = ref_nofilter.z;
-
           dispatch(m_vrate);
           m_zref.z_units=Z_HEIGHT;
           dispatch(m_zref);
-          dispatch(ref_nofilter);
-          dispatch(m_parcel_los);
-          dispatch(m_hdiff);
+          for (int i = 0; i < NUM_PARCELS; ++i) {
+            dispatch(m_parcels[i]);
+          }
 
           m_last_loitering = ts.loitering;
         }
