@@ -45,6 +45,7 @@ namespace Control
         bool use_refmodel;
         bool use_ratelim;
         bool common_integrator;
+        bool reset_i_on_change;
         double k_ph_down;
         double k_ih_down;
         double k_dh_down;
@@ -375,6 +376,10 @@ namespace Control
           .defaultValue("true")
           .description("By disabling, there are three speparate integrators; one for up, down and line. Since different flight paths require different AoA");
           
+          param("Reset integrator term on change", m_args.reset_i_on_change)
+          .defaultValue("true")
+          .description("True: the up/line/down integrators are set to zero when the Ki gains are changed");
+          
           param("Lookahead type", m_args.lookahead_type)
           .minimumValue("1")
           .defaultValue("3")
@@ -418,7 +423,7 @@ namespace Control
             disableControlLoops(IMC::CL_ALTITUDE | IMC::CL_VERTICAL_RATE);
           }
           // Reset integrator upon change in integrator gains
-          if (paramChanged(m_args.k_ih_up) || paramChanged(m_args.k_ih_down) || paramChanged(m_args.k_ih_line) )
+          if (m_args.reset_i_on_change && (paramChanged(m_args.k_ih_up) || paramChanged(m_args.k_ih_down) || paramChanged(m_args.k_ih_line) ))
           {
             m_integrator_line = 0.0;
             m_integrator_up = 0.0;
@@ -440,11 +445,14 @@ namespace Control
             return;
           // Activate height and height-rate controller
           enableControlLoops(IMC::CL_ALTITUDE | IMC::CL_VERTICAL_RATE);
-          m_integrator_line = 0.0;
-          m_integrator_up = 0.0;
-          m_integrator_down = 0.0;
-          m_integrator_prev = 0.0;
-          m_h_int_dot = 0.0;
+          if(m_args.reset_i_on_change)
+          {
+            m_integrator_line = 0.0;
+            m_integrator_up = 0.0;
+            m_integrator_down = 0.0;
+            m_integrator_prev = 0.0;
+            m_h_int_dot = 0.0;
+          }
         }
 
         void
