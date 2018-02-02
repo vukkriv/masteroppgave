@@ -309,7 +309,7 @@ namespace Control
           param("I-LOS integrator limit", m_args.k_i_lim)
           .minimumValue("0.0")              
           .defaultValue("1.5")              
-          .maximumValue("90.0")              
+          /* .maximumValue("90.0") */              
           .units(Units::Degree)
           .description("Longitudinal line of sight angle integral effect is saturated to this value");
 
