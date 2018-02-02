@@ -60,6 +60,8 @@ namespace Control
         // Input filtering
         std::string dz_src;
         std::string spd_src;
+        double upper_lim_pitchrate;
+        double lower_lim_pitchrate;
 
       };
 
@@ -89,6 +91,7 @@ namespace Control
         double m_h_err;
         bool   m_h_err_feedforward;
         Delta m_last_step;
+        double m_prev_pitch_desired;
 
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
@@ -99,8 +102,8 @@ namespace Control
           m_thr_i(0.0),
           m_dz(0.0),
           m_h_err(0.0),
-          m_h_err_feedforward(false)
-
+          m_h_err_feedforward(false),
+          m_prev_pitch_desired(0.0)
         {
           param("Use controller", m_args.use_controller)
 			              .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -171,6 +174,17 @@ namespace Control
           .values("Glideslope Height Controller, Lateral LOS Control, FBWA Longitudinal Controller, LongRef")
           .defaultValue("Glideslope Height Controller")
           .description("Entity allowed to set desired airspeed");
+
+          param("Maximum pitch rate", m_args.upper_lim_pitchrate)
+          .defaultValue("5.0")              
+          .units(Units::DegreePerSecond)
+          .description("When rate limited, pitch rate is saturated at this value");
+
+          param("Minimum pitch rate", m_args.lower_lim_pitchrate)
+          .defaultValue("-5.0")              
+          .units(Units::DegreePerSecond)
+          .description("When rate limited, pitch rate is saturated at this value");
+
 
           bind<IMC::IndicatedSpeed>(this);
           bind<IMC::DesiredVerticalRate>(this);
@@ -281,6 +295,27 @@ namespace Control
           m_dvrate = d_vrate->value;
         }
 
+        double
+        rateLimit(double val, double prev, double up_lim, double low_lim, double dt)
+        {
+          //gamma rate limiter
+          double rate = (val - prev)/dt;
+          double rval = val;
+
+          if (rate > up_lim) 
+          {
+            rval = prev + dt*up_lim;
+            debug("Limiting rate to upper lim: limited val = %f\t orig val = %f", rval, val);
+          }
+          else if (rate < low_lim)
+          {
+            rval = prev + dt*low_lim;
+            debug("Limiting rate to lower lim: limited val = %f\t orig val = %f", rval, val);
+          } 
+          //else //unmodified reference
+          return rval;
+        }
+
         void
         step(const IMC::EstimatedState& state, const TrackingState& ts)
         {
@@ -322,7 +357,7 @@ namespace Control
           double pitch_desired = gamma_desired + Angles::radians(m_args.trim_pitch)-gamma_error*m_args.k_gamma_p; //Backstepping,pitch_desired = gamma_desired + alpha_0
           pitch_desired = trimValue(pitch_desired,Angles::radians(m_args.pitch_min_deg),Angles::radians(m_args.pitch_max_deg));
           m_throttle.value = trimValue(throttle_desired, 0, 100);
-          m_pitch.value = pitch_desired;
+          m_pitch.value = rateLimit(pitch_desired,m_prev_pitch_desired,Angles::radians(m_args.upper_lim_pitchrate), Angles::radians(m_args.lower_lim_pitchrate), ts.delta);
 
           m_parcels[PC_THR].p = m_args.k_thr_p*V_error;
           m_parcels[PC_THR].i = m_args.k_thr_i*m_thr_i;
