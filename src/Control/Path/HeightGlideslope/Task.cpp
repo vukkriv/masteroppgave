@@ -655,7 +655,7 @@ namespace Control
               m_integrator += ts.delta*h_error;
             }
             m_integrator = trimValue(m_integrator,-m_args.k_i_lim,m_args.k_i_lim); //Anti wind-up 
-            los_angle = atan(m_args.k_ph_up*h_error + m_integrator + m_args.k_dh_up*h_dot/h_app); //Calculate LOS-angle glideslope up
+            los_angle = atan(m_args.k_ph_up*h_error + m_integrator*m_args.k_ih_up + m_args.k_dh_up*h_dot/h_app); //Calculate LOS-angle glideslope up
             m_parcels[PC_LOS].p = m_args.k_ph_up*h_error/h_app;
             m_parcels[PC_LOS].i = m_integrator*m_args.k_ih_up/h_app;
             m_parcels[PC_LOS].d = m_args.k_dh_up*h_dot/h_app;
