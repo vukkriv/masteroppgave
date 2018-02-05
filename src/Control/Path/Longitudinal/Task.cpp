@@ -372,6 +372,7 @@ namespace Control
           for (int i = 0; i < NUM_PARCELS; ++i) {
             dispatch(m_parcels[i]);
           }
+          m_prev_pitch_desired = m_pitch.value;
         }
       };
     }
