@@ -55,18 +55,18 @@ namespace Control
       {
         //! Look ahead distance for line-of-sight
         double lookahead;
-        //! Relative damping ratio for velocity filter
-        double zeta_vel;
-        //! Natural frequency for velocity filter
-        double omega_vel;
         //! Guidance algorithm selection
         std::string guidance_algorithm;
+        //! Use referencemodel for velocity (velocity filter)
+        bool use_refmodel;
+        //! Natural frequency for velocity filter
+        Matrix omega_vel;
+        //! Relative damping ratio for velocity filter
+        Matrix zeta_vel;
         //! Name of task that sends out formation centroid Estimated Local State
         std::string centroid_els_entity_label;
-        //! Use as heading reference
-        bool use_heading; 
-        //! Use referencemodel for velocity
-        bool use_refmodel; 
+        //! Use height guidance
+        bool control_height; 
         //! Flag to enable controller
         bool use_controller;
       };
@@ -84,12 +84,12 @@ namespace Control
       {
         Arguments m_args;
         double m_lookahead;
-        double m_zeta_vel;
-        double m_omega_vel;
+        Matrix m_zeta_vel;
+        Matrix m_omega_vel;
         double m_desired_speed; 
-        double m_last_loop_time; 
-        bool m_using_refmodel;
+        double m_last_loop_time;
         uint8_t m_guidance_algorithm;
+        double m_tan_path_angle; 
 
         //! Vector of the guidance algorithm strings
         std::vector<std::string> m_guidance_string;
@@ -108,8 +108,6 @@ namespace Control
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
           m_lookahead(0.0),
-          m_zeta_vel(0.0),
-          m_omega_vel(0.0),
           m_desired_speed(0.0),
           m_last_loop_time(0.0),
           m_guidance_algorithm(LOS_LOOKAHEAD),
@@ -128,29 +126,31 @@ namespace Control
           .description("Selection of which guidance algorithm to use in the controller");
 
           param("Lookahead", m_args.lookahead)
-          .defaultValue("20.0")
+          .defaultValue("8.0")
+          .units(Units::Meter)
           .description("Lookahead distance (or enclosure radius if enclosure based steering is chosen");
 
-          param("Zeta (velocity filter rel. damping)", m_args.zeta_vel)
-          .defaultValue("1.0")
-          .description("Velocity filter relative damping ratio");
+          param("Use height guidance", m_args.control_height)
+          .defaultValue("false")
+          .description("Use height guidance to send a z-velocity as well");
+
+          param("Use velocity filter", m_args.use_refmodel)
+          .defaultValue("false")
+          .description("Use reference model for velocity");
 
           param("Omega (velocity filter nat. freq.)", m_args.omega_vel)
           .defaultValue("4.0")
-          .description("Velocity filter natural frequency");
+          .units(Units::RadianPerSecond)
+          .description("Velocity filter natural frequency matrix. One value:uses on all. Two values: uses one on xy and one on z (if activated)");
+
+          param("Zeta (velocity filter rel. damping)", m_args.zeta_vel)
+          .defaultValue("1.0")
+          .units(Units::None)
+          .description("Velocity filter relative damping ratio matrix. One value:uses on all. Two values: uses one on xy and one on z (if activated)");
 
           param("EstimatedLocalState Entity Label", m_args.centroid_els_entity_label)
           .defaultValue("Formation Centroid")
           .description("Entity label for the centroid EstimatedLocalState");
-
-          // TODO: Use heading
-          param("Use heading", m_args.use_heading)
-          .defaultValue("false")
-          .description("Use as heading reference for formation");
-
-          param("Use refmodel", m_args.use_refmodel)
-          .defaultValue("false")
-          .description("Use reference model for velocity");
 
           param("Use controller", m_args.use_controller)
           .visibility(Tasks::Parameter::VISIBILITY_USER)
@@ -172,20 +172,65 @@ namespace Control
           PathController::onUpdateParameters();
 
           m_lookahead = m_args.lookahead;
-          m_zeta_vel = m_args.zeta_vel;
-          m_omega_vel = m_args.omega_vel;
-          if (m_args.use_refmodel && !m_using_refmodel)
-            initRefmodel();
-          else
-            setRefmodelMatrices();
-          m_using_refmodel = m_args.use_refmodel;
 
+          if (paramChanged(m_args.zeta_vel))
+          {
+            debug("Changing zeta:");
+            m_zeta_vel = createDiagonalMatrix(m_args.zeta_vel);
+          }
+          if (paramChanged(m_args.omega_vel))
+          {
+            debug("Changing omega:");
+            m_omega_vel = createDiagonalMatrix(m_args.omega_vel);
+          }
+
+          if (paramChanged(m_args.use_refmodel) && m_args.use_refmodel)
+          {
+            debug("Initialising RefModel (velocity filter) AND setting sate");
+            initRefmodel();
+          }
+          else
+          {
+            debug("Initialising RefModel Matrices (velocity filter)");
+            setRefmodelMatrices();
+          }
 
           for (uint8_t i = 0; i < m_guidance_string.size(); i++)
           {
-            if(strcmp(m_args.guidance_algorithm.c_str(), m_guidance_string[i].c_str()))
+            if(strcmp(m_args.guidance_algorithm.c_str(), m_guidance_string[i].c_str()) == 0)
               m_guidance_algorithm = i;
           }
+          debug("Guidance algorithm selected number %d: %s",m_guidance_algorithm, m_guidance_string[m_guidance_algorithm].c_str());
+        }
+
+        Matrix
+        createDiagonalMatrix(Matrix mat_in)
+        {
+          Matrix mat = Matrix(3,3, 0.0);
+
+          if (mat_in.size() >= 3)
+          {
+            mat(0,0) = mat_in(0);
+            mat(1,1) = mat_in(1);
+            mat(2,2) = mat_in(2);
+            debug("Matrix 3x3 with 3 values and diagonal: %f, %f, %f", mat(0,0), mat(1,1), mat(2,2));
+
+          }
+          else if (mat_in.size() == 2)
+          {
+            mat(0,0) = mat_in(0);
+            mat(1,1) = mat_in(0);
+            mat(2,2) = mat_in(1);
+            debug("Matrix 3x3 with 2 values and diagonal: %f, %f, %f", mat(0,0), mat(1,1), mat(2,2));
+          }
+          else if (mat_in.size() == 1)
+          {
+            mat(0,0) = mat_in(0);
+            mat(1,1) = mat_in(0);
+            mat(2,2) = mat_in(0);
+            debug("Matrix 3x3 with 1 value and diagonal: %f, %f, %f", mat(0,0), mat(1,1), mat(2,2));
+          }
+          return mat;
         }
 
         void
@@ -216,6 +261,8 @@ namespace Control
         {
           (void)state;
           (void)ts;
+
+          m_tan_path_angle = (ts.end.z - ts.start.z)/ts.track_length;
 
           /*
           if (!m_args.use_controller){
@@ -252,7 +299,8 @@ namespace Control
         void
         consume(const IMC::DesiredSpeed* speed)
         {
-          m_desired_speed = speed->value; 
+          m_desired_speed = speed->value;
+          spew("Got DesiredSpeed message with value %f", m_desired_speed);
         }
 
          //! Consume Formation Position
@@ -303,26 +351,28 @@ namespace Control
         void
         step(const IMC::EstimatedState& state, const TrackingState& ts)
         {
-          spew("Control step start");
-          spew("Vehicle position (lat,lng,height): %f, %f, %f", state.lat, state.lon, state.height);
-          spew("Vehicle position (x,y,z): %f, %f, %f", state.x,state.y,state.z);
+          trace("Control step start");
 
           if (!m_args.use_controller)
             return;
 
-          spew("Tracking state: %f, %f", ts.track_pos.x, ts.track_pos.y);
-          
+          trace("Tracking state: %f, %f, %f", ts.track_pos.x, ts.track_pos.y, ts.track_pos.z);
+          trace("Vehicle state: %f, %f, %f", m_vehicle_state.state->x, m_vehicle_state.state->y, m_vehicle_state.state->z);
+          trace("Centroid state: %f, %f, %f", m_centroid_state.state->x,m_centroid_state.state->y,m_centroid_state.state->z);
+
           // Vector from centroid to vehicle in NED frame
           double p_centroid_x = m_vehicle_state.state->x - m_centroid_state.state->x;
           double p_centroid_y = m_vehicle_state.state->y - m_centroid_state.state->y;
+          double p_centroid_z = m_vehicle_state.state->z - m_centroid_state.state->z; 
           
           // Rotate centroid to vehicle vector from NED into path frame
           Angles::rotate(ts.track_bearing,false, p_centroid_x, p_centroid_y); 
+          trace("Centroid state in path frame: %f, %f, %f", p_centroid_x,p_centroid_y,p_centroid_z);
 
           // Centroid tracking state positions
           double centroid_ts_x = ts.track_pos.x - p_centroid_x;
           double centroid_ts_y = ts.track_pos.y - p_centroid_y;
-          spew("Centroid TrackingState: %f, %f", centroid_ts_x, centroid_ts_y);
+          trace("Centroid TrackingState: %f, %f", centroid_ts_x, centroid_ts_y);
 
 
           // Lookahead distance on LOS line (set to LOS guidance by default, changed below)
@@ -335,6 +385,7 @@ namespace Control
             {
               // Set lookahead distance to be the user input value
               Delta = m_lookahead;
+              trace("Using LOS with lookahead (%d)", m_guidance_algorithm);
               break;
             }
             case ENCLOSURE:
@@ -342,15 +393,17 @@ namespace Control
               // Calculate squared lookahead so that it depends on cross track error
               double Delta_sq = m_lookahead*m_lookahead - centroid_ts_y*centroid_ts_y;
               // Constrain value to not take sqrt of a negative number
-              trimValue(Delta_sq, 0, m_lookahead*m_lookahead);
+              Delta_sq = trimValue(Delta_sq, 0.0, m_lookahead*m_lookahead);
               // Set lookahead
               Delta = std::sqrt(Delta_sq);
+              trace("Using LOS with enclosure (%d)", m_guidance_algorithm);
               break;
             }
             case PURE_PURSUIT:
             {
               // Set lookahead to the remaining distance to the next waypoint
               Delta = ts.track_length - centroid_ts_x;
+              trace("Using pure pursuit (%d)", m_guidance_algorithm);
               break;
             }
             default:
@@ -360,27 +413,40 @@ namespace Control
           // Create the desired velocity vector in path frame
           double v_x = Delta;
           double v_y = -centroid_ts_y;
-          spew("Formation desired speed (path frame) %f, %f",v_x,v_y); 
+          double v_z = 0.0;
+
+          if (m_args.control_height)
+          {
+            // Centroid height (using the estimated state)
+            double centroid_height = -state.height - p_centroid_z;
+            // Current height error from path
+            double h_err = (-ts.start.z - m_tan_path_angle * trimValue(centroid_ts_x, 0.0, abs(centroid_ts_x))) - centroid_height;
+            // Height error at the lookahead distance
+            v_z = h_err - m_tan_path_angle * Delta;
+            trace("Centroid and path heights: %f, %f", centroid_height, h_err+centroid_height);
+          }
+          trace("Formation desired speed (path frame) %f, %f, %f",v_x,v_y,v_z);
 
           // Rotate vector from path frame into NED
           Angles::rotate(ts.track_bearing,false,v_x,v_y);
-          spew("Formation desired speed (NED frame) %f, %f",v_x,v_y); 
+          trace("Formation desired speed (NED frame) %f, %f",v_x,v_y);
 
           // Rotate vector from NED frame into centroid frame
           Angles::rotate(m_centroid_state.state->psi, false, v_x,v_y);
-          spew("Formation desired speed (centroid frame) %f, %f", v_x,v_y); 
+          trace("Formation desired speed (centroid frame) %f, %f", v_x,v_y);
 
           // Calculate length of velocity vector
-          double v_length = std::sqrt(v_x*v_x + v_y*v_y);
+          double v_length = std::sqrt(v_x*v_x + v_y*v_y + v_z*v_z);
 
           // Get the desired velocity magnitude
           double v_set = m_desired_speed;
 
           // Calculate the scaled reference velocity (so it has the desired magnitude)
-          Matrix v_ref = Matrix(2,1);
+          Matrix v_ref = Matrix(3,1);
           v_ref(0) = v_set*v_x/v_length;
           v_ref(1) = v_set*v_y/v_length;
-          spew("Formation desired speed (centroid frame scaled) %f, %f", v_ref(0),v_ref(1)); 
+          v_ref(2) = v_set*v_z/v_length;
+          trace("Formation desired speed (centroid frame scaled) %f, %f, %f", v_ref(0),v_ref(1), v_ref(2));
 
           // Converting wind to path reference frame
           //double w_x = m_W_x, w_y = m_W_y;
@@ -388,8 +454,8 @@ namespace Control
 
 
           // Create variable for reference velocity (output of controller)
-          Matrix v_out = Matrix(2,1);
-          Matrix a_out = Matrix(2,1);
+          Matrix v_out = Matrix(3,1);
+          Matrix a_out = Matrix(3,1);
           // Filter the velocity reference if filter is activated
           if (m_args.use_refmodel)
           {
@@ -400,7 +466,7 @@ namespace Control
           else
           {
             v_out = v_ref; 
-            a_out = Matrix(2,1,0.0); 
+            a_out = Matrix(3,1,0.0); 
           }
 
           // Set the time the control loop was last run
@@ -409,15 +475,15 @@ namespace Control
           // Create desired linear state message
           IMC::DesiredLinearState desLinState;
 
-          // Only use for x,y. Send z directly, no acc (for now)
+          // Set velocities
           desLinState.vx = v_out(0);
           desLinState.vy = v_out(1);
-          // TODO: do something about z
-          desLinState.vz = 0;
+          desLinState.vz = v_out(2);
 
+          // Set Accelerations
           desLinState.ax = a_out(0);
           desLinState.ay = a_out(1);
-          desLinState.az = 0;
+          desLinState.az = a_out(2);
 
           desLinState.flags = IMC::DesiredLinearState::FL_VX |
                               IMC::DesiredLinearState::FL_VY |
@@ -434,33 +500,69 @@ namespace Control
         void
         setRefmodelMatrices()
         {
-          double ones[] = {1.0, 1.0};
-          double omega_vel_sq = m_omega_vel * m_omega_vel; 
+          double ones[] = {1.0, 1.0, 1.0};
+          Matrix omega_vel_sq = m_omega_vel * m_omega_vel; 
 
-          Matrix eye = Matrix(ones, 2);
-          Matrix zero = Matrix(2,2, 0.0);
+          Matrix eye = Matrix(ones, 3);
+          Matrix zero = Matrix(3,3, 0.0);
           Matrix A_11 = zero;
           Matrix A_12 = eye; 
-          Matrix A_21 = -eye*omega_vel_sq;
-          Matrix A_22 = -eye*2.0*m_zeta_vel*m_omega_vel; 
+          Matrix A_21 = -omega_vel_sq;
+          Matrix A_22 = -2.0*m_zeta_vel*m_omega_vel; 
 
           Matrix A_1 = A_11.horzCat(A_12);
           Matrix A_2 = A_21.horzCat(A_22); 
 
           m_ref.A = A_1.vertCat(A_2); 
-          m_ref.B = zero.vertCat(eye) * omega_vel_sq; 
-          m_ref.Cvel = Matrix(ones, 2).horzCat(Matrix(2,2, 0.0));
-          m_ref.Cacc = Matrix(2,2, 0.0).horzCat(Matrix(ones, 2));
+          Matrix B_1 = zero; 
+          m_ref.B = B_1.vertCat(omega_vel_sq);
+          Matrix C_1 = eye; 
+          Matrix C_2 = zero; 
+          m_ref.Cvel = C_1.horzCat(C_2);
+          Matrix C_1_a = zero; 
+          Matrix C_2_a = eye; 
+          m_ref.Cacc = C_1_a.horzCat(C_2_a);
+
+          debug("Refmodel matrices set:");
+          debug("A:");
+          printMatrix(m_ref.A);
+          debug("B:");
+          printMatrix(m_ref.B);
+          debug("Cvel and Cacc:");
+          printMatrix(m_ref.Cvel);
+          printMatrix(m_ref.Cacc);
         }
 
         void
         initRefmodelstate()
         {
-          m_ref.x = Matrix(4, 1, 0.0);
+          m_ref.x = Matrix(6, 1, 0.0);
           m_ref.x(0) = m_centroid_state.state->u;
           m_ref.x(1) = m_centroid_state.state->v;
-          m_ref.x(2) = m_centroid_state.acc->x;
-          m_ref.x(3) = m_centroid_state.acc->y;
+          m_ref.x(2) = m_centroid_state.state->w; 
+          m_ref.x(3) = m_centroid_state.acc->x;
+          m_ref.x(4) = m_centroid_state.acc->y;
+          m_ref.x(5) = m_centroid_state.acc->z;
+
+          debug("RefModel state set:");
+          printMatrix(m_ref.x);
+        }
+
+        void
+        printMatrix(Matrix m, DUNE::Tasks::DebugLevel dbg = DEBUG_LEVEL_DEBUG)
+        {
+          if (getDebugLevel() >= dbg)
+          {
+            printf("[DEBUG Matrix]\n");
+            for (int i = 0; i < m.rows(); i++)
+            {
+              for (int j = 0; j < m.columns(); j++)
+              {
+                printf("%f ", m.element(i, j));
+              }
+              printf("\n");
+            }
+          }
         }
 
         void
@@ -473,7 +575,7 @@ namespace Control
         void
         stepRefmodel(Matrix input, double deltaT)
         {
-          m_ref.x = m_ref.x + m_ref.A * m_ref.x * deltaT + m_ref.B * input * deltaT; 
+          m_ref.x = m_ref.x + m_ref.A * m_ref.x * deltaT + m_ref.B * input * deltaT;
         }
 
         Matrix
