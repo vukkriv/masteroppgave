@@ -41,6 +41,16 @@ namespace Control
     {
       using DUNE_NAMESPACES;
 
+      enum GUIDANCE_TYPE
+      {
+        LOS_LOOKAHEAD = 0,
+        ENCLOSURE = 1,
+        PURE_PURSUIT = 2
+      };
+
+      // This should be kept the same order and length as GUIDANCE_TYPE
+      const std::string c_guicance_algorithms = "LOS Lookahead,Enclosure,Pure pursuit";
+
       struct Arguments
       {
         //! Look ahead distance for line-of-sight
@@ -49,8 +59,8 @@ namespace Control
         double zeta_vel;
         //! Natural frequency for velocity filter
         double omega_vel;
-        //! Flag to use enclosure based steering instead of lookahead based steering
-        bool use_enclosure;
+        //! Guidance algorithm selection
+        std::string guidance_algorithm;
         //! Name of task that sends out formation centroid Estimated Local State
         std::string centroid_els_entity_label;
         //! Use as heading reference
@@ -79,6 +89,10 @@ namespace Control
         double m_desired_speed; 
         double m_last_loop_time; 
         bool m_using_refmodel;
+        uint8_t m_guidance_algorithm;
+
+        //! Vector of the guidance algorithm strings
+        std::vector<std::string> m_guidance_string;
 
         RefModel m_ref; 
 
@@ -98,10 +112,21 @@ namespace Control
           m_omega_vel(0.0),
           m_desired_speed(0.0),
           m_last_loop_time(0.0),
+          m_guidance_algorithm(LOS_LOOKAHEAD),
           m_airspeed(0.0),
           m_W_x(0.0),
           m_W_y(0.0)
         {
+          // Setup guidance algorithm list
+          Utils::String::split(c_guicance_algorithms, ",", m_guidance_string);
+
+          param("Guidance algorithm", m_args.guidance_algorithm)
+          .defaultValue(m_guidance_string[LOS_LOOKAHEAD])
+          .values(c_guicance_algorithms)
+          .visibility(Tasks::Parameter::VISIBILITY_USER)
+          .scope(Tasks::Parameter::SCOPE_MANEUVER)
+          .description("Selection of which guidance algorithm to use in the controller");
+
           param("Lookahead", m_args.lookahead)
           .defaultValue("20.0")
           .description("Lookahead distance (or enclosure radius if enclosure based steering is chosen");
@@ -113,13 +138,6 @@ namespace Control
           param("Omega (velocity filter nat. freq.)", m_args.omega_vel)
           .defaultValue("4.0")
           .description("Velocity filter natural frequency");
-
-          // TODO: Make this into a drop down list
-          param("Use enclosure", m_args.use_enclosure)
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .defaultValue("false")
-          .description("Use enclosure based steering instead of lookahead based steering");
 
           param("EstimatedLocalState Entity Label", m_args.centroid_els_entity_label)
           .defaultValue("Formation Centroid")
@@ -140,22 +158,6 @@ namespace Control
           .defaultValue("false")
           .description("Use this controller for maneuver");
 
-          /*
-          const std::string c_controller_profiles = "Normal,High Gain,Cruise";
-
-          //! Vector of the controller profile strings;
-          std::vector<std::string> m_cprofiles;
-
-          // Setup cprofiles
-          Utils::String::split(c_controller_profiles, ",", m_cprofiles);
-
-          param("Maneuver Profile", m_args.maneuver_profile)
-          .defaultValue(m_cprofiles[0])
-          .values(c_controller_profiles)
-          .visibility(Tasks::Parameter::VISIBILITY_USER)
-          .scope(Tasks::Parameter::SCOPE_MANEUVER)
-          .description("The profile to override if Maneuver Override is true");
-          */
 
           //bind<IMC::IndicatedSpeed>(this);
           bind<IMC::EstimatedStreamVelocity>(this);
@@ -177,6 +179,13 @@ namespace Control
           else
             setRefmodelMatrices();
           m_using_refmodel = m_args.use_refmodel;
+
+
+          for (uint8_t i = 0; i < m_guidance_string.size(); i++)
+          {
+            if(strcmp(m_args.guidance_algorithm.c_str(), m_guidance_string[i].c_str()))
+              m_guidance_algorithm = i;
+          }
         }
 
         void
@@ -295,6 +304,8 @@ namespace Control
         step(const IMC::EstimatedState& state, const TrackingState& ts)
         {
           spew("Control step start");
+          spew("Vehicle position (lat,lng,height): %f, %f, %f", state.lat, state.lon, state.height);
+          spew("Vehicle position (x,y,z): %f, %f, %f", state.x,state.y,state.z);
 
           if (!m_args.use_controller)
             return;
@@ -314,23 +325,36 @@ namespace Control
           spew("Centroid TrackingState: %f, %f", centroid_ts_x, centroid_ts_y);
 
 
-          // Lookahead distance on LOS line
-          double Delta;
+          // Lookahead distance on LOS line (set to LOS guidance by default, changed below)
+          double Delta = m_lookahead;
 
-          // Calculate lookahed distance in two different ways for LOS and enclosure based steering
-          if (m_args.use_enclosure)
+          // Calculate lookahed distance based on guidance algorithm selection
+          switch (m_guidance_algorithm)
           {
-            // Calculate squared lookahead so that it depends on cross track error
-            double Delta_sq = m_lookahead*m_lookahead - centroid_ts_y*centroid_ts_y;
-            // Constrain value to not take sqrt of a negative number
-            trimValue(Delta_sq, 0, m_lookahead*m_lookahead);
-            // Set lookahead
-            Delta = std::sqrt(Delta_sq);
-          }
-          else
-          {
-            // Set lookahead distance to be the user input value
-            Delta = m_lookahead;
+            case LOS_LOOKAHEAD:
+            {
+              // Set lookahead distance to be the user input value
+              Delta = m_lookahead;
+              break;
+            }
+            case ENCLOSURE:
+            {
+              // Calculate squared lookahead so that it depends on cross track error
+              double Delta_sq = m_lookahead*m_lookahead - centroid_ts_y*centroid_ts_y;
+              // Constrain value to not take sqrt of a negative number
+              trimValue(Delta_sq, 0, m_lookahead*m_lookahead);
+              // Set lookahead
+              Delta = std::sqrt(Delta_sq);
+              break;
+            }
+            case PURE_PURSUIT:
+            {
+              // Set lookahead to the remaining distance to the next waypoint
+              Delta = ts.track_length - centroid_ts_x;
+              break;
+            }
+            default:
+              break;
           }
 
           // Create the desired velocity vector in path frame
