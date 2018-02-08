@@ -57,6 +57,8 @@ namespace Control
         double lookahead;
         //! Guidance algorithm selection
         std::string guidance_algorithm;
+        //! Use actual ground speed in lookahead distance calculation (and no desired speed)
+        bool use_lookahead_gndspeed;
         //! Use referencemodel for velocity (velocity filter)
         bool use_refmodel;
         //! Natural frequency for velocity filter
@@ -84,6 +86,7 @@ namespace Control
       {
         Arguments m_args;
         double m_lookahead;
+        double m_lookahead_time;
         Matrix m_zeta_vel;
         Matrix m_omega_vel;
         double m_desired_speed; 
@@ -108,6 +111,7 @@ namespace Control
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
           m_lookahead(0.0),
+          m_lookahead_time(0.0),
           m_desired_speed(0.0),
           m_last_loop_time(0.0),
           m_guidance_algorithm(LOS_LOOKAHEAD),
@@ -125,10 +129,14 @@ namespace Control
           .scope(Tasks::Parameter::SCOPE_MANEUVER)
           .description("Selection of which guidance algorithm to use in the controller");
 
-          param("Lookahead", m_args.lookahead)
-          .defaultValue("8.0")
-          .units(Units::Meter)
-          .description("Lookahead distance (or enclosure radius if enclosure based steering is chosen");
+          param("Lookahead time", m_args.lookahead)
+          .defaultValue("2.5")
+          .units(Units::Second)
+          .description("Lookahead time (or enclosure radius (in seconds) if enclosure based steering is chosen");
+
+          param("Use ground speed for lookahead", m_args.use_lookahead_gndspeed)
+          .defaultValue("false")
+          .description("Use actual ground speed in lookahead distance calculation (and not desired speed)");
 
           param("Use height guidance", m_args.control_height)
           .defaultValue("false")
@@ -139,7 +147,7 @@ namespace Control
           .description("Use reference model for velocity");
 
           param("Omega (velocity filter nat. freq.)", m_args.omega_vel)
-          .defaultValue("4.0")
+          .defaultValue("3.0, 4.0")
           .units(Units::RadianPerSecond)
           .description("Velocity filter natural frequency matrix. One value:uses on all. Two values: uses one on xy and one on z (if activated)");
 
@@ -171,7 +179,7 @@ namespace Control
         {
           PathController::onUpdateParameters();
 
-          m_lookahead = m_args.lookahead;
+          m_lookahead_time = m_args.lookahead;
 
           if (paramChanged(m_args.zeta_vel))
           {
@@ -241,7 +249,7 @@ namespace Control
           // Activate bank (roll) controller.
           //enableControlLoops(IMC::CL_ROLL);
           
-          // Init refmodel on path activation
+          // Init refmodel on path activation to set the state
           initRefmodel(); 
           // Initialise with last time control loop was run
           m_last_loop_time = Clock::get(); 
@@ -313,8 +321,7 @@ namespace Control
             spew("Not configured!");
             return;
           }*/   
-          
-          
+
           if (msg->getSource() == this->getSystemId())
           {
             if (resolveEntity(msg->getSourceEntity()).c_str() == m_args.centroid_els_entity_label)
@@ -374,6 +381,20 @@ namespace Control
           double centroid_ts_y = ts.track_pos.y - p_centroid_y;
           trace("Centroid TrackingState: %f, %f", centroid_ts_x, centroid_ts_y);
 
+          // Set the velocity for lookahead calculation to the desired speed
+          double lookahead_vel = m_desired_speed;
+          // Change lookahead velocity to ground speed if this parameter is set
+          if(m_args.use_lookahead_gndspeed)
+          {
+            // Calculate centroid ground velocity
+            lookahead_vel = std::sqrt(std::pow(m_centroid_state.state->vx,2) + std::pow(m_centroid_state.state->vy,2));
+            if(m_args.control_height)
+              lookahead_vel = std::sqrt(std::pow(lookahead_vel,2) + std::pow(m_centroid_state.state->vz,2));
+          }
+
+          // Calculate lookahead distance based on the velocity
+          m_lookahead = lookahead_vel * m_lookahead_time;
+          trace("Velocity used for lookahead calculation and lookahead distance: %f, %f", lookahead_vel, m_lookahead);
 
           // Lookahead distance on LOS line (set to LOS guidance by default, changed below)
           double Delta = m_lookahead;
