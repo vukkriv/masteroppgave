@@ -27,91 +27,52 @@
 // Author: Kristoffer Gryte                                                 *
 //***************************************************************************
 
-#ifndef DUNE_HARDWARE_PWM_HPP_INCLUDED_
-#define DUNE_HARDWARE_PWM_HPP_INCLUDED_
+#ifndef USER2_HARDWARE_PWM_HPP_INCLUDED_
+#define USER2_HARDWARE_PWM_HPP_INCLUDED_
 
-// ISO C++ 98 headers.
 #include <string>
-
-// DUNE headers.
-#include <DUNE/Config.hpp>
 
 namespace DUNE
 {
   namespace Hardware
   {
-    // Export symbol.
     class DUNE_DLL_SYM PWM;
 
     class PWM
     {
     public:
-      
-      PWM(void)
-      {
-        PWM(0);
-      }
+      PWM();
+      PWM(unsigned pwm_number);
+      PWM(unsigned pwm_number, const std::string& chip_path);
+      ~PWM();
 
-      //! Initialize PWM.
-      //! @param[in] number PWM number.
-      PWM(unsigned int number)
-      {
-        // number should be 0 or 1
-        PWM(number, std::string("/sys/class/pwm/pwmchip0/"));
-        //PWM(number, std::string("/sys/class/pwm/pwmchip2"));
-        //PWM(number, std::string("/sys/class/pwm/pwmchip4"));
-      }
+      // You'll only need one of these
+      void setFrequency(float frequency_hertz);
+      void setPeriod(float period_seconds);
 
-      //! Initialize PWM.
-      //! @param[in] number PWM number.
-      //! @param[in] PWM chip path
-      PWM(unsigned int number, std::string chip_path);
+      void setDutyCyclePercentage(float duty_cycle_percentage);
+      void setDutyCycleNormalized(float duty_cycle_normalized);
+      void setPulseWidth(float pulse_width_seconds);
 
-      //! Default destructor.
-      ~PWM(void);
-
-      //! Set PWM duty cycle.
-      //! @param[in] duty cycle in nano seconds
-      void
-      setValue(int value);
-
-      //! Set PWM period
-      //! @param[in] period in nano seconds
-      void
-      setPeriod(int period);
-
-      void
-      enable(void);
-
-      void
-      disable(void);
-      ////! Get PWM value.
-      ////! @return pwm duty cycle
-      //bool
-      //getValue(void);
+      void enable();
+      void disable();
 
     private:
-      //! PWM number.
-      unsigned int m_number;
-      //! i.e. /sys/class/pwm/pwmchip0
+      unsigned m_pwm_number;
       std::string m_chip_path;
+      unsigned m_period_nanoseconds;
 
-      double m_period;
-      double m_duty_cycle;
-#if defined(DUNE_OS_LINUX)
-      //! Path to PWM duty cycle (ns) file.
-      std::string m_file_duty;
-      //! Path to PWM period_ns file
-      std::string m_file_period;
-      //! Path to PWM enable file
-      std::string m_file_enable;
+      void setPeriod(unsigned period_nanoseconds);
+      void setPulseWidth(unsigned active_time_nanoseconds);
 
-      static void
-      writeToFile(const std::string& file, int value);
+#   if defined(DUNE_OS_LINUX)
+      std::string m_file_duty_cycle_path;
+      std::string m_file_period_path;
+      std::string m_file_enable_path;
 
-      static void
-      writeToFile(const std::string& file, const std::string& value);
-#endif
+      static void writeToFile(const std::string& file, unsigned value);
+      static void writeToFile(const std::string& file, const std::string& value);
+#   endif
     };
   }
 }

@@ -1,4 +1,3 @@
-
 //***************************************************************************
 // Copyright 2007-2017 Universidade do Porto - Faculdade de Engenharia      *
 // Laboratório de Sistemas e Tecnologia Subaquática (LSTS)                  *
@@ -28,15 +27,13 @@
 // Author: Kristoffer Gryte                                                 *
 //***************************************************************************
 
-// ISO C++ 98 headers.
+#include <cstdio>
 #include <cerrno>
-#include <sstream>
-#include <iomanip>
 
-// DUNE headers.
 #include <DUNE/System/Error.hpp>
 #include <DUNE/Streams/Terminal.hpp>
 #include <DUNE/Utils/String.hpp>
+
 #include <USER/Hardware/PWM.hpp>
 
 namespace DUNE
@@ -46,88 +43,128 @@ namespace DUNE
     using DUNE::System::Error;
     using DUNE::Utils::String;
 
-    PWM::PWM(unsigned int number, std::string chip_path):
-      m_number(number),
-      m_chip_path(chip_path)
+    PWM::PWM()
     {
-      // Linux 2.6 implementation.
-#if defined(DUNE_OS_LINUX)
-      writeToFile(m_chip_path + "export", m_number);
-
-      std::string prefix = m_chip_path + 
-                           std::string("pwm") +
-                           String::str(m_number);
-      m_file_duty = prefix + std::string("/duty_cycle");
-      m_file_period = prefix + std::string("/period");
-      m_file_enable = prefix + std::string("/enable");
-
-      enable();
-      // Lacking implementation.
-#else
-      throw Error("unimplemented feature", "DUNE::Hardware::PWM");
-#endif
+      PWM(0);
     }
 
-    PWM::~PWM(void)
+    PWM::PWM(const unsigned pwm_number)
     {
-      // Linux 2.6 implementation.
-#if defined(DUNE_OS_LINUX)
+      PWM(pwm_number, "/sys/class/pwm/pwmchip0/");
+    }
+
+    PWM::PWM(const unsigned pwm_number, const std::string& chip_path):
+      m_pwm_number(pwm_number),
+      m_chip_path(chip_path)
+    {
+#   if defined(DUNE_OS_LINUX)
+      writeToFile(m_chip_path + "export", m_pwm_number);
+
+      const std::string prefix = m_chip_path + "pwm" + String::str(m_pwm_number);
+      m_file_duty_cycle_path = prefix + "/duty_cycle";
+      m_file_period_path = prefix + "/period";
+      m_file_enable_path = prefix + "/enable";
+
+      enable();
+#   else
+      throw Error("unimplemented feature", "DUNE::Hardware::PWM");
+#   endif
+    }
+
+    PWM::~PWM()
+    {
+#   if defined(DUNE_OS_LINUX)
       try
       {
-        writeToFile(m_chip_path + "unexport", m_number);
+        writeToFile(m_chip_path + "unexport", m_pwm_number);
       }
       catch (std::exception& e)
       {
         DUNE_ERR("DUNE::Hardware::PWM", e.what());
       }
-#endif
+#   endif
     }
 
     void
-    PWM::setPeriod(int period)
+    PWM::setFrequency(const float frequency_hertz)
     {
-      //! TODO: check that value is reasonable?
-#if defined(DUNE_OS_LINUX)
-        writeToFile(m_file_period, period);
-#endif
-      m_period = period;
+      const float period_seconds = 1 / frequency_hertz;
+      setPeriod(period_seconds);
     }
 
     void
-    PWM::setValue(int value)
+    PWM::setPeriod(const float period_seconds)
     {
-      //! TODO: check that value makes sense, i.e. is smaller than period
-#if defined(DUNE_OS_LINUX)
-      writeToFile(m_file_duty, value);
-#else
+      const unsigned period_nanoseconds = period_seconds * 1e9;
+      setPeriod(period_nanoseconds);
+    }
+
+    void
+    PWM::setPeriod(const unsigned period_nanoseconds)
+    {
+#   if defined(DUNE_OS_LINUX)
+      writeToFile(m_file_period_path, period_nanoseconds);
+#   endif
+      m_period_nanoseconds = period_nanoseconds;
+    }
+
+    void
+    PWM::setDutyCyclePercentage(const float duty_cycle_percentage)
+    {
+      const float duty_cycle_normalized = duty_cycle_percentage * 0.01;
+      setDutyCycleNormalized(duty_cycle_normalized);
+    }
+
+    void
+    PWM::setDutyCycleNormalized(const float duty_cycle_normalized)
+    {
+      const unsigned pulse_width_nanoseconds = m_period_nanoseconds * duty_cycle_normalized;
+      setPulseWidth(pulse_width_nanoseconds);
+    }
+
+    void
+    PWM::setPulseWidth(const float pulse_width_seconds)
+    {
+      const unsigned pulse_width_nanoseconds = pulse_width_seconds * 1e9;
+      setPulseWidth(pulse_width_nanoseconds);
+    }
+
+    void
+    PWM::setPulseWidth(unsigned pulse_width_nanoseconds)
+    {
+      if (pulse_width_nanoseconds > m_period_nanoseconds)
+        pulse_width_nanoseconds = m_period_nanoseconds;
+
+#   if defined(DUNE_OS_LINUX)
+      writeToFile(m_file_duty_cycle_path, pulse_width_nanoseconds);
+#   else
       throw Error("unimplemented feature", "DUNE::Hardware::PWM");
-#endif
-      m_duty_cycle = value;
+#   endif
     }
 
     void
-    PWM::enable(void)
+    PWM::enable()
     {
-#if defined(DUNE_OS_LINUX)
-      writeToFile(m_file_enable, 1);
-#else
+#   if defined(DUNE_OS_LINUX)
+      writeToFile(m_file_enable_path, 1);
+#   else
       throw Error("unimplemented feature", "DUNE::Hardware::PWM");
-#endif
+#   endif
     }
 
     void
-    PWM::disable(void)
+    PWM::disable()
     {
-#if defined(DUNE_OS_LINUX)
-      writeToFile(m_file_enable, 0);
-#else
+#   if defined(DUNE_OS_LINUX)
+      writeToFile(m_file_enable_path, 0);
+#   else
       throw Error("unimplemented feature", "DUNE::Hardware::PWM");
-#endif
+#   endif
     }
 
-#if defined(DUNE_OS_LINUX)
+# if defined(DUNE_OS_LINUX)
     void
-    PWM::writeToFile(const std::string& file, int value)
+    PWM::writeToFile(const std::string& file, unsigned value)
     {
       writeToFile(file, String::str(value));
     }
@@ -141,7 +178,6 @@ namespace DUNE
       std::fputs(value.c_str(), fd);
       std::fclose(fd);
     }
-
-#endif
+# endif
   }
 }
