@@ -49,6 +49,7 @@ namespace Control
         double k_thr_i;
         double k_gamma_p;
         double k_thr_ph;
+        double k_d_p;
         double k_thr_rll_ff;
         double trim_pitch;
         double trim_throttle;
@@ -127,6 +128,10 @@ namespace Control
           param("Gamma Proportional gain", m_args.k_gamma_p)
           .defaultValue("5.0")
           .description("Gamma Proportional gain");
+
+          param("Pitch damping", m_args.k_d_p)
+          .defaultValue("0.0")
+          .description("Pitch rate gain");
 
           param("Roll throttle feed-forward", m_args.k_thr_rll_ff)
           .defaultValue("0.0")
@@ -359,7 +364,7 @@ namespace Control
           //Calculate desired throttle and pitch
           /* double throttle_desired = m_args.k_thr_p*V_error + m_thr_i + m_h_err*m_args.k_thr_ph + m_args.trim_throttle; */
           double throttle_desired = m_args.k_thr_p*V_error + m_args.k_thr_i*m_thr_i + m_h_err*m_args.k_thr_ph + m_args.trim_throttle + m_args.k_thr_rll_ff*std::abs(state.phi);
-          double pitch_desired = gamma_desired + Angles::radians(m_args.trim_pitch)-gamma_error*m_args.k_gamma_p; //Backstepping,pitch_desired = gamma_desired + alpha_0
+          double pitch_desired = gamma_desired + Angles::radians(m_args.trim_pitch)-gamma_error*m_args.k_gamma_p + m_args.k_d_p*state.q; //Backstepping,pitch_desired = gamma_desired + alpha_0
           pitch_desired = trimValue(pitch_desired,Angles::radians(m_args.pitch_min_deg),Angles::radians(m_args.pitch_max_deg));
           m_throttle.value = trimValue(throttle_desired, 0, 100);
           m_pitch.value = rateLimit(pitch_desired,m_prev_pitch_desired,Angles::radians(m_args.upper_lim_pitchrate), Angles::radians(m_args.lower_lim_pitchrate), ts.delta);
@@ -369,6 +374,7 @@ namespace Control
           m_parcels[PC_THR].d = m_h_err*m_args.k_thr_ph ;
           m_parcels[PC_PTCH].p = -gamma_error*m_args.k_gamma_p; 
           m_parcels[PC_PTCH].i = gamma_desired; //Abuse of notation
+          m_parcels[PC_PTCH].d = m_args.k_d_p*state.q;
 
           spew("pitch desired: %f \t alpha_0: %f",m_pitch.value,Angles::degrees(alpha_now));
 
