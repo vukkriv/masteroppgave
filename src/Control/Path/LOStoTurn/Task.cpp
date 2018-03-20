@@ -127,7 +127,7 @@ namespace Control
 
           param("Lookahead time", m_args.lookahead)
           .defaultValue("3.0")
-          .description("Lookahead time in seconds (Used for lookahead type 1, 3, 4, 5)");
+          .description("Lookahead time in seconds (Used for lookahead type 1, 3, 4, 5, 6)");
 
           param("Maximum Bank", m_args.max_bank)
           .units(Units::Degree)
@@ -187,7 +187,7 @@ namespace Control
           param("Lookahead type", m_args.lookahead_type)
           .minimumValue("1")
           .defaultValue("1")
-          .description("Choose how the lookahead distance is calculated: 1; lookahead time, 2; radius of acceptance, 3; speed-dependant radius of acceptance, 4; Boerhaug integral effect, 5; Boerhaug w/speed-depentant radius of acceptance");
+          .description("Choose how the lookahead distance is calculated: 1; lookahead time, 2; radius of acceptance, 3; speed-dependant radius of acceptance, 4; Boerhaug integral effect, 5; Boerhaug w/speed-depentant radius of acceptance, 6; pure lookahead distance");
 
           param("Kp_chi", m_args.k_chi)
           .defaultValue("0.5")
@@ -409,6 +409,15 @@ namespace Control
               lookahead_dist = sqrt((m_lookahead_sq*speed_g*speed_g) - y_e_trimmed*y_e_trimmed);
               lookahead_dist_dot = (y_e*y_e_dot)/lookahead_dist;// this assumes that acc_g is zero, if not; add: (m_lookahead_sq*speed_g*acc_g)/lookahead_dist;
               m_y_int_dot = (lookahead_dist*y_e)/(y_e_*y_e_ + lookahead_dist*lookahead_dist);
+              break;
+            case 6:
+              // pure lookahead distance
+              m_y_integrator = 0;
+              y_e_ = y_e;
+              lookahead_dist = m_lookahead;
+              lookahead_dist_dot = 0;
+              m_y_int_dot = 0;
+              y_e_dot_ = y_e_dot;
               break;
           }
           lookahead_dist = trimValue(lookahead_dist,m_args.look_min,m_args.look_max);
