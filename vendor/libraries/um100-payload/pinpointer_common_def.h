@@ -95,7 +95,7 @@ typedef enum {
 	TX=0,			/**< Action is TX.*/
 	RX,			/**< Action is RX.*/
 	WAIT,			/**< Action is WAIT.*/
-	NO_ACTION,		/**< Action is None.*/
+	NO_ACTION		/**< Action is None.*/
 } OSAL_PACKED_ENUM action_t;
 
 /** 
@@ -109,7 +109,7 @@ typedef enum {
 	PM_RX_IDLE,	/**< Power management Rx idle.*/
 	PM_TX_IDLE,	/**< Power management TX_IDLE.*/
 	PM_TXRX_IDLE,	/**< Power management TXRX_IDLE.*/
-	POWER_MODE_NB,	/**< Power management number of mode */
+	POWER_MODE_NB	/**< Power management number of mode */
 } OSAL_PACKED_ENUM pm_state_t;
 
 /**

@@ -99,7 +99,7 @@ namespace Sensors
       UNKNOWN = 0,
       TAG = 1,
       BASE = 2,
-      COORDINATOR = 3,
+      COORDINATOR = 3
     };
 
     enum PollResult

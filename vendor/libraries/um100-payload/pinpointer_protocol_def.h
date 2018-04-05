@@ -236,7 +236,7 @@ typedef enum {
 	TT_TAG_RANGING	= 4,		/**< Ranging data (send by tag) */
 	TT_DATA			= 5,		/**< Data slot  */
 	TT_RDV 			= 6,		/**< Rendez Vous */
-	TT_UNKNOWN		= 0xFF,  	/**< unknown frame */
+	TT_UNKNOWN		= 0xFF  	/**< unknown frame */
 } OSAL_PACKED_ENUM type_trame_t;
 
 /**
@@ -290,7 +290,7 @@ typedef enum {
 	DS_BROADCAST_TRANSMITING = 0,	/**< Master has something to say */
 	DS_BROADCAST_LISTENING = 1,		/**< Slave is listenning */
 	DS_DEDICATED_TRANSMITTING = 2,	/**< Master is in transaction */
-	DS_DEDICATED_LISTENING = 3,		/**< Slave is in transaction */
+	DS_DEDICATED_LISTENING = 3		/**< Slave is in transaction */
 } OSAL_PACKED_ENUM framer_data_slot_t;
 
 /*
@@ -308,7 +308,7 @@ typedef enum {
 typedef enum {
 	ATR_SHORT_OPEN = 0,		// please coment me
 	ATR_EXT_OPEN   = 1,		// please coment me
-	ATR_SECURE     = 2,		// please coment me
+	ATR_SECURE     = 2		// please coment me
 } OSAL_PACKED_ENUM framer_auth_type_request_t;
 
 /*
@@ -317,7 +317,7 @@ typedef enum {
 typedef enum {
 	LTR_SLOWEST = 1,		// please coment me 
 	LTR_STANDARD = 2,		// please coment me 
-	LTR_FASTEST = 3,		// please coment me 
+	LTR_FASTEST = 3		// please coment me 
 } OSAL_PACKED_ENUM framer_loc_type_request_t;
 
 
@@ -490,7 +490,7 @@ typedef enum {
 
 	//################### RDV SPECIFIC ######################################
 	/* BIT 0 - BIT 11 : Reserved */
-	RDV_CONF_RSVD_BIT0_11_MASK	= (0xFFF) , /**< reserved bits for Beacon (unifed,1 or 2) */
+	RDV_CONF_RSVD_BIT0_11_MASK	= (0xFFF)  /**< reserved bits for Beacon (unifed,1 or 2) */
 
 } OSAL_PACKED_ENUM rng_config_e;
 
@@ -519,7 +519,7 @@ typedef enum cb_payload_key_type {
 	SCB_DEINIT 	= 1,	/**< Set deinit callback.If this key is used, value must be an fct_payload_deinit. If not pass, NULL will be assumed */
 	SCB_GETDATA = 2,	/**< Set get data callback.If this key is used, value must be an fct_payload_getData. If not pass, NULL will be assumed */
 	SCB_UPDATE 	= 3,	/**< Set update callback.If this key is used, value must be an fct_payload_updateData. If not pass, NULL will be assumed */
-	SCB_UDATA 	= 4,	/**< Set user data of callback.If this key is used, value must be an OSAL_void*. If not pass, NULL will be assumed */
+	SCB_UDATA 	= 4	/**< Set user data of callback.If this key is used, value must be an OSAL_void*. If not pass, NULL will be assumed */
 } OSAL_PACKED_ENUM cb_payload_key_type_t;
 
 
@@ -541,7 +541,7 @@ typedef enum frame_info_type {
 typedef enum {
 	DS_DETACHED = 0,	/**< Device detached */
 	DS_ATTACH_REQUEST,	/**< Device ask for attaching */
-	DS_ATTACHED,		/**< Device attached */
+	DS_ATTACHED		/**< Device attached */
 } OSAL_PACKED_ENUM dev_status_t;
 
 /**
@@ -553,7 +553,7 @@ typedef enum {
 	LOSTATUS_CALIBRATING,	/**< calibrating */
 	LOSTATUS_RANGING,	/**< ranging */
 	LOSTATUS_ON_ERROR,	/**< error */
-	LOSTATUS_NB,		/**< nb of possible state */
+	LOSTATUS_NB		/**< nb of possible state */
 } OSAL_PACKED_ENUM artls_lostatus_t;
 
 /**
@@ -591,7 +591,7 @@ typedef enum {
 	ARTLS_PAIRING_REQUEST_UP,	/**< Field pairing_req is filled */
 	ARTLS_INFO_UP,			/**< Field device_info is filled */
 	ARTLS_DISSOCIATION_REQUEST_UP,  /**< Field dreq is filled */
-	ARTLS_CMD_STATUS_UP,		/**< Field cmd_status is filled */
+	ARTLS_CMD_STATUS_UP		/**< Field cmd_status is filled */
 }OSAL_PACKED_ENUM artls_up_cmd_e;
 
 /**
@@ -604,7 +604,7 @@ typedef enum {
 	ARTLS_SET_DEV_ID_DOWN = 10,		/**< Set the device id (a.k.a short address a.k.a hash) */
 	ARTLS_SET_PREFERED_REF_BASE_DOWN = 11,	/**< Force the device to bind to a specific ref base */
 	ARTLS_SET_THRESHOLD_COEFF_DOWN = 12,	/**< Apply a multiplicative coefficient to all synchronisation threshold */
-	ARTLS_SET_ANTENNA_OFFSET_DOWN = 13,		/**< Apply a specific hardware offset */
+	ARTLS_SET_ANTENNA_OFFSET_DOWN = 13		/**< Apply a specific hardware offset */
 }OSAL_PACKED_ENUM artls_down_cmd_e;
 
 /**
@@ -613,7 +613,7 @@ typedef enum {
 typedef enum {
 	ACC_SUCCESS = 0,	/**< Command finished sucessfully */
 	ACC_NO_ACK	= 1,	/**< Remote peer do not ack the command */
-	ACC_INTERNAL_ERROR = 2, /**< Command not finished due to internal error */
+	ACC_INTERNAL_ERROR = 2 /**< Command not finished due to internal error */
 	// TODO: add timeout, canceled, ...
 } OSAL_PACKED_ENUM artls_cmd_return_code_t;
 

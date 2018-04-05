@@ -31,7 +31,7 @@
 typedef enum {
 	DAS_DETACHED = 0,
 	DAS_ATTACHING =1,
-	DAS_ATTACHED = 2,
+	DAS_ATTACHED = 2
 } device_attachment_status_t;
 
 typedef struct device_tag device_t;
