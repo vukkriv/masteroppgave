@@ -444,6 +444,10 @@ namespace Sensors
           data +=entrySize;
         }
       }
+      else
+      {
+        m_task->err("Failed to read, got size: %zu", cur_size);
+      }
 
       if (result.size() > 1)
         m_time_previous_message = now;

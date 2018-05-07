@@ -250,6 +250,8 @@ namespace Sensors
 
         unsigned int events_mask = 0;
 
+        unsigned int n_consequtive_timeouts = 0;
+
         while (!stopping())
         {
           consumeMessages();
@@ -261,17 +263,26 @@ namespace Sensors
             // Check which events got fired.
             events_mask = m_radio->parse_events();
 
+            // Restart counter
+            n_consequtive_timeouts = 0;
+
             if (events_mask & DATA_READY)
             {
+              spew("DATA_READY");
               read_dispatch_new_data();
             }
             if (events_mask & NETWORK_MANAGEMENT)
             {
+              spew("Handle network");
               m_radio->handle_network();
             }
             if (events_mask & HANGUP)
             {
               err("Driver issued hangup. Ignoring. ");
+            }
+            if (events_mask == EVENT_NONE)
+            {
+              spew("No event, boring. ");
             }
           }
           else if (pres == P_ERROR)
@@ -280,7 +291,14 @@ namespace Sensors
           }
           else {
             // timeout
-            spew("Poll timeout. ");
+            war("Poll timeout. ");
+
+            n_consequtive_timeouts++;
+
+            if (n_consequtive_timeouts > 2)
+            {
+              throw RestartNeeded("Too many timeouts, restarting task. ", 0);
+            }
           }
 
           // Check timeouts of states of the reserved beacons
@@ -306,6 +324,8 @@ namespace Sensors
       {
         // Gets all new available measurements
         std::vector<Measurement> res = m_radio->read_measurements();
+
+        spew("Number of measurements: %zu", res.size());
 
         // Loop to process
         for (std::vector<Measurement>::iterator it = res.begin(); it != res.end(); it++)
