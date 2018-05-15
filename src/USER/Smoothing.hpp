@@ -26,8 +26,8 @@
 // Author: Kristoffer Gryte                                                 *
 //***************************************************************************
 
-#ifndef USER_SMOOTHIN_HPP_INCLUDED_
-#define USER_SMOOTHIN_HPP_INCLUDED_
+#ifndef USER_SMOOTHING_HPP_INCLUDED_
+#define USER_SMOOTHING_HPP_INCLUDED_
 
 namespace DUNE
 {
@@ -38,8 +38,9 @@ namespace DUNE
 }
 
 
-/* #include <USER/Smoothing/RateLimiter.hpp> */
+#include <USER/Smoothing/RateLimit.hpp>
 #include <USER/Smoothing/Differentiability.hpp>
+#include <USER/Smoothing/ReferenceModel.hpp>
 
 
 
