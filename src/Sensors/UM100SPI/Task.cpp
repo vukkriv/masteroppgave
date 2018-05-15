@@ -325,7 +325,7 @@ namespace Sensors
         // Gets all new available measurements
         std::vector<Measurement> res = m_radio->read_measurements();
 
-        spew("Number of measurements: %zu", res.size());
+        // spew("Number of measurements: %zu", res.size());
 
         // Loop to process
         for (std::vector<Measurement>::iterator it = res.begin(); it != res.end(); it++)
