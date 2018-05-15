@@ -311,7 +311,7 @@ namespace Sensors
             // TODO: Parameterize timeout
             if (now - m_bdistance[id].getTimeStamp() > 2.0)
             {
-              entity->setState(EntityState::ESTA_ERROR, Code::CODE_MISSING_DATA);
+              entity->setState(EntityState::ESTA_ERROR, Status::CODE_MISSING_DATA);
             }
 
           }
@@ -369,7 +369,7 @@ namespace Sensors
             m_bdistance[id].time = m->time * 1E9;
             m_bdistance[id].dlt = m->delta_time * 1E9;
 
-            m_beacon_entities[id]->setState(EntityState::ESTA_NORMAL, Code::CODE_ACTIVE);
+            m_beacon_entities[id]->setState(EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
 
             dispatch(m_bdistance[id]);
           }
