@@ -303,15 +303,15 @@ namespace Sensors
 
           // Check timeouts of states of the reserved beacons
           double now = Clock::getSinceEpoch();
-          for (auto be : m_beacon_entities)
+          for (std::map<unsigned int, Entities::StatefulEntity*>::iterator it = m_beacon_entities.begin(); it != m_beacon_entities.end(); it++)
           {
-            auto id = be.first;
-            auto entity = be.second;
+            unsigned int id = it->first;
+            Entities::StatefulEntity* entity = it->second;
 
             // TODO: Parameterize timeout
             if (now - m_bdistance[id].getTimeStamp() > 2.0)
             {
-              entity->setState(EntityState::ESTA_ERROR, Code::CODE_MISSING_DATA);
+              entity->setState(EntityState::ESTA_ERROR, Status::CODE_MISSING_DATA);
             }
 
           }
@@ -325,7 +325,7 @@ namespace Sensors
         // Gets all new available measurements
         std::vector<Measurement> res = m_radio->read_measurements();
 
-        spew("Number of measurements: %zu", res.size());
+        // spew("Number of measurements: %zu", res.size());
 
         // Loop to process
         for (std::vector<Measurement>::iterator it = res.begin(); it != res.end(); it++)
@@ -369,7 +369,7 @@ namespace Sensors
             m_bdistance[id].time = m->time * 1E9;
             m_bdistance[id].dlt = m->delta_time * 1E9;
 
-            m_beacon_entities[id]->setState(EntityState::ESTA_NORMAL, Code::CODE_ACTIVE);
+            m_beacon_entities[id]->setState(EntityState::ESTA_NORMAL, Status::CODE_ACTIVE);
 
             dispatch(m_bdistance[id]);
           }
