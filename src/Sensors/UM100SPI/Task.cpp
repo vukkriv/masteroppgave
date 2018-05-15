@@ -303,10 +303,10 @@ namespace Sensors
 
           // Check timeouts of states of the reserved beacons
           double now = Clock::getSinceEpoch();
-          for (auto be : m_beacon_entities)
+          for (std::map<unsigned int, Entities::StatefulEntity*>::iterator it = m_beacon_entities.begin(); it != m_beacon_entities.end(); it++)
           {
-            auto id = be.first;
-            auto entity = be.second;
+            unsigned int id = it->first;
+            Entities::StatefulEntity* entity = it->second;
 
             // TODO: Parameterize timeout
             if (now - m_bdistance[id].getTimeStamp() > 2.0)
