@@ -662,7 +662,14 @@ namespace Control
           spew("H_error: %f",h_error);
 
           //Derivative term
-          double h_dot = state.u*sin(state.theta) - state.v*sin(state.phi)*cos(state.theta) - state.w*cos(state.phi)*cos(state.theta);
+          // Note: the state from ArduPilot task yields body-fixed *ground* velocity (u,v,w)
+          double h_dot_uav = state.u*sin(state.theta) - state.v*sin(state.phi)*cos(state.theta) - state.w*cos(state.phi)*cos(state.theta);
+          double h_dot_path = ts.speed*tan(glideslope_angle);
+
+          double h_dot = h_dot_uav - h_dot_path;
+
+          // rotate into path 
+          h_dot = h_dot*cos(glideslope_angle);
 
           double h_app = 1000;
 
