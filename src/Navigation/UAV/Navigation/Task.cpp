@@ -440,6 +440,7 @@ namespace Navigation
         {
           // First fill most field.
           m_estate = *m_extnav.state.get();
+          m_estate.setSourceEntity(getEntityId()); // Set the source entity to this task
 
           // Overwrite with RTK relevant fields.
           m_estate.lat = m_rtk.base_lat;
@@ -558,6 +559,7 @@ namespace Navigation
               {
                 case ExternalNav:
                   m_estate = *m_extnav.state.get();
+                  m_estate.setSourceEntity(getEntityId()); // Set the source entity to this task
                   sendStateAndSource();
                   break;
                 case Rtk:
@@ -584,6 +586,7 @@ namespace Navigation
               {
                 case ExternalNav:
                   m_estate = *m_extnav.state.get();
+                  m_estate.setSourceEntity(getEntityId()); // Set the source entity to this task
                   sendStateAndSource();
                   break;
                 case Rtk:
@@ -671,6 +674,7 @@ namespace Navigation
                   {
                     m_shortRtkLoss_wdog_message_frequency_timer.reset();
                     m_estate = *m_extnav.state.get();
+                    m_estate.setSourceEntity(getEntityId()); // Set the source entity to this task
                     addShortLossCompensator();
                     sendStateAndSource();
                   }
@@ -698,6 +702,7 @@ namespace Navigation
               setNavSourceAvailable(false);
               m_state_time.setTop(m_args.rtk_min_fix_time);
               m_estate = *m_extnav.state.get();
+              m_estate.setSourceEntity(getEntityId()); // Set the source entity to this task
               sendStateAndSource();
               break;
             case RtkReady:
@@ -724,6 +729,7 @@ namespace Navigation
               break;
             case UsingShortLossComp:
               m_estate = *m_extnav.state.get();
+              m_estate.setSourceEntity(getEntityId()); // Set the source entity to this task
               addShortLossCompensator();
               sendStateAndSource();
               m_shortRtkLoss_wdog_message_frequency_timer.setTop(m_shortRtkLossFrequencyRef);
