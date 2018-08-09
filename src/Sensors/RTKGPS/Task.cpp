@@ -343,9 +343,10 @@ namespace Sensors
     	  // Split sentence
 		  std::vector<std::string> parts;
 		  String::split(line, " ", parts);
+      spew("GPS string has been split");
 		  /*
-		   * parts[0]	GPS week wwww
-		   * parts[1]	GPS TOW sssssss.sss
+		   * parts[0]	GPS week wwww        | UTC date yyyy/mm/dd
+		   * parts[1]	GPS TOW sssssss.sss  | UTC time hh:mm:ss.sss
 		   * 		      xyz		      llh           enu
 		   * parts[2]	x-ecef(m)	 |	lat(deg)	|	e(m)
 		   * parts[3]	y-ecef(m)	 |	lon(deg)	|	n(m)
@@ -382,6 +383,7 @@ namespace Sensors
 		      i = i-1;
 		    }
 		  }
+      spew("Empty cells removed");
 
 		  if(m_llh_output && parts.size()>=15)
 		  {
@@ -424,46 +426,70 @@ namespace Sensors
           if(Q == 1)
           {
             m_fix.type = IMC::GpsFix::GFT_DIFFERENTIAL; // Differential = FIX
+            spew("setGpsFix: Differential = FIX");
           }
           else if(Q == 2)
           {
             m_fix.type = IMC::GpsFix::GFT_DEAD_RECKONING; // Dead-reckoning = FLOAT
+            spew("setGpsFix: Dead-reckoning = FLOAT");
           }
           else if(Q == 5)
           {
             m_fix.type = IMC::GpsFix::GFT_STANDALONE; // Single mode
+            spew("setGpsFix:  Single mode");
           }
         }
 
         //Set UTC Year Month Day
+        spew("UTC date: %s", parts[0].c_str());
         std::vector<std::string> UTC_YMD;
         String::split(parts[0], "/", UTC_YMD);
+        spew("UTC_YMD length: %d", UTC_YMD.size());
 
-        if(readNumber(UTC_YMD[0],m_fix.utc_year)
+        if(UTC_YMD.size()>=3)
+        {
+          if(readNumber(UTC_YMD[0],m_fix.utc_year)
             && readDecimal(UTC_YMD[1],m_fix.utc_month)
             && readDecimal(UTC_YMD[2],m_fix.utc_day) )
-        {
-          //inf("%d / %d / %d", m_fix.utc_year, m_fix.utc_month, m_fix.utc_day);
-          m_fix.validity |= IMC::GpsFix::GFV_VALID_DATE;
+          {
+            spew("GPS valid date: %d / %d / %d", m_fix.utc_year, m_fix.utc_month, m_fix.utc_day);
+            m_fix.validity |= IMC::GpsFix::GFV_VALID_DATE;
 
+          }
+        }
+        else
+        {
+          err("Wrong format in GPS fix: Expecting UTC date!");
+          return;
         }
 
         //Set UTC time
+        spew("UTC time: %s", parts[1].c_str());
         std::vector<std::string> UTC_Time;
         String::split(parts[1], ":", UTC_Time);
         fp32_t h;
         fp32_t m;
         fp32_t s;
+        spew("UTC_Time length: %d", UTC_Time.size());
 
         // [HH|MM|SS.FFF] UTC_Time
 
-        if(UTC_Time.size()>=3 && readDecimal(UTC_Time[0],h)
-            && readDecimal(UTC_Time[1],m)
-            && readDecimal(UTC_Time[2],s))
+        if(UTC_Time.size()>=3)
         {
+          if(readDecimal(UTC_Time[0],h)
+              && readDecimal(UTC_Time[1],m)
+              && readDecimal(UTC_Time[2],s))
+          {
 
-          m_fix.utc_time = (3600*h) + (60*m)+ s;
-          m_fix.validity |= IMC::GpsFix::GFV_VALID_TIME;
+            m_fix.utc_time = (3600*h) + (60*m)+ s;
+            m_fix.validity |= IMC::GpsFix::GFV_VALID_TIME;
+            spew("GPS valid time: %f:%f:%f",h,m,s);
+          }
+        }
+        else
+        {
+          err("Wrong format in GPS fix: Expecting UTC time!");
+          return;
         }
 
         // Set Longitude,Latitude and Height and set number of satellites
