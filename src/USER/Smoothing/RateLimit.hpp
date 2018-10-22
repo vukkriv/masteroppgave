@@ -26,22 +26,70 @@
 // Author: Kristoffer Gryte                                                 *
 //***************************************************************************
 
-#ifndef USER_SMOOTHING_HPP_INCLUDED_
-#define USER_SMOOTHING_HPP_INCLUDED_
+#ifndef USER_RATELIM_HPP_INCLUDED_
+#define USER_RATELIM_HPP_INCLUDED_
+
+// ISO C++ 98 headers.
+#include <vector>
+
+// DUNE headers.
+#include <DUNE/Config.hpp>
+#include <DUNE/Time.hpp>
+#include <DUNE/Math/General.hpp>
 
 namespace DUNE
 {
-  //! %Routines for avoiding steps in control signals
+  //! Functionality for limiting the rate of change in a signal, typically to ensure 
+  //! that actuator outputs are smooth
   namespace Smoothing
-  { 
+  {
+    // Export DLL Symbol.
+    class DUNE_DLL_SYM Smoothing;
+
+    double
+    rateLimit(double val, double prev_val, double min_rate, double max_rate, double ts)
+    {
+      return Math::trimValue(val, prev_val + min_rate*ts, prev_val + max_rate*ts);
+    }
+
+    class RateLimiter
+    {
+    public:
+      RateLimiter(double duration, int order);
+
+      void
+      init(double val, double min_rate, double max_rate, double ts)
+      {
+        m_prev_val = val;
+        m_low_rate = min_rate;
+        m_high_rate = max_rate;
+        m_ts = ts;
+      }
+
+      //! param[in] val the value to be rate limited
+      double
+      limit(double val)
+      {
+        return limit(val, m_prev_val, m_ts);
+      }
+      
+      //! param[in] val the value to be rate limited
+      //! param[in] last_val the previous output
+      //! param[in] ts time since last call
+      double
+      limit(double val, double last_val, double ts)
+      {
+        m_prev_val = Math::trimValue(val, last_val + m_low_rate*ts, last_val + m_high_rate*ts);
+        return m_prev_val;
+      }
+
+    private:
+      double m_prev_val;
+      double m_low_rate;
+      double m_high_rate;
+      double m_ts;
+    };
   }
 }
-
-
-#include <USER/Smoothing/RateLimit.hpp>
-#include <USER/Smoothing/Differentiability.hpp>
-#include <USER/Smoothing/ReferenceModel.hpp>
-
-
 
 #endif
