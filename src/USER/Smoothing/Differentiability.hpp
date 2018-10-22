@@ -53,6 +53,11 @@ namespace DUNE
     //! 4) how smooth the reference should be; C1, C2, C3 ....
     //! use the init function to initiate a smoothing. 
     //! Subsequent calls to update will then provide a smoothed reference
+    //! Based on " Differenzielle Flachheit: Eine nützliche Methodik auch für lineare SISO-Systeme" M. Zeitz
+    //! and "Minimum-time trajectory generation for constrained linear systems using flatness and B-splines", F. Suryawan et al.
+    //! The advantage of this strategy is that there is no lag, and that the differentiability/smoothness 
+    //! can be specified in advance, but the output is purely time-dependant; it does not "adapt" to changing conditions.
+    //! Thus the method is best suited for smoothing jumps of a known amplitude over a known time
     class Differentiability
     {
     public:
