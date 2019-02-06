@@ -188,6 +188,12 @@ namespace Sensors
 
               /* spew(DTR("Got data from ardpilot SIL.")); */
               int n = receiveData(m_buf, sizeof(m_buf));
+              if(n < 0)
+              {
+                debug("Receive error");
+                break;
+              }
+
               debug("buf: %s", m_buf);
               /* debug("buf: %s", (char*)m_buf); */
               /* debug("n: %d", n); */
